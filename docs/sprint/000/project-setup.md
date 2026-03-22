@@ -16,3 +16,12 @@ we are going add clean architecture + svelte 5 improvement prompts
 
 3. add clean architecture skills
 
+4. add packages/{ui, domain}
+
+4.a app/desktop-app to consume from add packages/{ui, domain}
+
+4. test dev mode
+
+5. test build
+
+6. create PR
