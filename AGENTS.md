@@ -2,7 +2,7 @@
 
 `ai-maker-lab` is a Bun workspace designed around a thin desktop shell and shared packages that can be reused by future apps.
 
-- `app/desktop-app`: SvelteKit desktop composition shell with app-specific routing, Paraglide wiring, and platform/runtime adapters.
+- `app/desktop-app`: Neutralino desktop composition shell with app-specific runtime wiring, Paraglide bootstrapping, and platform adapters.
 - `packages/ui`: Shared Shadcn-based Svelte UI library published in-workspace as `@ai-maker-lab/ui`.
 - `packages/domain`: Shared framework-free TypeScript package published in-workspace as `@ai-maker-lab/domain`.
 
@@ -19,7 +19,7 @@ Architecture intent:
 - Page models and components must not construct or call `/api/**` URLs directly.
 - Every feature must expose a runtime-selected client factory in the app shell when transport choices are introduced.
 - `packages/domain` owns shared domain and application orchestration contracts and use cases.
-- `app/desktop-app` is an adapter/composition boundary only: runtime wiring, transport translation, platform adapters, and route composition.
+- `app/desktop-app` is an adapter/composition boundary only: runtime wiring, transport translation, platform adapters, and screen composition.
 - `packages/ui` may depend on `packages/domain`, but `packages/domain` must remain framework-free.
 
 ## Documentation Direction
@@ -87,7 +87,7 @@ A skill is a set of local instructions stored in a `SKILL.md` file.
 - **Shadcn rule:** `packages/ui` is the shared Shadcn-based UI library. Do not build custom replacements for primitives such as buttons, dialogs, cards, dropdowns, or inputs when the library pattern already exists.
 - **No redundant CSS:** Avoid app-local duplicate styling when `@ai-maker-lab/ui` already owns the shared primitive or token.
 - **Exception:** You may wrap or restyle library primitives to achieve the desired look, but the underlying primitive must remain library-backed and accessible.
-- **Stack:** Svelte 5, SvelteKit, Tailwind CSS, semantic HTML, and Bun workspace tooling.
+- **Stack:** Svelte 5, Neutralino.js, Vite, Tailwind CSS, semantic HTML, and Bun workspace tooling.
 - **Visuals:** Focus on micro-interactions, spacing precision, and invisible UX.
 
 ## 5. Response Format

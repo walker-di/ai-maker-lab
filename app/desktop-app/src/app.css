@@ -1,0 +1,9 @@
+@import '@ai-maker-lab/ui/styles.css';
+@plugin '@tailwindcss/forms';
+@plugin '@tailwindcss/typography';
+
+@layer base {
+	body {
+		min-height: 100vh;
+	}
+}

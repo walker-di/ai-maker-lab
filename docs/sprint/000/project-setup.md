@@ -1,7 +1,7 @@
 1. Create the desktop shell
 
 ```sh
-bun x sv create app/desktop-app
+bun x @neutralinojs/neu create app/desktop-app --template neutralinojs/neutralinojs-zero
 ```
 
 2. Add and customize `AGENTS.md`
@@ -24,7 +24,7 @@ bun x sv create app/desktop-app
 
 - import reusable UI from `@ai-maker-lab/ui`
 - import workflow and type helpers from `@ai-maker-lab/domain`
-- keep Paraglide, routing, and shell wiring inside the app
+- keep Paraglide bootstrapping, Neutralino runtime wiring, and platform adapters inside the app
 
 6. Validate the workspace
 

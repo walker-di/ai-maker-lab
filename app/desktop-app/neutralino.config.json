@@ -1,0 +1,38 @@
+{
+  "applicationId": "lab.ai-maker.desktop",
+  "version": "0.0.1",
+  "defaultMode": "window",
+  "port": 0,
+  "enableServer": true,
+  "enableNativeAPI": true,
+  "singlePageServe": true,
+  "tokenSecurity": "one-time",
+  "url": "/",
+  "documentRoot": "/dist/",
+  "nativeAllowList": [
+    "app.exit",
+    "app.getConfig",
+    "os.getEnv",
+    "window.minimize"
+  ],
+  "modes": {
+    "window": {
+      "title": "AI Maker Lab",
+      "width": 1360,
+      "height": 920,
+      "minWidth": 1100,
+      "minHeight": 720
+    }
+  },
+  "cli": {
+    "binaryName": "ai-maker-lab",
+    "resourcesPath": "/dist/",
+    "frontendLibrary": {
+      "patchFile": "/index.html",
+      "devUrl": "http://127.0.0.1:5173",
+      "projectPath": "/",
+      "devCommand": "bun run dev:web",
+      "buildCommand": "bun run build:web"
+    }
+  }
+}

@@ -2,18 +2,18 @@
 
 - **Language**: TypeScript
 - **Package Manager**: bun
-- **Add-ons**: playwright, tailwindcss, sveltekit-adapter, devtools-json, mdsvex, paraglide, storybook, mcp
+- **Add-ons**: neutralinojs, playwright, tailwindcss, devtools-json, paraglide, storybook, mcp
 
 ---
 
-You are able to use the Svelte MCP server, where you have access to comprehensive Svelte 5 and SvelteKit documentation. Here's how to use the available tools effectively:
+You are able to use the Svelte MCP server, where you have access to comprehensive Svelte 5 documentation. Here's how to use the available tools effectively:
 
 ## Available MCP Tools:
 
 ### 1. list-sections
 
 Use this FIRST to discover all available documentation sections. Returns a structured list with titles, use_cases, and paths.
-When asked about Svelte or SvelteKit topics, ALWAYS use this tool at the start of the chat to find relevant sections.
+When asked about Svelte topics, ALWAYS use this tool at the start of the chat to find relevant sections.
 
 ### 2. get-documentation
 

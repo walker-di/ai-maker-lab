@@ -1,4 +1,4 @@
-import type { StorybookConfig } from '@storybook/sveltekit';
+import type { StorybookConfig } from '@storybook/svelte-vite';
 
 const config: StorybookConfig = {
   "stories": [
@@ -12,6 +12,6 @@ const config: StorybookConfig = {
     "@storybook/addon-a11y",
     "@storybook/addon-docs"
   ],
-  "framework": "@storybook/sveltekit"
+  "framework": "@storybook/svelte-vite"
 };
 export default config;

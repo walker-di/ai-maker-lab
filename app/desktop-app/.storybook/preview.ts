@@ -1,4 +1,4 @@
-import type { Preview } from '@storybook/sveltekit'
+import type { Preview } from '@storybook/svelte-vite'
 import '@ai-maker-lab/ui/styles.css';
 
 const preview: Preview = {
