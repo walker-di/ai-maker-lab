@@ -1,0 +1,4 @@
+interface:
+  display_name: "Svelte Frontend"
+  short_description: "Build/refactor Svelte frontend with clean architecture"
+  default_prompt: "Use $svelte-frontend to implement this Svelte/SvelteKit UI change with clean architecture. Task:"

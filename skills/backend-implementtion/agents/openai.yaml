@@ -1,0 +1,4 @@
+interface:
+  display_name: "Backend Implementation"
+  short_description: "Implement backend changes using clean architecture"
+  default_prompt: "Use $backend-implementtion to implement this backend change with clean architecture. Task:"
