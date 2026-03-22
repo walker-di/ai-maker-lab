@@ -1,7 +1,7 @@
 <script module>
   import { defineMeta } from '@storybook/addon-svelte-csf';
-  import Button from './Button.svelte';
   import { fn } from 'storybook/test';
+  import { Button } from '@ai-maker-lab/ui';
 
   // More on how to set up stories at: https://storybook.js.org/docs/writing-stories
   const { Story } = defineMeta({
@@ -9,23 +9,27 @@
     component: Button,
     tags: ['autodocs'],
     argTypes: {
-      backgroundColor: { control: 'color' },
+      variant: {
+        control: { type: 'select' },
+        options: ['default', 'secondary', 'outline', 'ghost', 'link', 'destructive'],
+      },
       size: {
         control: { type: 'select' },
-        options: ['small', 'medium', 'large'],
+        options: ['default', 'sm', 'lg', 'icon'],
       },
     },
     args: {
       onclick: fn(),
+      label: 'Button'
     }
   });
 </script>
 
 <!-- More on writing stories with args: https://storybook.js.org/docs/writing-stories/args -->
-<Story name="Primary" args={{ primary: true, label: 'Button' }} />
+<Story name="Primary" />
 
-<Story name="Secondary" args={{ label: 'Button' }} />
+<Story name="Secondary" args={{ variant: 'secondary' }} />
 
-<Story name="Large" args={{ size: 'large', label: 'Button' }} />
+<Story name="Large" args={{ size: 'lg' }} />
 
-<Story name="Small" args={{ size: 'small', label: 'Button' }} />
+<Story name="Small" args={{ size: 'sm' }} />

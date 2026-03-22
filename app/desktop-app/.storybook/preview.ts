@@ -1,4 +1,5 @@
 import type { Preview } from '@storybook/sveltekit'
+import '@ai-maker-lab/ui/styles.css';
 
 const preview: Preview = {
   parameters: {

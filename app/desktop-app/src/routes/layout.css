@@ -1,3 +1,3 @@
-@import 'tailwindcss';
+@import 'ui-lib/styles.css';
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';

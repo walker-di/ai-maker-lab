@@ -1,2 +1,8 @@
-<h1>Welcome to SvelteKit</h1>
-<p>Visit <a href="https://svelte.dev/docs/kit">svelte.dev/docs/kit</a> to read the documentation</p>
+<script lang="ts">
+  import { createWorkspaceChecklist } from '@ai-maker-lab/domain';
+  import { ShowcasePage } from '@ai-maker-lab/ui';
+
+  const checklist = createWorkspaceChecklist();
+</script>
+
+<ShowcasePage {checklist} />
