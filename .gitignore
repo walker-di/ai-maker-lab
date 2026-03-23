@@ -1,5 +1,10 @@
 node_modules
 
+# Workspace lockfiles
+**/package-lock.json
+**/bun.lock
+!/bun.lock
+
 # Output
 .output
 .vercel

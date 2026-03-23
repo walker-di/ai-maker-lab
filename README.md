@@ -1,6 +1,6 @@
 # ai-maker-lab
 
-Desktop-first Bun workspace for experimenting with a Neutralino desktop shell and shared Svelte/domain packages.
+Desktop-first Bun workspace for experimenting with a Neutralino desktop shell, a client-only Svelte 5 + Vite app, and shared Svelte/domain packages.
 
 ## Workspace
 
@@ -20,5 +20,8 @@ bun run build
 ## Notes
 
 - `app/desktop-app` owns Neutralino runtime wiring, Paraglide bootstrapping, and app-specific platform adapters.
+- `app/desktop-app` is not currently a SvelteKit runtime. It is a Neutralino-hosted `Vite + Svelte 5` client app.
 - `@ai-maker-lab/ui` owns reusable UI primitives, shared styles, and presentation models.
 - `@ai-maker-lab/domain` owns reusable types and workflow helpers.
+- The root `bun.lock` is the workspace source of truth. Nested app lockfiles should not be committed.
+- `bun run build` packages the Neutralino desktop app and writes `app/desktop-app/dist/ai-maker-lab-release.zip`.

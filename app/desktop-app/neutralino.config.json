@@ -32,7 +32,8 @@
       "devUrl": "http://127.0.0.1:5173",
       "projectPath": "/",
       "devCommand": "bun run dev:web",
-      "buildCommand": "bun run build:web"
-    }
+      "buildCommand": "vite build"
+    },
+    "binaryVersion": "6.5.0"
   }
 }

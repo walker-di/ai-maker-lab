@@ -17,8 +17,9 @@
 		"prepare": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide --emit-ts-declarations",
 		"check": "svelte-check --tsconfig ./tsconfig.json && tsc --noEmit -p ./tsconfig.json",
 		"check:watch": "svelte-check --tsconfig ./tsconfig.json --watch",
+		"test:runtime": "bun test",
 		"test:e2e": "playwright test",
-		"test": "bun run test:e2e",
+		"test": "bun run test:runtime && bun run test:e2e",
 		"storybook": "storybook dev -p 6006",
 		"build-storybook": "storybook build"
 	},
