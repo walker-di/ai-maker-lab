@@ -1,0 +1,4 @@
+interface:
+  display_name: "Svelte Frontend"
+  short_description: "Build/refactor Svelte frontend with clean architecture"
+  default_prompt: "Use $svelte-frontend to implement this Svelte/SvelteKit workspace UI change with clean architecture. Put shared UI in packages/ui, keep apps/desktop-app thin, and use domain/shared for browser-safe shared domain imports. Task:"

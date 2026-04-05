@@ -11,9 +11,13 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"test:e2e": "playwright test",
-		"test": "npm run test:e2e",
+		"test": "bun run test:e2e",
 		"storybook": "storybook dev -p 6006",
 		"build-storybook": "storybook build"
+	},
+	"dependencies": {
+		"domain": "workspace:*",
+		"ui": "workspace:*"
 	},
 	"devDependencies": {
 		"@chromatic-com/storybook": "^5.1.1",

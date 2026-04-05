@@ -1,0 +1,68 @@
+## Project Concept
+
+`ai-maker-lab` is a Bun workspace monorepo.
+
+- `apps/desktop-app`: SvelteKit app shell and composition root.
+- `packages/ui`: Shared Svelte UI package.
+- `packages/domain`: Shared domain package. Server code stays separate from browser-safe shared exports.
+
+## Architecture Intent
+
+- Keep `apps/desktop-app` thin.
+- Put reusable UI in `packages/ui`.
+- Put shared domain logic and cross-app contracts in `packages/domain`.
+- Keep browser-safe imports explicit. Use `domain/shared` in frontend code instead of importing the package root.
+- Preserve clear boundaries so future apps can consume the same workspace packages.
+
+## Adapter Pattern Contract
+
+- Page models and components must not construct or call `/api/**` URLs directly.
+- Runtime-specific transport selection belongs at the app/composition boundary, not inside shared domain or UI code.
+- `packages/domain` owns shared domain and application orchestration contracts and use cases.
+- `apps/desktop-app` is an adapter and composition boundary for routing, runtime wiring, and transport translation.
+- Each new domain or subdomain folder in `packages/domain` should include a `README.md` documenting responsibility and boundaries.
+
+## Workspace Rules
+
+- Install dependencies from the repository root with `bun install`.
+- Prefer workspace package imports over copying code between apps and packages.
+- Import shared UI into the app from `ui/source`.
+- Import browser-safe domain modules into the app from `domain/shared`.
+- Keep `packages/ui` as the shared component surface. Do not recreate those components inside `apps/desktop-app`.
+
+## Documentation Direction
+
+- Root documentation lives in `README.md`.
+- Package-specific guidance belongs close to the package:
+  - `apps/desktop-app/AGENTS.md`
+  - `packages/ui/AGENTS.md`
+  - `packages/domain/README.md`
+  - `skills/svelte-frontend/SKILL.md`
+  - `skills/backend-implementtion/SKILL.md`
+- Update docs in the same change set when workspace structure or import conventions change.
+- Prefer concise, executable Bun workspace commands over long prose.
+
+## Skills
+
+- `svelte-frontend`: `skills/svelte-frontend/SKILL.md`
+- `backend-implementtion`: `skills/backend-implementtion/SKILL.md`
+
+Use the frontend skill for Svelte/SvelteKit UI work and the backend skill for shared domain or application logic.
+
+## Skill Usage
+
+- If the task clearly matches a listed skill, use that skill for the turn.
+- Read only the minimum necessary from the skill first, then load additional files as needed.
+
+## Working Principles
+
+- Follow the request directly and keep responses concise.
+- Prefer code and concrete changes over unnecessary explanation.
+- If the user explicitly asks for deeper reasoning, provide exhaustive analysis before implementation.
+- Reject generic duplication when a shared package or existing library surface already solves the problem.
+
+## Frontend Best Practices
+
+- If a UI library or shared UI package already provides a component, use it instead of rebuilding it locally.
+- Wrap or style shared primitives when needed, but keep the underlying shared component boundary intact.
+- Focus on clean spacing, accessible interaction, and maintainable composition rather than one-off app-specific markup.

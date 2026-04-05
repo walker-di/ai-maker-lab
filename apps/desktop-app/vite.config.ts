@@ -16,6 +16,12 @@ export default defineConfig({
     project: './project.inlang',
     outdir: './src/lib/paraglide'
   })],
+  optimizeDeps: {
+    exclude: ['domain', 'ui']
+  },
+  ssr: {
+    noExternal: ['domain', 'ui']
+  },
   test: {
     projects: [{
       extends: true,

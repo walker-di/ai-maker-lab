@@ -1,4 +1,21 @@
 {
 	"$schema": "https://inlang.com/schema/inlang-message-format",
-	"hello_world": "Hello, {name} from en!"
+	"hello_world": "Hello, {name} from en!",
+	"lab_home_title": "AI Maker Lab",
+	"lab_home_intro": "Choose a lab area to explore new ideas, iterate on interactions, and grow each experiment over time.",
+	"lab_category_game": "Game",
+	"lab_category_game_description": "Gameplay loops, mechanics, and playful systems we can prototype next.",
+	"lab_category_ui": "UI Experiments",
+	"lab_category_ui_description": "Interface-focused exercises that help us shape reusable interaction patterns.",
+	"lab_category_ai": "AI",
+	"lab_category_ai_description": "Agent flows, model interactions, and product ideas powered by AI.",
+	"lab_experiment_todo_label": "Todo App",
+	"lab_experiment_todo_description": "A simple todo experience to validate list interactions, input flow, and shared UI boundaries.",
+	"lab_open_experiment": "Open experiment",
+	"todo_page_title": "Todo App",
+	"todo_page_intro": "A first UI experiment built from the shared domain model and shared UI components.",
+	"todo_input_placeholder": "What needs to be done?",
+	"todo_add_label": "Add todo",
+	"todo_remove_label": "Remove",
+	"todo_empty_state": "No todos yet. Add your first item to start the experiment."
 }

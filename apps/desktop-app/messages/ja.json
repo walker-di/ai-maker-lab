@@ -1,4 +1,21 @@
 {
 	"$schema": "https://inlang.com/schema/inlang-message-format",
-	"hello_world": "Hello, {name} from ja!"
+	"hello_world": "Hello, {name} from ja!",
+	"lab_home_title": "AI Maker Lab",
+	"lab_home_intro": "新しいアイデアを試し、インタラクションを磨き、実験を育てていくためのラボ領域を選んでください。",
+	"lab_category_game": "ゲーム",
+	"lab_category_game_description": "次に試せるゲームループ、メカニクス、遊びの仕組みです。",
+	"lab_category_ui": "UI実験",
+	"lab_category_ui_description": "再利用できる操作パターンを形にするためのインターフェース中心の実験です。",
+	"lab_category_ai": "AI",
+	"lab_category_ai_description": "エージェントの流れ、モデルとの対話、AIを活用したプロダクト案です。",
+	"lab_experiment_todo_label": "Todoアプリ",
+	"lab_experiment_todo_description": "一覧操作、入力フロー、共有UI境界を検証するためのシンプルなTodo体験です。",
+	"lab_open_experiment": "実験を開く",
+	"todo_page_title": "Todoアプリ",
+	"todo_page_intro": "共有ドメインモデルと共有UIコンポーネントで作る最初のUI実験です。",
+	"todo_input_placeholder": "何をしますか？",
+	"todo_add_label": "Todoを追加",
+	"todo_remove_label": "削除",
+	"todo_empty_state": "まだTodoはありません。最初の項目を追加して実験を始めましょう。"
 }
