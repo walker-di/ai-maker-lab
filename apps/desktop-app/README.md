@@ -13,9 +13,20 @@ It uses:
 - `src/bun/index.ts` starts the native app and opens the main window.
 - `src/lib/adapters/runtime/main-view-url.ts` chooses between the Vite dev server and bundled `views://mainview/index.html`.
 - `src/routes/**` contains the SvelteKit UI rendered inside the desktop webview.
+- `src/lib/adapters/**` contains app-local runtime and transport adapters such as web HTTP clients and Electrobun RPC bridges.
 - `electrobun.config.ts` copies the static SvelteKit output into `views://mainview`.
 - `svelte.config.js` uses `@sveltejs/adapter-static` with SPA fallback output for the desktop shell.
 - `src/app.html` normalizes packaged `views://.../index.html` startup URLs before SvelteKit hydrates so the desktop bundle stays serverless without booting into a 404.
+
+## Reference Flow
+
+The todo experiment is the reference example for the app boundary split:
+
+- `src/routes/experiments/todo/+page.svelte` stays visual.
+- `src/routes/experiments/todo/todo-page.svelte.ts` owns presentation state and user interactions.
+- `src/lib/adapters/todo/web-todo-transport.ts` handles web-mode HTTP calls.
+- `src/lib/adapters/todo/desktop-todo-transport.ts` handles desktop-mode Electrobun RPC.
+- `src/bun/index.ts` composes `domain/application` and `domain/infrastructure` for the native runtime.
 
 ## Workspace Commands
 

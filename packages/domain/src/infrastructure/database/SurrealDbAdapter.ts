@@ -2,6 +2,7 @@ import type { Surreal } from 'surrealdb';
 import type { IDbClient } from '../../core/interfaces/IDbClient.js';
 import { extractRecordId, isRecordId } from '../../core/types/db-types.js';
 import type { IRecordId } from '../../core/types/db-types.js';
+import { normalizeRecordIdValue } from './record-id.js';
 
 /**
  * SurrealDbAdapter - Adapts Surreal client to IDbClient interface
@@ -17,6 +18,15 @@ import type { IRecordId } from '../../core/types/db-types.js';
  */
 export class SurrealDbAdapter implements IDbClient {
   constructor(private readonly db: Surreal) {}
+
+  private normalizeRecordId(value: { id?: unknown; toString(): string }): string {
+    if (typeof value.id !== 'undefined') {
+      return normalizeRecordIdValue(String(value.id));
+    }
+
+    const stringValue = value.toString();
+    return normalizeRecordIdValue(stringValue);
+  }
 
   /**
    * Execute a SurrealQL query
@@ -43,7 +53,8 @@ export class SurrealDbAdapter implements IDbClient {
     thing: string | IRecordId<string>,
     data?: U
   ): Promise<T[]> {
-    const result = await this.db.create(thing as any, data);
+    const operation = this.db.create<T>(thing as any);
+    const result = data ? await operation.content(data as any) : await operation;
     const normalized = this.normalize(result);
     return Array.isArray(normalized) ? (normalized as T[]) : [normalized as T];
   }
@@ -55,7 +66,8 @@ export class SurrealDbAdapter implements IDbClient {
     thing: string | IRecordId<string>,
     data?: U
   ): Promise<T[]> {
-    const result = await this.db.update(thing as any, data);
+    const operation = this.db.update<T>(thing as any);
+    const result = data ? await operation.content(data as any) : await operation;
     const normalized = this.normalize(result);
     return Array.isArray(normalized) ? (normalized as T[]) : [normalized as T];
   }
@@ -67,7 +79,8 @@ export class SurrealDbAdapter implements IDbClient {
     thing: string | IRecordId<string>,
     data?: U
   ): Promise<T[]> {
-    const result = await this.db.merge(thing as any, data);
+    const operation = this.db.update<T>(thing as any);
+    const result = data ? await operation.merge(data as any) : await operation;
     const normalized = this.normalize(result);
     return Array.isArray(normalized) ? (normalized as T[]) : [normalized as T];
   }
@@ -95,11 +108,27 @@ export class SurrealDbAdapter implements IDbClient {
     }
 
     if (isRecordId(value)) {
-      return extractRecordId(value);
+      return normalizeRecordIdValue(extractRecordId(value));
+    }
+
+    if (
+      typeof value === 'object' &&
+      value !== null &&
+      value.constructor?.name === 'RecordId' &&
+      typeof (value as { toString?: unknown }).toString === 'function'
+    ) {
+      return this.normalizeRecordId(value as { id?: unknown; toString(): string });
     }
 
     if (value instanceof Date) {
       return value;
+    }
+
+    if (
+      typeof value === 'object' &&
+      typeof (value as { toJSON?: unknown }).toJSON === 'function'
+    ) {
+      return this.normalize((value as { toJSON(): unknown }).toJSON());
     }
 
     if (Array.isArray(value)) {

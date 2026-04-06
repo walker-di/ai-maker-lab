@@ -18,6 +18,20 @@
 import { RecordId } from 'surrealdb';
 import type { IRecordId, RecordIdFactory } from '../../core/types/db-types.js';
 
+export function normalizeRecordIdValue(value: string): string {
+  const bracketedMatch = value.match(/^[^:]+:⟨(.+)⟩$/);
+  if (bracketedMatch) {
+    return bracketedMatch[1];
+  }
+
+  const plainMatch = value.match(/^[^:]+:(.+)$/);
+  if (plainMatch) {
+    return plainMatch[1];
+  }
+
+  return value;
+}
+
 /**
  * Create a RecordId instance
  * 
@@ -35,8 +49,9 @@ export const createRecordId: RecordIdFactory = <T extends string>(
   tb: T,
   id: string | number | bigint | object
 ): IRecordId<T> => {
+  const normalizedId = typeof id === 'string' ? normalizeRecordIdValue(id) : id;
   // Cast to any first to handle the broader object type
-  return new RecordId(tb, id as string) as unknown as IRecordId<T>;
+  return new RecordId(tb, normalizedId as string) as unknown as IRecordId<T>;
 };
 
 /**

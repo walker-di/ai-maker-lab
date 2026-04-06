@@ -1,14 +1,38 @@
 # ai-maker-lab
 
-This repository is a Bun workspace monorepo with a desktop app shell and shared packages.
+`ai-maker-lab` is a Bun workspace monorepo with a native desktop shell, a SvelteKit UI, and shared workspace packages.
 
-## Workspace layout
+## Workspace Packages
 
-- `apps/desktop-app`: SvelteKit app shell that composes workspace packages.
-- `packages/ui`: Shared Svelte UI package.
-- `packages/domain`: Shared domain package with server and browser-safe shared exports.
+- `apps/desktop-app`: Electrobun native shell and SvelteKit composition root.
+- `packages/ui`: shared Svelte UI package and shadcn ownership boundary.
+- `packages/domain`: shared domain package with browser-safe shared code, application use cases, infrastructure adapters, and server entrypoints.
 
-## Common commands
+## Import Contract
+
+Use the package surfaces intentionally:
+
+- Frontend routes, components, and page models: import UI from `ui/source`.
+- Frontend routes, components, and page models: import browser-safe domain code from `domain/shared`.
+- Frontend transport and runtime adapters: keep them inside `apps/desktop-app/src/lib/adapters/**`.
+- Native desktop composition and server wiring: import orchestration from `domain/application`.
+- Native desktop composition and server wiring: import persistence and runtime adapters from `domain/infrastructure`.
+- Server entrypoints: use `domain/server`.
+- Do not import the `domain` package root from frontend code.
+
+## Reference Architecture
+
+The todo experiment is the current reference flow for the workspace architecture:
+
+- `+page.svelte` stays visual.
+- `todo-page.svelte.ts` owns presentation behavior.
+- app-local transports choose between HTTP for web mode and Electrobun RPC for desktop mode.
+- `packages/domain/src/application/todo` owns the workflow orchestration.
+- `packages/domain/src/infrastructure/database` owns SurrealDB persistence.
+
+## Common Commands
+
+Run these from the repository root:
 
 ```sh
 bun install
@@ -17,7 +41,7 @@ bun run check:desktop-app
 bun run build:desktop-app
 ```
 
-For local app development:
+For local development:
 
 ```sh
 # browser-only SvelteKit dev server
@@ -28,4 +52,7 @@ bun run dev:app
 
 # desktop mode with Vite HMR
 bun run dev:app:hmr
+
+# domain server entrypoint
+bun run dev:domain
 ```

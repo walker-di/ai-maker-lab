@@ -4,16 +4,17 @@
 	"version": "0.0.1",
 	"type": "module",
 	"scripts": {
-		"start": "vite build && electrobun dev",
+		"build:web": "vite build",
+		"start": "bun run build:web && electrobun dev",
 		"dev": "bun run dev:web",
 		"dev:web": "vite dev --port 5173",
 		"dev:browser": "bun run dev:web",
-		"dev:app": "electrobun dev --watch",
+		"dev:app": "bun run build:web && electrobun dev --watch",
 		"dev:desktop": "bun run dev:app",
 		"dev:app:hmr": "concurrently \"bun run dev:web\" \"bun run start\"",
 		"dev:desktop:hmr": "bun run dev:app:hmr",
-		"build": "vite build && electrobun build",
-		"build:canary": "vite build && electrobun build --env=canary",
+		"build": "bun run build:web && electrobun build",
+		"build:canary": "bun run build:web && electrobun build --env=canary",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
@@ -24,6 +25,8 @@
 		"build-storybook": "storybook build"
 	},
 	"dependencies": {
+		"@surrealdb/node": "^3.0.3",
+		"@surrealdb/node-darwin-arm64": "1.0.0-beta.3",
 		"domain": "workspace:*",
 		"electrobun": "^1.16.0",
 		"ui": "workspace:*"

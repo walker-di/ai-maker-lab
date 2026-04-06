@@ -18,6 +18,9 @@
 
 - Page models and components must not construct or call `/api/**` URLs directly.
 - Runtime-specific transport selection belongs at the app/composition boundary, not inside shared domain or UI code.
+- App-local adapters may translate UI intent into HTTP or RPC calls, but routes and page models should depend on those adapters instead of raw transport details.
+- In `apps/desktop-app`, avoid per-route `+page.ts` for client-side composition. Prefer `.svelte.ts` page models plus route-local composition helpers that select adapters and bootstrap client state.
+- Keep `+layout.ts` limited to global app-wide route flags such as `ssr` and `prerender` unless an exception is explicitly needed.
 - `packages/domain` owns shared domain and application orchestration contracts and use cases.
 - `apps/desktop-app` is an adapter and composition boundary for routing, runtime wiring, and transport translation.
 - Each new domain or subdomain folder in `packages/domain` should include a `README.md` documenting responsibility and boundaries.
@@ -30,6 +33,9 @@
 - Treat `shadcn-svelte` in `packages/ui` as the standard shared component system.
 - Keep generated shadcn components in `packages/ui` and consume them from apps through the workspace package instead of duplicating them locally.
 - Import browser-safe domain modules into the app from `domain/shared`.
+- Import application use cases into native/server composition code from `domain/application`.
+- Import persistence and runtime adapters into native/server composition code from `domain/infrastructure`.
+- Treat `domain` package-root imports as server-only compatibility aliases, not as frontend imports.
 - Keep `packages/ui` as the shared component surface. Do not recreate those components inside `apps/desktop-app`.
 
 ## Documentation Direction

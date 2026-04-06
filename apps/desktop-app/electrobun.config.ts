@@ -8,11 +8,15 @@ export default {
 	},
 	build: {
 		bun: {
-			entrypoint: 'src/bun/index.ts'
+			entrypoint: 'src/bun/index.ts',
+			external: ['@surrealdb/node']
 		},
 		copy: {
 			'web-build': 'views/mainview'
 		},
 		watchIgnore: ['web-build/**']
+	},
+	scripts: {
+		postBuild: 'scripts/sync-surreal-runtime.mjs'
 	}
 } satisfies ElectrobunConfig;

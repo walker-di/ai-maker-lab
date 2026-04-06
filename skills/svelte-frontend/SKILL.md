@@ -180,10 +180,11 @@ Svelte 5 best-practices guardrails:
 
 SvelteKit rules:
 1. Do not store user-specific or request-specific data in shared module-level server state.
-2. Keep `load` functions pure. Do not write to global state or trigger side effects from `load`.
-3. Return data from `load`, then adapt it into page/component models at the presentation boundary.
-4. Keep server-only concerns in server files and browser-only concerns out of SSR-sensitive code paths.
-5. Do not let page/server transport details leak into domain or application modules.
+2. In `apps/desktop-app`, avoid per-route `+page.ts` for client-side composition unless the repository explicitly requires an exception.
+3. For client-side route initialization in `apps/desktop-app`, prefer `.svelte.ts` page models plus route-local composition helpers and adapter factories.
+4. If `load` is used, keep it pure. Do not write to global state or trigger side effects from `load`.
+5. Keep server-only concerns in server files and browser-only concerns out of SSR-sensitive code paths.
+6. Do not let page/server transport details leak into domain or application modules.
 
 Implementation process:
 1. Inspect the relevant routes, pages, layouts, and components.
@@ -250,7 +251,8 @@ Component model rules:
 Page rules:
 - Pages and layouts are composition roots for frontend concerns.
 - Pages may create or assemble models but should not absorb domain/application logic.
-- Data loaded from route files should be transformed into view-ready state at the page boundary.
+- In `apps/desktop-app`, prefer route-local composition helpers or `.svelte.ts` page models over per-route `+page.ts` files for client-loaded screens.
+- If route data is supplied from an allowed route file, transform it into view-ready state at the page boundary.
 - Avoid giant `+page.svelte` files. Extract stateful sections into paired component/model files.
 
 Adapter rules:

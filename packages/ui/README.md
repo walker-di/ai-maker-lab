@@ -1,65 +1,41 @@
-# Svelte library
+# UI Package
 
-Everything you need to build a Svelte library, powered by [`sv`](https://npmjs.com/package/sv).
+`packages/ui` is the shared Svelte UI boundary for the workspace.
 
-Read more about creating a library [in the docs](https://svelte.dev/docs/kit/packaging).
+## Responsibility
 
-## Creating a project
+- Keep reusable Svelte components in `src/lib`.
+- Keep generated `shadcn-svelte` primitives in this package instead of recreating them in `apps/desktop-app`.
+- Export public library components from `src/lib/index.ts`.
+- Treat `src/routes` and `src/stories` as demo and validation surfaces, not the primary API.
 
-If you're seeing this, you've probably already done this step. Congrats!
+## Public Surfaces
+
+- `ui/source`: workspace source exports used by `apps/desktop-app` during local development.
+- `ui`: packaged build output used by the published/package-style entrypoint.
+- `ui/styles/*`: shared style assets.
+
+## Consumption Rules
+
+- App code should import shared UI from `ui/source`.
+- Do not duplicate shared primitives inside `apps/desktop-app`.
+- If a component is reusable across screens, it belongs here instead of the app package.
+- Add new shared shadcn components from this package so ownership stays centralized.
+
+## Commands
+
+Run these from the repository root:
 
 ```sh
-# create a new project in the current directory
-npx sv create
-
-# create a new project in my-app
-npx sv create my-app
+bun install
+bun run build:ui
 ```
 
-To recreate this project with the same configuration:
+If you need to work directly inside `packages/ui`:
 
 ```sh
-# recreate this project
-bun x sv@0.14.0 create --template library --types ts --add playwright tailwindcss="plugins:typography,forms" sveltekit-adapter="adapter:auto" devtools-json mdsvex storybook mcp="ide:cursor+setup:remote" --install bun packages/ui
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-Everything inside `src/lib` is part of your library, everything inside `src/routes` can be used as a showcase or preview app.
-
-## Building
-
-To build your library:
-
-```sh
-npm pack
-```
-
-To create a production version of your showcase app:
-
-```sh
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
-
-## Publishing
-
-Go into the `package.json` and give your package the desired name through the `"name"` option. Also consider adding a `"license"` field and point it to a `LICENSE` file which you can create from a template (one popular option is the [MIT license](https://opensource.org/license/mit/)).
-
-To publish your library to [npm](https://www.npmjs.com):
-
-```sh
-npm publish
+bun run dev
+bun run check
+bun run prepack
+bun run storybook
 ```

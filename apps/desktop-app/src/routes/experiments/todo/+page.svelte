@@ -1,9 +1,9 @@
 <script lang="ts">
   import { m } from '$lib/paraglide/messages.js';
   import { TodoInput, TodoItem } from 'ui/source';
-  import { createTodoPageModel } from './todo-page.svelte.ts';
+  import { createTodoPage } from './todo-page.composition.ts';
 
-  const model = createTodoPageModel();
+  const model = createTodoPage();
 </script>
 
 <svelte:head>
@@ -23,8 +23,14 @@
   <TodoInput
     placeholder={m.todo_input_placeholder()}
     addLabel={m.todo_add_label()}
-    onAdd={(value: string) => model.add(value)}
+    onAdd={(value: string) => void model.add(value)}
   />
+
+  {#if model.errorMessage}
+    <p class="rounded-2xl border border-red-300/60 bg-red-50 px-5 py-3 text-sm text-red-700">
+      {model.errorMessage}
+    </p>
+  {/if}
 
   {#if model.hasTodos}
     <div class="space-y-3">
@@ -33,16 +39,20 @@
           label={todo.title}
           completed={todo.completed}
           removeLabel={m.todo_remove_label()}
-          onToggle={() => model.toggle(todo.id)}
-          onRemove={() => model.remove(todo.id)}
+          onToggle={() => void model.toggle(todo.id)}
+          onRemove={() => void model.remove(todo.id)}
         />
       {/each}
     </div>
-  {:else}
+  {:else if !model.isLoading && model.hasLoaded}
     <p
       class="text-muted-foreground bg-muted/40 border-border rounded-2xl border border-dashed px-5 py-8 text-center"
     >
       {m.todo_empty_state()}
     </p>
+  {:else}
+    <div class="text-muted-foreground bg-muted/20 border-border/60 rounded-2xl border border-dashed px-5 py-8 text-center text-sm">
+      Loading todos...
+    </div>
   {/if}
 </div>
