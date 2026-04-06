@@ -1,5 +1,13 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import {
+    Card,
+    CardAction,
+    CardContent,
+    CardFooter,
+    CardHeader,
+    CardTitle
+  } from './components/ui/card/index.js';
 
   interface Props {
     label: string;
@@ -13,27 +21,42 @@
 </script>
 
 <a
-  class="group flex h-full flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
+  class="group block h-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
   {href}
 >
-  <div class="flex items-start justify-between gap-4">
-    <div class="space-y-2">
-      <p class="text-lg font-semibold text-slate-900">{label}</p>
-      {#if description}
-        <p class="text-sm leading-6 text-slate-600">{description}</p>
-      {/if}
-    </div>
+  <Card
+    class="h-full bg-card/95 shadow-sm transition duration-200 group-hover:-translate-y-0.5 group-hover:bg-accent/20 group-hover:shadow-md group-hover:ring-foreground/15"
+  >
+    <CardHeader class="gap-3">
+      <div class="flex items-start justify-between gap-4">
+        <div class="space-y-2">
+          <CardTitle class="text-lg">{label}</CardTitle>
+        </div>
 
-    {#if icon}
-      <div class="rounded-xl bg-slate-100 p-3 text-slate-700 transition group-hover:bg-slate-900 group-hover:text-white">
-        {@render icon()}
+        {#if icon}
+          <CardAction>
+            <div
+              class="bg-muted text-muted-foreground rounded-lg p-3 transition group-hover:bg-primary group-hover:text-primary-foreground"
+            >
+              {@render icon()}
+            </div>
+          </CardAction>
+        {/if}
       </div>
-    {/if}
-  </div>
+    </CardHeader>
 
-  {#if ctaLabel}
-    <span class="mt-auto text-sm font-medium text-slate-500 transition group-hover:text-slate-900">
-      {ctaLabel}
-    </span>
-  {/if}
+    {#if description}
+      <CardContent>
+        <p class="text-muted-foreground text-sm leading-6">{description}</p>
+      </CardContent>
+    {/if}
+
+    {#if ctaLabel}
+      <CardFooter class="text-primary bg-transparent pt-0 font-medium">
+        <span class="inline-flex items-center gap-2 transition group-hover:translate-x-0.5">
+          {ctaLabel}
+        </span>
+      </CardFooter>
+    {/if}
+  </Card>
 </a>

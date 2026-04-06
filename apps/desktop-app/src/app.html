@@ -10,6 +10,13 @@
 		/>
 
 		<meta name="text-scale" content="scale" />
+		<script>
+			if (location.protocol === 'views:' && location.pathname.endsWith('/index.html')) {
+				const normalized = new URL(location.href);
+				normalized.pathname = normalized.pathname.slice(0, -'index.html'.length);
+				history.replaceState(history.state, '', normalized);
+			}
+		</script>
 		%sveltekit.head%
 	</head>
 

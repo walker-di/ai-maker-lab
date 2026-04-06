@@ -12,10 +12,10 @@
 
 <div class="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-12 lg:px-8">
   <section class="space-y-3">
-    <h1 class="text-4xl font-semibold tracking-tight text-slate-950">
+    <h1 class="text-foreground text-4xl font-semibold tracking-tight">
       {m.todo_page_title()}
     </h1>
-    <p class="text-lg leading-8 text-slate-600">
+    <p class="text-muted-foreground text-lg leading-8">
       {m.todo_page_intro()}
     </p>
   </section>
@@ -39,7 +39,9 @@
       {/each}
     </div>
   {:else}
-    <p class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center text-slate-600">
+    <p
+      class="text-muted-foreground bg-muted/40 border-border rounded-2xl border border-dashed px-5 py-8 text-center"
+    >
       {m.todo_empty_state()}
     </p>
   {/if}

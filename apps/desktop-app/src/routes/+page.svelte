@@ -22,18 +22,18 @@
 
 <div class="mx-auto flex min-h-screen max-w-6xl flex-col gap-12 px-6 py-12 lg:px-8">
   <section class="max-w-3xl space-y-4">
-    <h1 class="text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
+    <h1 class="text-foreground text-4xl font-semibold tracking-tight sm:text-5xl">
       {m.lab_home_title()}
     </h1>
-    <p class="text-lg leading-8 text-slate-600">
+    <p class="text-muted-foreground text-lg leading-8">
       {m.lab_home_intro()}
     </p>
   </section>
 
   <section class="space-y-4">
     <div class="space-y-2">
-      <h2 class="text-2xl font-semibold text-slate-900">{m.lab_category_game()}</h2>
-      <p class="max-w-3xl text-base leading-7 text-slate-600">
+      <h2 class="text-foreground text-2xl font-semibold">{m.lab_category_game()}</h2>
+      <p class="text-muted-foreground max-w-3xl text-base leading-7">
         {m.lab_category_game_description()}
       </p>
     </div>
@@ -41,8 +41,8 @@
 
   <section class="space-y-6">
     <div class="space-y-2">
-      <h2 class="text-2xl font-semibold text-slate-900">{m.lab_category_ui()}</h2>
-      <p class="max-w-3xl text-base leading-7 text-slate-600">
+      <h2 class="text-foreground text-2xl font-semibold">{m.lab_category_ui()}</h2>
+      <p class="text-muted-foreground max-w-3xl text-base leading-7">
         {m.lab_category_ui_description()}
       </p>
     </div>
@@ -60,8 +60,8 @@
 
   <section class="space-y-4">
     <div class="space-y-2">
-      <h2 class="text-2xl font-semibold text-slate-900">{m.lab_category_ai()}</h2>
-      <p class="max-w-3xl text-base leading-7 text-slate-600">
+      <h2 class="text-foreground text-2xl font-semibold">{m.lab_category_ai()}</h2>
+      <p class="text-muted-foreground max-w-3xl text-base leading-7">
         {m.lab_category_ai_description()}
       </p>
     </div>

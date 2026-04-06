@@ -1,42 +1,83 @@
-# sv
+# Desktop App
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+`apps/desktop-app` is the native desktop entrypoint for AI Maker Lab.
 
-## Creating a project
+It uses:
 
-If you're seeing this, you've probably already done this step. Congrats!
+- Electrobun for the native desktop shell and window lifecycle
+- SvelteKit for the webview UI
+- workspace packages like `ui` and `domain` for shared code
 
-```sh
-# create a new project
-npx sv create my-app
-```
+## Architecture
 
-To recreate this project with the same configuration:
+- `src/bun/index.ts` starts the native app and opens the main window.
+- `src/lib/adapters/runtime/main-view-url.ts` chooses between the Vite dev server and bundled `views://mainview/index.html`.
+- `src/routes/**` contains the SvelteKit UI rendered inside the desktop webview.
+- `electrobun.config.ts` copies the static SvelteKit output into `views://mainview`.
+- `svelte.config.js` uses `@sveltejs/adapter-static` with SPA fallback output for the desktop shell.
+- `src/app.html` normalizes packaged `views://.../index.html` startup URLs before SvelteKit hydrates so the desktop bundle stays serverless without booting into a 404.
 
-```sh
-# recreate this project
-bun x sv@0.14.0 create --template minimal --types ts --add playwright tailwindcss="plugins:typography,forms" sveltekit-adapter="adapter:auto" devtools-json mdsvex paraglide="languageTags:en, es, pt, ja+demo:yes" storybook mcp="ide:cursor+setup:remote" --install bun apps/desktop-app
-```
+## Workspace Commands
 
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-## Building
-
-To create a production version of your app:
+Run these from the repository root:
 
 ```sh
-npm run build
+bun install
 ```
 
-You can preview the production build with `npm run preview`.
+Useful commands:
 
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+```sh
+# browser-only dev mode
+bun run dev:web
+
+# bundled desktop dev mode
+bun run dev:app
+
+# desktop app with Vite HMR
+bun run dev:app:hmr
+
+# type-check the app after building shared UI
+bun run check:desktop-app
+
+# build a packaged desktop app
+bun run build:desktop-app
+```
+
+## Package-Level Commands
+
+If you need to work directly inside `apps/desktop-app`:
+
+```sh
+# build the webview, then launch Electrobun against bundled assets
+bun run start
+
+# browser-only dev server
+bun run dev:web
+
+# aliases for browser-only dev server
+bun run dev
+bun run dev:browser
+
+# bundled desktop dev mode
+bun run dev:app
+
+# alias for bundled desktop dev mode
+bun run dev:desktop
+
+# desktop HMR mode
+bun run dev:app:hmr
+
+# alias for desktop HMR mode
+bun run dev:desktop:hmr
+
+# build the desktop app for distribution
+bun run build
+```
+
+## Runtime Modes
+
+- `dev:web`: runs only the SvelteKit/Vite browser dev server on `http://localhost:5173`.
+- `dev:app`: runs Electrobun bundled desktop mode with `views://mainview/index.html` and watch/relaunch behavior.
+- `dev:app:hmr`: runs the Vite dev server and Electrobun together so the desktop window loads from `http://localhost:5173` when available.
+- Packaged builds stay serverless. The final app loads bundled files from `views://mainview/index.html`, not from a local HTTP server.

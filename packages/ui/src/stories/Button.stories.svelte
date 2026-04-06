@@ -1,31 +1,30 @@
 <script module>
   import { defineMeta } from '@storybook/addon-svelte-csf';
-  import { Button } from '../lib';
-  import { fn } from 'storybook/test';
+  import { Button } from '../lib/index.js';
 
-  // More on how to set up stories at: https://storybook.js.org/docs/writing-stories
   const { Story } = defineMeta({
-    title: 'Example/Button',
+    title: 'Shadcn/Button',
     component: Button,
     tags: ['autodocs'],
     argTypes: {
-      backgroundColor: { control: 'color' },
-      size: {
-        control: { type: 'select' },
-        options: ['small', 'medium', 'large'],
-      },
-    },
-    args: {
-      onclick: fn(),
+      variant: { control: false },
+      size: { control: false },
     }
   });
 </script>
 
-<!-- More on writing stories with args: https://storybook.js.org/docs/writing-stories/args -->
-<Story name="Primary" args={{ primary: true, label: 'Button' }} />
+<Story name="Default">
+  <Button>Button</Button>
+</Story>
 
-<Story name="Secondary" args={{ label: 'Button' }} />
+<Story name="Outline">
+  <Button variant="outline">Button</Button>
+</Story>
 
-<Story name="Large" args={{ size: 'large', label: 'Button' }} />
+<Story name="Destructive">
+  <Button variant="destructive">Delete</Button>
+</Story>
 
-<Story name="Small" args={{ size: 'small', label: 'Button' }} />
+<Story name="Small">
+  <Button variant="secondary" size="sm">Small Button</Button>
+</Story>

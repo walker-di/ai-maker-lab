@@ -1,3 +1,6 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
+@import '$ui/styles/shadcn-theme.css';
+@source "../../../../packages/ui/src/lib";
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';

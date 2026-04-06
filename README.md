@@ -14,10 +14,18 @@ This repository is a Bun workspace monorepo with a desktop app shell and shared 
 bun install
 bun run build:ui
 bun run check:desktop-app
+bun run build:desktop-app
 ```
 
 For local app development:
 
 ```sh
-bun run dev:desktop-app
+# browser-only SvelteKit dev server
+bun run dev:web
+
+# bundled desktop mode via Electrobun watch/relaunch
+bun run dev:app
+
+# desktop mode with Vite HMR
+bun run dev:app:hmr
 ```

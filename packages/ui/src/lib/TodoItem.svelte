@@ -1,4 +1,8 @@
 <script lang="ts">
+  import { Button } from './components/ui/button/index.js';
+  import { Card, CardContent } from './components/ui/card/index.js';
+  import { Checkbox } from './components/ui/checkbox/index.js';
+
   interface Props {
     label: string;
     completed: boolean;
@@ -10,24 +14,18 @@
   const { label, completed, removeLabel, onToggle, onRemove }: Props = $props();
 </script>
 
-<div class="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-  <label class="flex min-w-0 flex-1 items-center gap-3">
-    <input
-      type="checkbox"
-      checked={completed}
-      onchange={() => onToggle?.()}
-      class="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
-    />
-    <span class={completed ? 'truncate text-slate-400 line-through' : 'truncate text-slate-900'}>
-      {label}
-    </span>
-  </label>
+<Card class="border-border/60">
+  <CardContent class="flex items-center gap-3 py-4">
+    <Checkbox checked={completed} onCheckedChange={() => onToggle?.()} aria-label={label} />
 
-  <button
-    type="button"
-    class="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
-    onclick={() => onRemove?.()}
-  >
-    {removeLabel}
-  </button>
-</div>
+    <div class="min-w-0 flex-1">
+      <p class={completed ? 'text-muted-foreground truncate line-through' : 'text-foreground truncate'}>
+        {label}
+      </p>
+    </div>
+
+    <Button type="button" variant="outline" size="sm" onclick={() => onRemove?.()}>
+      {removeLabel}
+    </Button>
+  </CardContent>
+</Card>
