@@ -1,0 +1,38 @@
+{
+  "name": "domain",
+  "version": "0.0.1",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./shared": {
+      "types": "./src/shared/index.ts",
+      "default": "./src/shared/index.ts"
+    },
+    "./application": {
+      "types": "./src/application/index.ts",
+      "default": "./src/application/index.ts"
+    },
+    "./infrastructure": {
+      "types": "./src/infrastructure/index.ts",
+      "default": "./src/infrastructure/index.ts"
+    },
+    "./server": {
+      "types": "./src/server.ts",
+      "default": "./src/server.ts"
+    }
+  },
+  "scripts": {
+    "dev": "bun run --hot src/server.ts"
+  },
+  "dependencies": {
+    "@surrealdb/node": "^3.0.3",
+    "hono": "^4.12.10",
+    "surrealdb": "^2.0.3"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

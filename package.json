@@ -1,0 +1,18 @@
+{
+  "name": "ai-maker-lab",
+  "private": true,
+  "packageManager": "bun@1.3.10",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "bun run build:ui && bun run --filter desktop-app dev:web",
+    "dev:app": "bun run build:ui && bun run --filter desktop-app dev:app",
+    "dev:app:hmr": "bun run build:ui && bun run --filter desktop-app dev:app:hmr",
+    "check:desktop-app": "bun run --filter ui prepack && bun run --filter desktop-app check",
+    "build:desktop-app": "bun run --filter ui prepack && bun run --filter desktop-app build",
+    "build:ui": "bun run --filter ui prepack",
+    "dev:domain": "bun run --filter domain dev"
+  }
+}

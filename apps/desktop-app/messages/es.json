@@ -1,0 +1,21 @@
+{
+	"$schema": "https://inlang.com/schema/inlang-message-format",
+	"hello_world": "Hello, {name} from es!",
+	"lab_home_title": "AI Maker Lab",
+	"lab_home_intro": "Elige un area del laboratorio para explorar ideas nuevas, iterar en las interacciones y hacer crecer cada experimento con el tiempo.",
+	"lab_category_game": "Juegos",
+	"lab_category_game_description": "Bucles de juego, mecanicas y sistemas ludicos que podemos prototipar despues.",
+	"lab_category_ui": "Experimentos de UI",
+	"lab_category_ui_description": "Ejercicios centrados en la interfaz para definir patrones de interaccion reutilizables.",
+	"lab_category_ai": "IA",
+	"lab_category_ai_description": "Flujos de agentes, interacciones con modelos e ideas de producto impulsadas por IA.",
+	"lab_experiment_todo_label": "Aplicacion de tareas",
+	"lab_experiment_todo_description": "Una experiencia simple de tareas para validar interacciones de lista, flujo de entrada y limites de UI compartida.",
+	"lab_open_experiment": "Abrir experimento",
+	"todo_page_title": "Aplicacion de tareas",
+	"todo_page_intro": "Un primer experimento de UI construido con el modelo de dominio compartido y los componentes compartidos.",
+	"todo_input_placeholder": "Que hace falta hacer?",
+	"todo_add_label": "Agregar tarea",
+	"todo_remove_label": "Eliminar",
+	"todo_empty_state": "Todavia no hay tareas. Agrega la primera para comenzar el experimento."
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Backend Implementation"
+  short_description: "Implement backend changes using clean architecture"
+  default_prompt: "Use $backend-implementtion to implement this backend or shared-domain workspace change with clean architecture. Put shared logic in packages/domain and expose browser-safe frontend imports via domain/shared when needed. Task:"
