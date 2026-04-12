@@ -1,10 +1,10 @@
 # Title
 
-Chat UI And Backend Integration Plan With AI SDK UI Transport
+Chat UI And Backend Integration Plan With Merged Agent Transport
 
 ## Goal
 
-Connect the chat page model and UI components to the web API and desktop RPC through one app-local transport layer, using AI SDK UI-compatible streaming on the web and the same normalized message-part stream over desktop RPC.
+Connect the chat page model and UI components to the web API and desktop RPC through one app-local transport layer, using AI SDK UI-compatible streaming on the web and the same normalized message-part stream over desktop RPC. The transport must expose one unified resolved agent list and keep the page model unaware of backend JSON and DB merge details.
 
 ## Scope
 
@@ -41,8 +41,9 @@ Out of scope for this step:
      - load thread
      - create thread
      - list agents
-     - save agent
-     - duplicate agent
+     - save user agent
+     - duplicate system agent
+     - inherit system agent
      - add or remove thread participant
      - send message
      - send reply
@@ -50,72 +51,90 @@ Out of scope for this step:
 2. Make the transport AI SDK UI-aware.
    - Define the transport in terms of `UIMessage` or an equivalent normalized message-part layer.
    - Require both web and desktop to emit the same message-part contract so the page model does not branch by runtime.
-3. Add transport runtime resolution.
+3. Make the transport agent-catalog aware without exposing merge internals.
+   - `listAgents()` must return the unified resolved agent list only.
+   - `saveUserAgent()` operates only on user-owned agents.
+   - `duplicateSystemAgent()` and `inheritSystemAgent()` are explicit transport actions.
+   - The page model must not know whether a result came from backend JSON or a DB row before resolution.
+4. Add transport runtime resolution.
    - Follow the existing `createTodoTransport()` pattern.
    - Keep desktop vs web detection in the adapter layer only.
-4. Implement web transport.
+5. Implement web transport.
    - Map transport methods to `/api/chat/**` endpoints.
    - Consume AI SDK UI stream responses directly.
    - Normalize API errors into UI-safe `Error` objects.
-5. Implement desktop transport.
+   - Ensure agent-list responses return the full embedded `modelCard` shape for both system and user agents.
+6. Implement desktop transport.
    - Extend the Electrobun chat RPC schema with request and message channels.
    - Use RPC requests for thread and mutation commands.
    - Use RPC messages to push the same normalized message-part events the web transport yields.
-6. Add route-local composition.
+   - Mirror the same resolved agent-list response shape as the web transport.
+7. Add route-local composition.
    - Create `chat-page.composition.ts` to build the page model and inject `createChatTransport()`.
-   - Load initial thread summaries and optionally the selected thread on route start.
-7. Implement page-model integration behavior.
+   - Load initial thread summaries and the merged agent catalog on route start.
+8. Implement page-model integration behavior.
    - optimistic user message insertion
    - placeholder assistant run creation
    - progressive text and tool event application
    - completion and failure finalization
    - thread ordering refresh after message completion
    - model-card-driven UI updates without provider-specific branching
-8. Handle reload and reconnect behavior.
+   - merged agent-list updates after duplicate or inherit actions
+9. Handle reload and reconnect behavior.
    - On page load, fetch persisted thread state first.
+   - Fetch the merged agent catalog through the transport.
    - If an active run exists, subscribe for continuation or reload final state.
    - Never rely exclusively on in-memory stream state.
-9. Unify error handling.
+10. Unify error handling.
    - transport and network errors
    - stream interruption
    - missing-provider-key responses
    - stale thread selection or missing thread after reload
    - rejected model-card input policies such as unsupported video with no fallback hook
+   - invalid system-agent action attempts such as editing a non-editable system default
 
 ## Tests
 
 - Contract tests for `ChatTransport` behavior using mocks or fakes.
-- Web transport tests for AI SDK UI stream payload and error normalization.
-- Desktop transport tests for RPC request and normalized stream-message handling.
+- Web transport tests for:
+  - AI SDK UI stream payload normalization
+  - merged resolved agent-list response shape
+  - duplicate and inherit action calls
+  - error normalization
+- Desktop transport tests for:
+  - RPC request and normalized stream-message handling
+  - merged resolved agent-list parity with the web transport
 - Page-model integration tests for:
+  - merged agent-list loading
+  - duplicate and inherit flows
+  - user-agent save flow
   - optimistic send
   - streamed updates
-  - send failure recovery
   - reload and thread rehydration
   - reply flow
   - mention-targeted send flow
   - model-card-driven warning and disabled state updates
-- Parity checks to ensure the same page model behavior works in both runtime modes at the normalized message-part layer.
+- Parity checks to ensure the same page model behavior works in both runtime modes at the normalized message-part layer and resolved agent-list layer.
 
 ## Acceptance Criteria
 
 - The same page model works in `dev:web` and desktop mode without branching on transport details.
 - Web mode consumes AI SDK UI-compatible streaming directly.
 - Desktop mode emits the same normalized message-part stream shape over RPC.
-- Assistant output appears progressively during streaming.
-- Final persisted history matches what the user saw during streaming.
-- Provider and model quirks are handled through model cards and handler hooks, not view-layer branching.
+- `ChatTransport.listAgents()` returns the unified resolved agent list.
+- The transport exposes explicit duplicate, inherit, and save-user-agent actions.
+- The page model remains unaware of how backend JSON and DB results are merged.
 
 ## Dependencies
 
-- `02-backend-apis-services.md` must provide AI SDK-aware endpoints, RPC contracts, and persisted stream lifecycle behavior.
+- `02-backend-apis-services.md` must provide AI SDK-aware endpoints, agent-catalog merge behavior, RPC contracts, and persisted stream lifecycle behavior.
 - `03-chat-ui.md` must provide the page shell and page-model interaction surface.
 - Existing todo transport patterns in `apps/desktop-app/src/lib/adapters/todo` should be used as the reference implementation style.
 - Web protocol alignment should follow [AI SDK UI Overview](https://ai-sdk.dev/docs/ai-sdk-ui/overview).
 
 ## Risks / Notes
 
-- Transport drift is the biggest risk here. Web and desktop must agree on the same normalized message-part contract.
-- Hidden fallback logic in the transport would be a mistake; capability and policy decisions belong in model cards and the handler pipeline.
+- Transport drift is the biggest risk here. Web and desktop must agree on the same normalized message-part and resolved agent-list contracts.
+- Hidden merge logic in the page model would be a mistake; merge behavior belongs in backend services.
+- Hidden fallback logic in the transport would also be a mistake; capability and policy decisions belong in model cards and the handler pipeline.
 - Avoid background polling unless the backend contract truly requires it; event-driven updates are preferred for active runs.
-- This step is where architecture discipline matters most: page models depend on `ChatTransport`, not on `fetch`, route handlers, or RPC directly.

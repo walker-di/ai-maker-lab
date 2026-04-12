@@ -1,10 +1,10 @@
 # Title
 
-Model Card And Configurable AI SDK Handler Plan
+Model Card, Agent Definitions, And Configurable AI SDK Handler Plan
 
 ## Goal
 
-Define the Vercel AI SDK-based provider/model management layer for Sprint 001 so GPT, Claude, and Gemini are executed through one configurable `ModelHandler`, while `ModelCard` remains the single source of truth for model-specific behavior, capability gating, fallback policy, tool exposure, and UI presentation.
+Define the Vercel AI SDK-based provider/model management layer for Sprint 001 so GPT, Claude, and Gemini are executed through one configurable `ModelHandler`, while `ModelCard` remains the single source of truth for model-specific behavior, capability gating, fallback policy, tool exposure, and UI presentation. The runtime must consume a resolved agent shape that can come from either backend-owned system JSON or DB-backed user agents.
 
 ## Scope
 
@@ -18,28 +18,32 @@ Define the Vercel AI SDK-based provider/model management layer for Sprint 001 so
 - Create browser-safe shared chat metadata under `packages/domain/src/shared/chat`.
 - Define the application-layer model runtime contract under `packages/domain/src/application/chat`.
 - Define configurable model-card-driven hooks for attachment handling, tool shaping, provider options, and UI presentation.
-- Seed the initial role-based agent catalog for sprint 001.
+- Replace the old “seeded default agent” concept with a merged agent catalog composed of:
+  - backend raw JSON system agent definitions
+  - DB-backed user agents
+  - resolved controller-facing agent shapes with embedded `modelCard`
 
 Out of scope for this step:
 
-- SurrealDB persistence details for threads and messages.
+- SurrealDB repository details for agent persistence.
 - Final route wiring and transport integration.
 - A full media-transcoding pipeline beyond the hook seam and default fallback rules.
 
 ## Architecture
 
 - `packages/domain/src/shared/chat`
-  - Own `ModelCard`, `ModelUiPresentation`, `ModelCapabilityMatrix`, `ModelInputPolicy`, `ModelToolPolicy`, `AgentProfile`, `AgentRole`, and model snapshot types.
+  - Own `ModelCard`, `ModelUiPresentation`, `ModelCapabilityMatrix`, `ModelInputPolicy`, `ModelToolPolicy`, `AgentSource`, `SystemAgentDefinition`, `StoredUserAgent`, `ResolvedAgentProfile`, and model snapshot types.
   - Stay browser-safe so the UI can render capability badges and disabled affordances directly from shared metadata.
 - `packages/domain/src/application/chat`
-  - Own `ModelCatalog`, `ModelHandler`, `ModelHandlerConfig`, and `ModelHookContext`.
+  - Own `ModelCatalog`, `ModelHandler`, `ModelHandlerConfig`, `ModelHookContext`, and the contract that runtime code consumes resolved agents only.
   - Define the normalized request/response/event contracts consumed by chat use cases.
 - `packages/domain/src/infrastructure`
   - Own the AI SDK provider registry and wrapped language-model instances.
+  - Own backend JSON loading for system agent definitions.
   - Use `createProviderRegistry`, `customProvider`, `wrapLanguageModel`, `providerOptions`, `streamText`, and `generateText` as the primary execution seams.
 - `apps/desktop-app`
   - Consume only shared metadata and application contracts.
-  - Never branch on provider-specific SDK details in page models or components.
+  - Never branch on provider-specific SDK details or raw system-agent JSON in page models or components.
 
 ## Implementation Plan
 
@@ -60,7 +64,6 @@ Out of scope for this step:
      - `streaming`
      - `tools`
      - `replyThreads`
-   - Keep capabilities explicit so the UI and runtime can make the same decision from the same metadata.
 4. Define `ModelUiPresentation`.
    - Include UI-facing fields for:
      - badges
@@ -68,7 +71,6 @@ Out of scope for this step:
      - disabled composer controls
      - fallback hints
      - hidden or conditionally shown tool toggles
-   - Use this type so model-specific UI behavior is declared in data instead of scattered through Svelte components.
 5. Define `ModelInputPolicy`.
    - Support policy outcomes:
      - `pass-through`
@@ -95,22 +97,45 @@ Out of scope for this step:
      - `toolPolicy`
      - `providerOptionsPreset`
    - Make `ModelCard` the authoritative control plane for runtime and UI behavior.
-8. Define agent metadata in shared types.
-   - Add `AgentRole` values for `builder`, `reviewer`, and `researcher`.
-   - Add `AgentProfile` fields for:
-     - `id`
-     - `name`
-     - `role`
-     - `description`
-     - `instructions`
-     - `provider`
-     - `modelId`
-     - `toolsEnabled`
-     - `isBuiltIn`
-     - `createdAt`
-     - `updatedAt`
-   - Include a model snapshot shape that is stored on each assistant run.
-9. Define `ModelHandler` in `packages/domain/src/application/chat`.
+8. Replace the old simple agent shape with three explicit shapes.
+   - `SystemAgentDefinition`
+     - backend-only raw JSON shape
+     - includes:
+       - `id`
+       - `name`
+       - `description`
+       - full embedded `modelCard`
+       - `systemPrompt`
+       - default tool state
+       - any system-owned metadata
+   - `StoredUserAgent`
+     - DB persistence shape
+     - includes:
+       - `id`
+       - `source: 'user'`
+       - `inheritsFromSystemAgentId?`
+       - `modelCardId`
+       - user overrides
+       - `systemPrompt`
+       - tool overrides
+       - timestamps
+   - `ResolvedAgentProfile`
+     - unified controller/API shape
+     - always includes full embedded `modelCard`
+     - includes:
+       - `source: 'system' | 'user'`
+       - `systemAgentId?`
+       - `inheritsFromSystemAgentId?`
+       - `isInherited`
+       - `isDuplicatedFromSystem?`
+       - `isEditable`
+9. Keep `systemPrompt` first-class.
+   - Do not bury agent prompt behavior inside `ModelCard`.
+   - System and resolved agents must expose `systemPrompt` explicitly.
+10. Define runtime behavior around resolved agents only.
+   - `ModelHandler` must consume `ResolvedAgentProfile`, not raw system JSON or raw DB rows.
+   - Model resolution and inheritance merging happen before runtime execution begins.
+11. Define `ModelHandler` in `packages/domain/src/application/chat`.
    - Back it with AI SDK model resolution and execution.
    - Add configuration hooks:
      - `beforeNormalizeInput`
@@ -119,33 +144,33 @@ Out of scope for this step:
      - `beforeModelCall`
      - `afterStreamPart`
      - `afterCompletion`
-   - Use `ModelHookContext` to pass the active agent, model card, thread context, attachments, and requested tool state through the hook chain.
-10. Define handler execution rules.
-   - Resolve the active `ModelCard`.
+   - Use `ModelHookContext` to pass the active resolved agent, model card, thread context, attachments, and requested tool state through the hook chain.
+12. Define handler execution rules.
+   - Resolve the effective `ResolvedAgentProfile`.
+   - Resolve the embedded `ModelCard`.
    - Resolve the wrapped model from the AI SDK provider registry.
    - Apply model-card-driven hooks in a fixed order.
    - Call `streamText` or `generateText`.
    - Normalize stream parts and usage into application events.
-11. Make the unsupported-capability fallback rule explicit.
+13. Make the unsupported-capability fallback rule explicit.
    - If the model supports the input directly, pass it through.
    - If the model does not support it, run the configured fallback hook from `ModelCard.inputPolicy`.
    - If no fallback hook is configured, block the send and surface a clear UI message.
-12. Make the video example explicit.
+14. Make the video example explicit.
    - GPT and Claude model cards can declare `video: unsupported`.
    - A configured fallback hook may:
      - transform video into images
      - extract text
      - add tools that preprocess the input
    - If no fallback hook exists, the UI blocks video send for that model.
-13. Build the AI SDK provider registry plan.
+15. Build the AI SDK provider registry plan.
    - Register OpenAI, Anthropic, and Google providers with direct provider packages.
    - Use `customProvider` and `wrapLanguageModel` as the main extension seams for behavior injection.
    - Use `providerOptions` as the per-request and per-model override channel.
-14. Seed default role-based agents.
-   - Builder defaults to GPT.
-   - Reviewer defaults to Claude.
-   - Researcher defaults to Gemini.
-   - Keep the seed list editable later through duplication and custom creation.
+16. Replace “seeded default agents” with backend system definitions.
+   - System defaults live in backend raw JSON.
+   - Backend JSON can embed internal constants like `Gemini3FamilyModelCard`.
+   - Controller responses must serialize those defaults into the same shape returned for user agents.
 
 ## Tests
 
@@ -157,16 +182,22 @@ Out of scope for this step:
   - unsupported video with a transform hook
   - unsupported video with tool augmentation
 - Registry tests to confirm wrapped models preserve aliases, defaults, and `providerOptionsPreset`.
-- Seed tests to verify the role-based default agents map to the expected model cards.
-- Duplication tests to verify copied agents preserve provider, model, instructions, and tool state.
+- Agent-shape tests for:
+  - `SystemAgentDefinition` serialization
+  - `StoredUserAgent` to `ResolvedAgentProfile` model-card population
+  - resolved `systemPrompt` behavior
+  - inheritance metadata presence
+- Duplication and inheritance tests to verify:
+  - duplicate becomes an independent resolved user agent
+  - inherited agents preserve linkage metadata and unresolved fields flow from the system definition
 
 ## Acceptance Criteria
 
 - Sprint 001 docs clearly specify `Vercel AI SDK Core + AI SDK UI` as the model runtime foundation.
 - `ModelCard` is the single source of truth for capability gating, fallback behavior, tool policy, and UI presentation.
+- The docs define `SystemAgentDefinition`, `StoredUserAgent`, `ResolvedAgentProfile`, and `AgentSource`.
 - `ModelHandler` is clearly documented as AI SDK-based and configurable through hooks instead of provider-specific conditionals.
-- Provider-specific SDK types do not leak into shared or application-layer contracts.
-- Unsupported input behavior is explicit, deterministic, and model-card-driven.
+- Runtime code is documented to consume resolved agents only, after model resolution and inheritance merging.
 
 ## Dependencies
 
@@ -194,4 +225,4 @@ Out of scope for this step:
 - Model capabilities and provider options can change over time, so model cards must stay centralized and easy to update.
 - The hook system should stay configurable without turning into an unbounded plugin framework during sprint 001.
 - Video fallback behavior is intentionally a policy seam, not a fully solved media pipeline in this sprint.
-- This step must be completed before backend services because routing, file handling, tool policy, and UI presentation all depend on stable model-card and handler contracts.
+- System agent JSON is a backend concern. The frontend should never depend on its storage format directly.

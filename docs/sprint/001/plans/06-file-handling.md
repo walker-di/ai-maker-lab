@@ -1,10 +1,10 @@
 # Title
 
-File Handling Plan With Model-Card Media Policies
+File Handling Plan With Effective Agent Media Policies
 
 ## Goal
 
-Support local file attachments in chat by persisting file metadata in SurrealDB, resolving file content at send time into AI SDK-compatible content parts, and letting `ModelCard.inputPolicy` control how each model handles text, images, pdfs, files, and video, with explicit clean-architecture boundaries and detailed testing expectations.
+Support local file attachments in chat by persisting file metadata in SurrealDB, resolving file content at send time into AI SDK-compatible content parts, and letting the effective resolved agent’s `ModelCard.inputPolicy` control how each model handles text, images, pdfs, files, and video, with explicit clean-architecture boundaries and detailed testing expectations.
 
 ## Scope
 
@@ -12,7 +12,7 @@ Support local file attachments in chat by persisting file metadata in SurrealDB,
 - Persist attachment metadata only.
 - Resolve supported files into AI SDK-compatible content parts at send time.
 - Handle unreadable, missing, moved, or unsupported files safely.
-- Make unsupported-modality behavior model-card-driven instead of hardcoded by provider.
+- Make unsupported-modality behavior effective-agent-driven instead of hardcoded by provider.
 - Document the hook seam for transform and tool-assisted fallback behavior.
 
 Out of scope for this step:
@@ -28,7 +28,7 @@ Out of scope for this step:
   - Stay browser-safe and free of Bun file APIs, AI SDK request types, and database types.
 - `packages/domain/src/application/chat`
   - Own the attachment-resolution port and orchestration rules for mapping attachments into model-runtime input.
-  - Decide whether the selected `ModelCard.inputPolicy` passes through, transforms, augments with tools, or rejects a given input.
+  - Decide whether the selected effective agent’s `ModelCard.inputPolicy` passes through, transforms, augments with tools, or rejects a given input.
 - `packages/domain/src/infrastructure`
   - Resolve local files, inspect metadata, read supported content, and build AI SDK-compatible content parts.
   - Implement any configured fallback transforms or tool-augmentation preparation.
@@ -38,7 +38,7 @@ Out of scope for this step:
   - Own composer attachment pills, transcript attachment display, unavailable-file indicators, and model-card-driven warnings.
 - `apps/desktop-app`
   - Compose the shared UI and transport only.
-  - Must not embed raw file inspection or provider-specific modality rules inside route files.
+  - Must not embed raw file inspection, system-agent merge rules, or provider-specific modality rules inside route files.
 
 ## Implementation Plan
 
@@ -77,7 +77,7 @@ Out of scope for this step:
      - rejection reasons
      - transform instructions
      - tool augmentation hints
-5. Define `ModelInputPolicy` behavior for all supported input types.
+5. Define effective-agent-driven `ModelInputPolicy` behavior for all supported input types.
    - `pass-through`
    - `transform`
    - `augment-with-tools`
@@ -87,25 +87,30 @@ Out of scope for this step:
    - text, code, json, csv, md: read as text and attach as AI SDK text content
    - image formats: send as AI SDK image input when supported
    - pdf: send as AI SDK file or document input when supported
-   - video: pass through only when the model card explicitly supports video
+   - video: pass through only when the effective model card explicitly supports video
 7. Make video handling explicit.
-   - Models with video support can accept video directly.
-   - Models without video support must either:
+   - Effective agents whose model cards support video can accept video directly.
+   - Effective agents whose model cards do not support video must either:
      - use a configured fallback hook from `ModelCard.inputPolicy`, or
      - reject the send with a clear UI message.
    - Fallback hooks may:
      - transform video into images
      - extract text summaries
      - augment the request with tools
-8. Implement unsupported or broken-file handling.
+8. Clarify inheritance behavior for file and media policy.
+   - File/media behavior is resolved from the effective agent and embedded `modelCard` after inheritance merge.
+   - The UI must not separately merge system and user policy fields.
+   - Duplicated agents snapshot the file/media policy at duplication time.
+   - Inherited agents follow system policy for unresolved fields and use user overrides where present.
+9. Implement unsupported or broken-file handling.
    - block send with a clear validation state if the file is unreadable or unsupported
    - after reload, mark missing files as unavailable instead of silently dropping them
    - preserve the original attachment record so history remains auditable
-9. Integrate attachment handling with model cards and UI presentation.
-   - prevent sends when the selected model card rejects the input
-   - surface fallback hints and warnings from `ModelCard.uiPresentation`
+10. Integrate attachment handling with effective model cards and UI presentation.
+   - prevent sends when the selected effective model card rejects the input
+   - surface fallback hints and warnings from effective `ModelCard.uiPresentation`
    - never hardcode GPT, Claude, or Gemini behavior directly in the UI layer
-10. Keep sprint 001 metadata-only.
+11. Keep sprint 001 metadata-only.
    - never copy the file into app storage
    - never depend on the source file still existing for the metadata record to remain visible in history
 
@@ -120,6 +125,8 @@ Out of scope for this step:
     - `reject`
     - model-card capability mismatch
     - fallback-hook presence or absence
+    - inherited-agent unresolved file/media policy
+    - duplicated-agent snapshot file/media policy
 - Infrastructure tests should verify:
   - file classification
   - metadata extraction
@@ -135,22 +142,23 @@ Out of scope for this step:
 - UI tests should verify:
   - composer pill rendering
   - unavailable-attachment transcript states
-  - model-card-driven warnings and disabled send states
+  - effective-model-card-driven warnings and disabled send states
   - shared attachment UI lives in `packages/ui`, while route-level orchestration stays in `apps/desktop-app`
+  - system and user agents show the same resolved file-policy presentation once merged
 
 ## Acceptance Criteria
 
 - The docs clearly place shared attachment types in `domain/shared`, orchestration in `domain/application`, file inspection and content-part mapping in infrastructure, and reusable attachment UI in `packages/ui`.
 - Reusable attachment UI is planned to live in `packages/ui` and be imported into the desktop app from `ui/source`.
 - Attachment persistence is planned to be verified against a real in-memory SurrealDB instance, not only mocked storage.
-- `ModelCard.inputPolicy` clearly determines whether inputs are passed through, transformed, augmented with tools, or rejected.
+- File and media policies are explicitly resolved from the effective agent and embedded `modelCard` after inheritance merge.
 - Video behavior is explicit: direct support, configured fallback, or clear rejection.
 - Missing or unsupported files fail clearly without corrupting the message or thread.
 
 ## Dependencies
 
-- `01-model-card-handler.md` provides `ModelCard`, `ModelInputPolicy`, fallback-hook design, and capability flags.
-- `02-backend-apis-services.md` provides message and attachment persistence plus AI SDK-backed execution.
+- `01-model-card-handler.md` provides `ResolvedAgentProfile`, `ModelCard`, `ModelInputPolicy`, fallback-hook design, and capability flags.
+- `02-backend-apis-services.md` provides agent-catalog merge behavior, message and attachment persistence, and AI SDK-backed execution.
 - `03-chat-ui.md` provides composer and transcript attachment components.
 - `04-ui-backend-integration.md` provides transport payloads that carry attachment metadata and normalized content-part state.
 - Attachment request-shape planning should align with [AI SDK Overview](https://ai-sdk.dev/docs).

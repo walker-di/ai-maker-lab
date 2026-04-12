@@ -1,19 +1,20 @@
 # Title
 
-Chat UI Plan With Clean Architecture And Shared UI Package
+Chat UI Plan With Merged Agent Catalog And Shared UI Package
 
 ## Goal
 
-Design and implement a polished Shadcn-style multi-agent chat experience that uses AI SDK UI in Svelte for streaming chat behavior while preserving the repo’s clean-architecture frontend boundaries: reusable UI in `packages/ui`, app-specific composition in `apps/desktop-app`, and interaction logic in `.svelte.ts` page and component models.
+Design and implement a polished Shadcn-style multi-agent chat experience that uses AI SDK UI in Svelte for streaming chat behavior while preserving the repo’s clean-architecture frontend boundaries: reusable UI in `packages/ui`, app-specific composition in `apps/desktop-app`, and interaction logic in `.svelte.ts` page and component models. The UI must consume one merged agent list from the backend rather than separate default and user-agent sources.
 
 ## Scope
 
 - Build the main chat route UI in `apps/desktop-app/src/routes/experiments/chat`.
-- Add reusable chat components to `packages/ui`.
+- Add reusable chat and agent-list components to `packages/ui`.
 - Import shared UI into the app from `ui/source`.
 - Use AI SDK UI primitives in Svelte for chat-state and streaming integration.
 - Keep view behavior in `.svelte.ts` models and keep `.svelte` files visual-only.
 - Support thread switching, reply state, agent visibility, model-specific presentation, and streaming message states.
+- Render a single merged agent catalog with source and inheritance states.
 
 Out of scope for this step:
 
@@ -24,19 +25,19 @@ Out of scope for this step:
 ## Architecture
 
 - `packages/ui/src/lib`
-  - Own reusable chat primitives and wrappers around shared shadcn components.
+  - Own reusable chat primitives, agent list items, agent cards, badges, and wrappers around shared shadcn components.
   - Own the public chat component surface that the desktop app imports from `ui/source`.
   - Should contain visual components, style tokens, and lightweight UI-only models when reuse is required across screens.
 - `apps/desktop-app/src/routes/experiments/chat`
   - Own route-level composition, page bootstrap, and app-specific wiring.
-  - Should not recreate shared chat components locally when they belong in `packages/ui`.
+  - Should not recreate shared chat or agent-list components locally when they belong in `packages/ui`.
 - `@ai-sdk/svelte`
   - Provide frontend chat-state and streaming primitives consumed by the route model.
 - `.svelte` files
   - Render layout, accessibility, bindings, snippets, and visual composition only.
 - `.svelte.ts` files
   - Own thread selection, reply targeting, optimistic state, AI SDK UI integration, and interaction logic.
-  - Must not contain transport details or backend request construction.
+  - Must not contain transport details, backend merge rules, or raw system-agent JSON handling.
 
 ## Implementation Plan
 
@@ -47,11 +48,13 @@ Out of scope for this step:
 2. Define the primary layout zones in the route.
    - Left sidebar: thread history and “new thread”.
    - Center panel: message timeline, reply context, streamed output.
-   - Right panel: agent roster, selected agent details, model capabilities, and thread context.
-3. Move reusable chat UI into `packages/ui`.
+   - Right panel: merged agent roster, selected agent details, model capabilities, and thread context.
+3. Move reusable chat and agent-list UI into `packages/ui`.
    - Add shared components such as:
      - `ChatThreadListItem`
      - `ChatAgentChip`
+     - `ChatAgentListItem`
+     - `ChatAgentCard`
      - `ChatModelBadge`
      - `ChatMessageBubble`
      - `ChatToolEventRow`
@@ -79,33 +82,44 @@ Out of scope for this step:
    - tool toggle visibility
    - media warnings
    - fallback notices for unsupported inputs such as video
-7. Define message rendering states.
+7. Change the agent panel/list plan to consume one merged list from the backend.
+   - Do not split the frontend into separate “system” and “user” data sources.
+   - The page model should consume only `ResolvedAgentProfile` items.
+   - The page model should remain unaware of how backend JSON and DB results are merged.
+8. Add agent UI states.
+   - system default
+   - inherited user agent
+   - duplicated user agent
+   - fully custom user agent
+   - Show source and inheritance badges using shared components from `packages/ui`.
+9. Add agent actions in the UI.
+   - use system agent directly
+   - duplicate
+   - inherit
+   - edit user-owned fields
+   - Clarify visually that system agents themselves are not edited in place.
+10. Define message rendering states.
    - user message
    - assistant message
    - pending or streaming assistant placeholder
    - tool activity row
    - failed message state
    - unavailable attachment state
-8. Build the page model behavior in `.svelte.ts`.
+11. Build the page model behavior in `.svelte.ts`.
    - active thread selection
    - thread list loading state
    - active reply target
    - composer draft state
    - mention suggestions or validation state
-   - agent panel selection
+   - selected agent detail state
    - AI SDK UI message state coordination
    - optimistic message insertion
-9. Support agent management UI.
-   - list thread participants
-   - add or remove agent from thread
-   - create, duplicate, and edit agent entry points
-   - display per-agent tools toggle, model badge, and presentation warnings in the UI
-10. Support reply and mention UX.
+12. Support reply and mention UX.
    - reply banner above composer
    - clear reply action
    - visible mention tokens or agent chips in composed text
-   - clear labeling of which agent answered each assistant message
-11. Support responsive behavior.
+   - clear labeling of which effective agent answered each assistant message
+13. Support responsive behavior.
    - desktop first for the Electrobun window
    - workable browser layout in `dev:web`
    - narrow-width fallback where the right panel can collapse or stack
@@ -113,14 +127,17 @@ Out of scope for this step:
 ## Tests
 
 - Shared UI tests belong in `packages/ui`.
-  - Add stories for shared chat components with realistic sample data.
+  - Add stories for shared chat and agent-list components with realistic sample data.
   - Add component-level rendering tests for reusable UI where behavior matters.
   - Verify new public components are exported through `src/lib/index.ts`.
 - Page-model and route-composition tests belong in `apps/desktop-app`.
   - Test:
+    - merged agent list rendering
+    - visible source and inheritance badges
+    - duplicate and inherit actions
+    - editability differences between system and user-owned agents
     - thread switching
     - reply activation and clearing
-    - agent selection
     - optimistic send state
     - AI SDK UI streaming state integration
     - mention-aware composer state
@@ -128,22 +145,21 @@ Out of scope for this step:
 - Keep tests aligned with clean architecture.
   - Reusable UI components are tested in `packages/ui`.
   - Route-local composition and adapter wiring are tested in `apps/desktop-app`.
-  - Business rules stay out of component tests and belong in the domain/application test suites.
-- Add layout smoke coverage for desktop and browser-sized viewports if practical.
+  - Business rules and merge rules stay out of component tests and belong in the domain/application test suites.
 
 ## Acceptance Criteria
 
-- The plan clearly places reusable chat UI in `packages/ui` and requires the desktop app to import it from `ui/source`.
+- The plan clearly places reusable chat and agent-list UI in `packages/ui` and requires the desktop app to import it from `ui/source`.
 - The desktop app remains a thin composition layer instead of becoming a second shared UI surface.
-- AI SDK UI is explicitly part of the frontend plan, but `.svelte.ts` remains the orchestration layer.
+- The UI consumes one merged agent list from the backend, not separate system and user collections.
+- System, inherited, duplicated, and fully custom agent states are visible and understandable.
+- System agents are clearly not edited in place, while user-owned agents expose the correct edit actions.
 - `ModelCard.uiPresentation` clearly drives capability badges, disabled controls, tool visibility, and fallback messaging.
-- Multiple agents in a thread are visible and understandable.
-- The composer exposes room for mentions, tools state, and attachments without hardcoding provider quirks in the view layer.
 
 ## Dependencies
 
-- `01-model-card-handler.md` provides `ModelCard`, `ModelUiPresentation`, and agent metadata.
-- `02-backend-apis-services.md` provides thread, message, run, and participant data contracts plus AI SDK-backed streaming.
+- `01-model-card-handler.md` provides `ResolvedAgentProfile`, `ModelCard`, `ModelUiPresentation`, and agent metadata.
+- `02-backend-apis-services.md` provides agent-catalog merge behavior, thread/message/run data contracts, and AI SDK-backed streaming.
 - `packages/ui` remains the shared component boundary for reusable UI.
 - Frontend chat-state behavior should align with [AI SDK UI Overview](https://ai-sdk.dev/docs/ai-sdk-ui/overview).
 
