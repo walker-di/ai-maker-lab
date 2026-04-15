@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getChatServices, toChatErrorResponse } from '$lib/server/chat-services';
+import { getChatServices, toChatErrorResponse, normalizeMessageBody } from '$lib/server/chat-services';
 
 export const prerender = false;
 
@@ -16,17 +16,8 @@ export const GET: RequestHandler = async ({ params }) => {
 export const POST: RequestHandler = async ({ params, request }) => {
 	try {
 		const { chatService } = await getChatServices();
-		const body = await request.json() as {
-			text: string;
-			parentMessageId?: string;
-			attachments?: Array<{
-				type: 'image' | 'file' | 'pdf' | 'video' | 'text';
-				name: string;
-				mimeType: string;
-				url?: string;
-				content?: string;
-			}>;
-		};
+		const raw = (await request.json()) as Record<string, unknown>;
+		const body = normalizeMessageBody(raw);
 
 		const result = await chatService.sendMessage(params.threadId, body);
 

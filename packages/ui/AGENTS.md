@@ -19,4 +19,13 @@
 - Generated shadcn components use the shared `$ui` alias, which resolves to `packages/ui/src/lib`.
 - Keep the package root export valid for packaged builds from `dist`.
 - When you add a new public component, wire both the library entrypoint and any relevant stories in the same change.
-- Add shadcn components from `packages/ui` with `bun x shadcn-svelte@latest add <component> --yes`.
+- Add shadcn components from `packages/ui` with `bun x shadcn-svelte@latest add <component> --overwrite`.
+
+## Chat Components
+
+- `src/lib/chat/` contains shared chat UI components: `ChatComposer`, `ChatMessageBubble`, `ChatThreadListItem`, `ChatAgentListItem`, `ChatAgentCard`, `ChatAgentChip`, `ChatModelBadge`, `ChatAttachmentPill`, `ChatToolEventRow`, `ChatReplyPreview`.
+- `ChatComposer` follows the shadcn-svelte `notion-prompt-form` pattern using `InputGroup`, `DropdownMenu`, `Tooltip`, and `Separator`.
+- `ChatComposer` requires `Tooltip.Provider` context in the component tree. Pages that render `ChatComposer` (including conditionally, e.g. inside `{#if}` branches) must wrap their content with `<Tooltip.Provider>` from `ui/source`. Missing this provider causes a context error that silently aborts rendering.
+- `ChatComposer.svelte.ts` contains the composer presentation model (`createChatComposerModel`).
+- `src/lib/chat/types.ts` defines local UI types (`ChatAgentProfile`, `ChatThread`, `AttachmentRef`, `ModelUiPresentation`, etc.) so the UI package does not depend on `packages/domain`. Domain types satisfy these structurally at the app boundary.
+- All chat components are barrel-exported from `src/lib/chat/index.ts` and re-exported from `src/lib/index.ts`.

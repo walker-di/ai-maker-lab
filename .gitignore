@@ -8,6 +8,8 @@ node_modules/
 /.svelte-kit
 /build
 
+packages/ui/.vitest-attachments/
+packages/ui/src/lib/chat/__tests__/__screenshots__/
 # OS
 .DS_Store
 Thumbs.db
@@ -23,6 +25,7 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 # Playwright
 test-results
+apps/desktop-app/e2e/.tmp/
 # Paraglide
 src/lib/paraglide
 project.inlang/cache/

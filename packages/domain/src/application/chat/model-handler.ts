@@ -1,4 +1,4 @@
-import { streamText, generateText, type StreamTextResult, type GenerateTextResult, type ModelMessage } from 'ai';
+import { streamText, generateText, type StreamTextResult, type GenerateTextResult, type ModelMessage, type StreamTextOnFinishCallback, type ToolSet } from 'ai';
 import type { ResolvedAgentProfile, ModelCard } from '../../shared/chat/index.js';
 import { findModelCardByRegistryId, MODEL_CARD_CATALOG, FAMILY_STRATEGIES } from '../../shared/chat/index.js';
 import type { ProviderRegistry } from '../../infrastructure/ai/provider-registry.js';
@@ -9,6 +9,7 @@ type JSONValue = string | number | boolean | null | JSONValue[] | { [key: string
 export interface ModelHandlerRequest {
   readonly messages: ModelMessage[];
   readonly threadId?: string;
+  readonly onFinish?: StreamTextOnFinishCallback<ToolSet>;
 }
 
 export class ModelHandler {
@@ -29,6 +30,7 @@ export class ModelHandler {
       system: agent.systemPrompt,
       messages,
       providerOptions: providerOptions as Record<string, Record<string, JSONValue>>,
+      onFinish: request.onFinish,
     });
   }
 

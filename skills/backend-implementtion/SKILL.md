@@ -90,6 +90,13 @@ Workspace packaging and transport selection:
 - Keep one application/domain implementation reused by every consumer when both app and server entrypoints exist.
 - Avoid duplicating orchestration in app-specific wiring and server adapters. Put orchestration in use cases/services and keep both transports thin.
 
+Streaming endpoint pattern:
+- When a domain service returns `StreamTextResult` (e.g. `ChatService.sendMessage()`), the streaming API endpoint returns `result.streamResult.toUIMessageStreamResponse()` directly instead of awaiting the full text.
+- Keep a separate JSON endpoint for non-streaming reads (e.g. `GET .../messages` returns all messages as JSON).
+- The streaming endpoint path convention is `POST /api/chat/threads/[threadId]/stream`.
+- The AI SDK `Chat` class with `DefaultChatTransport` consumes this streaming endpoint. CRUD operations (threads, agents, messages) use separate JSON endpoints via the app's `ChatTransport` adapter.
+- The AI SDK v5 streaming response uses SSE format with the `x-vercel-ai-ui-message-stream: v1` header. Events are `data:` lines with typed JSON payloads (`start`, `text-start`, `text-delta`, `text-end`, `finish`). Do not use the legacy `0:` prefix format from earlier AI SDK versions.
+
 Implementation process:
 1. Inspect the current code paths relevant to the task.
 2. Identify:

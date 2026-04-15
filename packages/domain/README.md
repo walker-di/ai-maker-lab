@@ -36,6 +36,7 @@ The chat layer implements the model card, agent definition, and configurable AI 
 - browser-safe model metadata, model cards, and agent shapes live in `src/shared/chat`
 - `ModelHandler`, hook contracts, and runtime ports live in `src/application/chat`
 - AI SDK provider registry, wrapped models, and system agent loading live in `src/infrastructure/ai`
+- `ChatService.sendMessage()` returns a `SendMessageResult` containing a `StreamTextResult`. For streaming UIs, call `result.streamResult.toUIMessageStreamResponse()` instead of awaiting the full text. For JSON responses, await `result.streamResult.text`, `.usage`, and `.finishReason`.
 
 `ModelCard` is the single source of truth for capability gating, fallback behavior, tool policy, and UI presentation. Runtime code consumes `ResolvedAgentProfile` only, after model resolution and inheritance merging.
 

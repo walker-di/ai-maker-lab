@@ -35,11 +35,15 @@ export class SurrealChatMessageRepository implements IChatMessageRepository {
   constructor(private readonly db: IDbClient) {}
 
   async listByThread(threadId: string): Promise<ChatMessage[]> {
-    const [records = []] = await this.db.query<MessageRecord[]>(
-      `SELECT * FROM ${TABLE} WHERE threadId = $threadId ORDER BY createdAt ASC;`,
-      { threadId },
-    );
-    return records.map(toMessage);
+    try {
+      const [records = []] = await this.db.query<MessageRecord[]>(
+        `SELECT * FROM ${TABLE} WHERE threadId = $threadId ORDER BY createdAt ASC;`,
+        { threadId },
+      );
+      return records.map(toMessage);
+    } catch {
+      return [];
+    }
   }
 
   async findById(id: string): Promise<ChatMessage | null> {
@@ -79,10 +83,14 @@ export class SurrealChatMessageRepository implements IChatMessageRepository {
   }
 
   async listReplies(parentMessageId: string): Promise<ChatMessage[]> {
-    const [records = []] = await this.db.query<MessageRecord[]>(
-      `SELECT * FROM ${TABLE} WHERE parentMessageId = $parentMessageId ORDER BY createdAt ASC;`,
-      { parentMessageId },
-    );
-    return records.map(toMessage);
+    try {
+      const [records = []] = await this.db.query<MessageRecord[]>(
+        `SELECT * FROM ${TABLE} WHERE parentMessageId = $parentMessageId ORDER BY createdAt ASC;`,
+        { parentMessageId },
+      );
+      return records.map(toMessage);
+    } catch {
+      return [];
+    }
   }
 }

@@ -96,11 +96,15 @@ export class SurrealChatRunRepository implements IChatRunRepository {
   }
 
   async findByMessage(messageId: string): Promise<ChatRun | null> {
-    const [records = []] = await this.db.query<RunRecord[]>(
-      `SELECT * FROM ${TABLE} WHERE messageId = $messageId LIMIT 1;`,
-      { messageId },
-    );
-    const record = records[0];
-    return record ? toRun(record) : null;
+    try {
+      const [records = []] = await this.db.query<RunRecord[]>(
+        `SELECT * FROM ${TABLE} WHERE messageId = $messageId LIMIT 1;`,
+        { messageId },
+      );
+      const record = records[0];
+      return record ? toRun(record) : null;
+    } catch {
+      return null;
+    }
   }
 }

@@ -189,6 +189,16 @@ describe('SurrealChatMessageRepository', () => {
 
   afterEach(async () => { await db.close(); });
 
+  test('returns empty array from listByThread on fresh database', async () => {
+    const messages = await repo.listByThread('nonexistent-thread');
+    expect(messages).toEqual([]);
+  });
+
+  test('returns empty array from listReplies on fresh database', async () => {
+    const replies = await repo.listReplies('nonexistent-parent');
+    expect(replies).toEqual([]);
+  });
+
   test('creates and lists messages by thread ordered by createdAt', async () => {
     await repo.create({
       threadId: 'thread-1',
@@ -264,6 +274,11 @@ describe('SurrealChatRunRepository', () => {
 
   afterEach(async () => { await db.close(); });
 
+  test('returns null from findByMessage on fresh database', async () => {
+    const found = await repo.findByMessage('nonexistent-msg');
+    expect(found).toBeNull();
+  });
+
   test('creates and finds run by id', async () => {
     const run = await repo.create({
       threadId: 'thread-1',
@@ -338,6 +353,11 @@ describe('SurrealAttachmentRepository', () => {
   });
 
   afterEach(async () => { await db.close(); });
+
+  test('returns empty array from listByMessage on fresh database', async () => {
+    const attachments = await repo.listByMessage('nonexistent-msg');
+    expect(attachments).toEqual([]);
+  });
 
   test('creates and lists attachments by message', async () => {
     const att = await repo.create({

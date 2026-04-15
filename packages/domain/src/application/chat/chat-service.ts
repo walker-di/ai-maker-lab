@@ -118,13 +118,34 @@ export class ChatService {
       startedAt: new Date().toISOString(),
     });
 
-    const messages: ModelMessage[] = [
-      { role: 'user' as const, content: input.text },
-    ];
+    const history = await this.messageRepo.listByThread(threadId);
+    const messages: ModelMessage[] = history.map((m) => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+    }));
 
     const streamResult = this.modelHandler.stream(agent, {
       messages,
       threadId,
+      onFinish: async ({ text, finishReason }) => {
+        try {
+          if (text) {
+            await this.messageRepo.create({
+              threadId,
+              role: 'assistant',
+              content: text,
+              agentId: agent.id,
+            });
+          }
+          await this.runRepo.update({
+            ...run,
+            status: finishReason === 'stop' ? 'completed' : 'failed',
+            completedAt: new Date().toISOString(),
+          });
+        } catch {
+          // Best-effort persistence; stream already sent to client
+        }
+      },
     });
 
     return { userMessage, run, streamResult, routerDecision: decision };

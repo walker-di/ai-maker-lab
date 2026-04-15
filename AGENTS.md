@@ -24,6 +24,7 @@
 - `packages/domain` owns shared domain and application orchestration contracts and use cases.
 - `apps/desktop-app` is an adapter and composition boundary for routing, runtime wiring, and transport translation.
 - Each new domain or subdomain folder in `packages/domain` should include a `README.md` documenting responsibility and boundaries.
+- When a feature needs both streaming and CRUD transport, keep them separate: use the AI SDK `Chat` class with `DefaultChatTransport` for streaming, and a dedicated `ChatTransport` adapter for CRUD operations (threads, agents, messages).
 
 ## Workspace Rules
 
@@ -37,6 +38,7 @@
 - Import persistence and runtime adapters into native/server composition code from `domain/infrastructure`.
 - Treat `domain` package-root imports as server-only compatibility aliases, not as frontend imports.
 - Keep `packages/ui` as the shared component surface. Do not recreate those components inside `apps/desktop-app`.
+- `packages/ui` must not depend on `packages/domain`. Chat UI components define local type mirrors in `packages/ui/src/lib/chat/types.ts` instead of importing domain types. Domain types structurally satisfy the UI types when passed from the app layer.
 
 ## Documentation Direction
 
@@ -74,6 +76,8 @@ Use the frontend skill for Svelte/SvelteKit UI work and the backend skill for sh
 - If a UI library or shared UI package already provides a component, use it instead of rebuilding it locally.
 - Wrap or style shared primitives when needed, but keep the underlying shared component boundary intact.
 - Focus on clean spacing, accessible interaction, and maintainable composition rather than one-off app-specific markup.
+- Use the AI SDK Svelte `Chat` class (from `@ai-sdk/svelte`) for streaming chat UIs. Do not destructure its reactive properties; always access via `chat.messages`, `chat.status`, etc.
+- Use reactive getters for `Chat` constructor arguments that may change: `new Chat({ get id() { return threadId; } })`.
 
 ## Testing Rules
 
@@ -82,3 +86,12 @@ Use the frontend skill for Svelte/SvelteKit UI work and the backend skill for sh
 - Only mock boundaries that are genuinely external and have no SurrealDB implementation: AI SDK language models, file-system-based definition sources, and third-party network APIs.
 - Each test file that uses SurrealDB must open its own connection in `beforeEach` with a unique namespace/database (`crypto.randomUUID()`) and close it in `afterEach`.
 - Reference pattern: `SurrealTodoRepository.test.ts` and `surreal-chat-repositories.test.ts`.
+
+## E2E Testing Rules
+
+- Playwright e2e tests live in `apps/desktop-app/e2e/` with the `*.e2e.ts` naming convention.
+- The Playwright config starts a Vite dev server on a dedicated port with `SURREAL_HOST=mem://` for test isolation. Each run gets a unique `SURREAL_DB` namespace.
+- Use `patchEmptyTableErrors(page)` in `beforeEach` to intercept GET `/api/chat/**` requests that fail on a fresh `mem://` instance (tables don't exist until first insert) and return safe empty `[]` responses.
+- Mock AI SDK streaming responses using the v5 SSE protocol: `data: {"type":"text-delta",...}` events with the `x-vercel-ai-ui-message-stream: v1` response header. Do not use the legacy `0:` prefix format.
+- Gate live API tests behind environment flags (e.g. `test.skip(!process.env.OPENAI_API_KEY, ...)`).
+- Run chat e2e tests: `bun run test:e2e:chat` from `apps/desktop-app`. Run all e2e tests: `bun run test:e2e`.

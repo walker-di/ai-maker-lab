@@ -20,7 +20,9 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"test:e2e": "playwright test",
-		"test": "bun run test:e2e",
+		"test:e2e:chat": "playwright test e2e/chat",
+		"test:unit": "vitest run --project unit",
+		"test": "bun run test:unit && bun run test:e2e",
 		"storybook": "storybook dev -p 6006",
 		"build-storybook": "storybook build"
 	},

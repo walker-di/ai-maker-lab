@@ -55,10 +55,14 @@ export class SurrealAttachmentRepository implements IAttachmentRepository {
   }
 
   async listByMessage(messageId: string): Promise<AttachmentRef[]> {
-    const [records = []] = await this.db.query<AttachmentRecord[]>(
-      `SELECT * FROM ${TABLE} WHERE messageId = $messageId;`,
-      { messageId },
-    );
-    return records.map(toAttachment);
+    try {
+      const [records = []] = await this.db.query<AttachmentRecord[]>(
+        `SELECT * FROM ${TABLE} WHERE messageId = $messageId;`,
+        { messageId },
+      );
+      return records.map(toAttachment);
+    } catch {
+      return [];
+    }
   }
 }
