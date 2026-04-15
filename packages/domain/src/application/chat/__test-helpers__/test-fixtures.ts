@@ -1,5 +1,5 @@
-import { mock } from 'bun:test';
-import type { LanguageModel } from 'ai';
+import { simulateReadableStream } from 'ai';
+import { MockLanguageModelV3 } from 'ai/test';
 import type { SystemAgentDefinition } from '../../../shared/chat/index.js';
 import type { ISystemAgentDefinitionSource } from '../ports.js';
 import type { ProviderRegistry } from '../../../infrastructure/ai/provider-registry.js';
@@ -10,38 +10,40 @@ export class InMemorySystemSource implements ISystemAgentDefinitionSource {
   findById(id: string) { return this.agents.find((a) => a.id === id); }
 }
 
-export function createMockLanguageModel(modelId = 'gpt-4.1'): LanguageModel {
-  return {
+export function createMockLanguageModel(modelId = 'gpt-4.1') {
+  return new MockLanguageModelV3({
     modelId,
-    specificationVersion: 'v2',
-    provider: 'mock',
-    supportedUrls: {},
-    doGenerate: mock(async () => ({
-      content: [{ type: 'text' as const, text: 'Hello', providerMetadata: {} }],
-      finishReason: 'stop' as const,
-      usage: { inputTokens: 10, outputTokens: 5 },
+    doGenerate: async () => ({
+      content: [{ type: 'text', text: 'Hello' }],
+      finishReason: { unified: 'stop' as const, raw: undefined },
+      usage: {
+        inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
+        outputTokens: { total: 5, text: 5, reasoning: undefined },
+      },
       warnings: [],
-    })),
-    doStream: mock(async () => ({
-      stream: new ReadableStream({
-        start(controller) {
-          controller.enqueue({ type: 'stream-start' as const, warnings: [] });
-          controller.enqueue({ type: 'text-start' as const, id: 't1' });
-          controller.enqueue({ type: 'text-delta' as const, id: 't1', delta: 'Hello' });
-          controller.enqueue({ type: 'text-end' as const, id: 't1' });
-          controller.enqueue({
+    }),
+    doStream: async () => ({
+      stream: simulateReadableStream({
+        chunks: [
+          { type: 'text-start' as const, id: 't1' },
+          { type: 'text-delta' as const, id: 't1', delta: 'Hello' },
+          { type: 'text-end' as const, id: 't1' },
+          {
             type: 'finish' as const,
-            finishReason: 'stop' as const,
-            usage: { inputTokens: 10, outputTokens: 5 },
-          });
-          controller.close();
-        },
+            finishReason: { unified: 'stop' as const, raw: undefined },
+            logprobs: undefined,
+            usage: {
+              inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
+              outputTokens: { total: 5, text: 5, reasoning: undefined },
+            },
+          },
+        ],
       }),
-    })),
-  } as unknown as LanguageModel;
+    }),
+  });
 }
 
-export function createMockRegistry(model?: LanguageModel): ProviderRegistry {
+export function createMockRegistry(model?: MockLanguageModelV3): ProviderRegistry {
   const m = model ?? createMockLanguageModel();
   return {
     languageModel: (_id: string) => m,
