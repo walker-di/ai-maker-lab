@@ -74,3 +74,11 @@ Use the frontend skill for Svelte/SvelteKit UI work and the backend skill for sh
 - If a UI library or shared UI package already provides a component, use it instead of rebuilding it locally.
 - Wrap or style shared primitives when needed, but keep the underlying shared component boundary intact.
 - Focus on clean spacing, accessible interaction, and maintainable composition rather than one-off app-specific markup.
+
+## Testing Rules
+
+- All repository and service tests must use a real SurrealDB `mem://` in-memory instance via `createDbConnection({ host: 'mem://' })` and real Surreal repository implementations.
+- Never create hand-rolled in-memory repository fakes or test doubles for database-backed ports. No `InMemoryFooRepository` classes.
+- Only mock boundaries that are genuinely external and have no SurrealDB implementation: AI SDK language models, file-system-based definition sources, and third-party network APIs.
+- Each test file that uses SurrealDB must open its own connection in `beforeEach` with a unique namespace/database (`crypto.randomUUID()`) and close it in `afterEach`.
+- Reference pattern: `SurrealTodoRepository.test.ts` and `surreal-chat-repositories.test.ts`.

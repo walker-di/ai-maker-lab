@@ -1,10 +1,22 @@
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { ApplicationMenu, BrowserView, BrowserWindow, Utils } from 'electrobun/bun';
-import { TodoService } from 'domain/application';
-import { getDb, SurrealDbAdapter, SurrealTodoRepository } from 'domain/infrastructure';
+import { TodoService, AgentCatalogService, ChatService, ModelHandler } from 'domain/application';
+import {
+	getDb,
+	SurrealDbAdapter,
+	SurrealTodoRepository,
+	buildProviderRegistry,
+	loadSystemAgentDefinitions,
+	findSystemAgentById,
+	SurrealUserAgentRepository,
+	SurrealChatThreadRepository,
+	SurrealChatMessageRepository,
+	SurrealChatRunRepository,
+} from 'domain/infrastructure';
 import { resolveMainViewUrl } from '../lib/adapters/runtime/main-view-url';
 import type { TodoRpcSchema } from '../lib/adapters/todo/electrobun-todo-rpc';
+import type { ChatRpcSchema } from '../lib/adapters/chat/electrobun-chat-rpc';
 
 ApplicationMenu.setApplicationMenu([
 	{
@@ -38,6 +50,19 @@ const todoService = new TodoService(
 	new SurrealTodoRepository(new SurrealDbAdapter(surreal))
 );
 
+const dbAdapter = new SurrealDbAdapter(surreal);
+const systemSource = { loadAll: loadSystemAgentDefinitions, findById: findSystemAgentById };
+const catalogService = new AgentCatalogService(systemSource, new SurrealUserAgentRepository(dbAdapter));
+const registry = buildProviderRegistry();
+const modelHandler = new ModelHandler(registry);
+const chatService = new ChatService(
+	new SurrealChatThreadRepository(dbAdapter),
+	new SurrealChatMessageRepository(dbAdapter),
+	new SurrealChatRunRepository(dbAdapter),
+	catalogService,
+	modelHandler,
+);
+
 function toPlain<T>(data: T): T {
 	return JSON.parse(JSON.stringify(data));
 }
@@ -65,10 +90,46 @@ const todoRpc = BrowserView.defineRPC<TodoRpcSchema>({
 	}
 });
 
+const chatRpc = BrowserView.defineRPC<ChatRpcSchema>({
+	handlers: {
+		requests: {
+			async listAgents() {
+				return toPlain(await catalogService.listAgents());
+			},
+			async listThreads() {
+				return toPlain(await chatService.listThreads());
+			},
+			async createThread(params) {
+				return toPlain(await chatService.createThread(params));
+			},
+			async getThread({ threadId }) {
+				return toPlain(await chatService.getThread(threadId));
+			},
+			async getMessages({ threadId }) {
+				return toPlain(await chatService.getMessages(threadId));
+			},
+			async sendMessage({ threadId, text, parentMessageId }) {
+				const result = await chatService.sendMessage(threadId, { text, parentMessageId });
+
+				const fullText = await result.streamResult.text;
+				const usage = await result.streamResult.usage;
+				const finishReason = await result.streamResult.finishReason;
+
+				return toPlain({
+					userMessage: result.userMessage,
+					run: result.run,
+					routerDecision: result.routerDecision,
+					response: { text: fullText, usage, finishReason },
+				});
+			}
+		}
+	}
+});
+
 const mainWindow = new BrowserWindow({
 	title: 'AI Maker Lab',
 	url: await resolveMainViewUrl(),
-	rpc: todoRpc,
+	rpc: [todoRpc, chatRpc],
 	frame: {
 		width: 1200,
 		height: 800,

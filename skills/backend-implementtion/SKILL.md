@@ -151,9 +151,13 @@ Testing rules:
 - Add domain tests for invariants and rules.
 - Add application/use-case tests for orchestration and port interactions.
 - Add adapter/integration tests only where boundary behavior matters.
-- Mock or fake ports at the application boundary.
+- All repository and service tests must use a real SurrealDB `mem://` in-memory instance via `createDbConnection({ host: 'mem://' })` + `SurrealDbAdapter` + real Surreal repository implementations.
+- Never create hand-rolled in-memory repository fakes or test doubles for database-backed ports. No `InMemoryFooRepository` classes.
+- Only mock boundaries that are genuinely external and have no SurrealDB implementation: AI SDK language models, file-system-based definition sources, and third-party network APIs.
+- Each test file that uses SurrealDB must open its own connection in `beforeEach` with a unique namespace/database (`crypto.randomUUID()`) and close it in `afterEach`.
 - Do not mock pure domain logic.
 - Add regression coverage for the bug, scenario, or acceptance path being changed.
+- Reference test pattern: `SurrealTodoRepository.test.ts` and `surreal-chat-repositories.test.ts`.
 
 Quality bar before finishing:
 1. No new inward dependency points outward.
