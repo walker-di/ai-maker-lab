@@ -1,6 +1,6 @@
 <script module>
   import { defineMeta } from '@storybook/addon-svelte-csf';
-  import { CategoryCard } from '../lib';
+  import { CategoryCard } from '../lib/index.js';
 
   const { Story } = defineMeta({
     title: 'Lab/CategoryCard',

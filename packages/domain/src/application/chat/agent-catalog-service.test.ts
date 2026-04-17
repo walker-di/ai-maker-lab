@@ -129,6 +129,7 @@ describe('AgentCatalogService', () => {
     expect(agent.source).toBe('user');
     expect(agent.isEditable).toBe(true);
     expect(agent.isInherited).toBe(false);
+    expect(agent.isDuplicatedFromSystem).toBe(false);
     expect(agent.isStandalone).toBe(true);
     expect(agent.systemPrompt).toBe('You are custom.');
   });
@@ -139,6 +140,7 @@ describe('AgentCatalogService', () => {
     expect(agent.source).toBe('user');
     expect(agent.isEditable).toBe(true);
     expect(agent.isInherited).toBe(false);
+    expect(agent.isDuplicatedFromSystem).toBe(true);
     expect(agent.inheritsFromSystemAgentId).toBeUndefined();
     expect(agent.systemPrompt).toBe('You are a helpful assistant.');
     expect(agent.modelCard.registryId).toBe(Gpt41ModelCard.registryId);
@@ -156,6 +158,7 @@ describe('AgentCatalogService', () => {
     expect(agent.source).toBe('user');
     expect(agent.isEditable).toBe(true);
     expect(agent.isInherited).toBe(true);
+    expect(agent.isDuplicatedFromSystem).toBe(false);
     expect(agent.inheritsFromSystemAgentId).toBe('system-general');
     expect(agent.name).toBe('General Assistant');
     expect(agent.toolState).toEqual({ search: true });

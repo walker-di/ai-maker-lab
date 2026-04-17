@@ -12,7 +12,7 @@ function resolveBuildRoot() {
 	const baseDir = isAbsolute(configuredBuildDir)
 		? configuredBuildDir
 		: join(projectRoot, configuredBuildDir);
-	const candidateDirs = [baseDir, join(baseDir, `${buildEnv}-${targetOs}-${targetArch}`)];
+	const candidateDirs = [join(baseDir, `${buildEnv}-${targetOs}-${targetArch}`), baseDir];
 
 	for (const candidateDir of candidateDirs) {
 		if (existsSync(candidateDir)) {
@@ -27,11 +27,27 @@ function findAppBundle(root) {
 	const entries = readdirSync(root, { withFileTypes: true });
 	const appBundle = entries.find((entry) => entry.isDirectory() && entry.name.endsWith('.app'));
 
-	if (!appBundle) {
-		throw new Error(`No .app bundle found in ${root}`);
+	if (appBundle) {
+		return join(root, appBundle.name, 'Contents', 'Resources', 'app');
 	}
 
-	return join(root, appBundle.name, 'Contents', 'Resources', 'app');
+	for (const entry of entries) {
+		if (!entry.isDirectory()) {
+			continue;
+		}
+
+		const nestedRoot = join(root, entry.name);
+		const nestedEntries = readdirSync(nestedRoot, { withFileTypes: true });
+		const nestedAppBundle = nestedEntries.find(
+			(nestedEntry) => nestedEntry.isDirectory() && nestedEntry.name.endsWith('.app'),
+		);
+
+		if (nestedAppBundle) {
+			return join(nestedRoot, nestedAppBundle.name, 'Contents', 'Resources', 'app');
+		}
+	}
+
+	throw new Error(`No .app bundle found in ${root}`);
 }
 
 function copyRuntimePackage(source, destination) {

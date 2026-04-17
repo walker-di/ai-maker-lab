@@ -13,6 +13,8 @@
 - Do not duplicate shared components in `apps/desktop-app` when they belong in `packages/ui`.
 - Keep app-specific wiring, routing, native window composition, and transport setup here. Move reusable UI and business logic into workspace packages.
 - The app resolves the `$ui` alias to `packages/ui/src/lib` so shared shadcn internals and theme imports work in-place.
+- For Lucide icons in Svelte components, import directly from `@lucide/svelte/icons/<icon-name>` instead of using the `@lucide/svelte` barrel.
+- Avoid wildcard Lucide imports except for explicit dynamic icon loaders where the bundle/build tradeoff is justified and documented.
 
 ## Desktop Architecture
 
@@ -27,12 +29,13 @@
 
 ## Chat Feature
 
-- Transport adapters: `src/lib/adapters/chat/` contains `ChatTransport.ts` (interface), `web-chat-transport.ts` (fetch adapter for CRUD), `desktop-chat-transport.ts` (Electrobun RPC stub), and `create-chat-transport.ts` (runtime mode resolver).
-- The `ChatTransport` handles CRUD operations (threads, agents, messages). The AI SDK `Chat` class handles streaming separately via `DefaultChatTransport` pointed at the `/api/chat/threads/[threadId]/stream` endpoint.
-- API routes: `src/routes/api/chat/` provides REST endpoints for agents, threads, messages, and a streaming endpoint (`threads/[threadId]/stream`) that returns `toUIMessageStreamResponse()`.
-- Chat page model: `src/routes/experiments/chat/chat-page.svelte.ts` owns the AI SDK `Chat` instance and coordinates thread/agent/message state. Do not destructure `Chat` properties.
-- Composition: `src/routes/experiments/chat/chat-page.composition.ts` wires the transport to the page model.
-- Route: `src/routes/experiments/chat/+page.svelte` renders a three-panel layout (thread sidebar, message timeline + composer, agent roster).
+- Transport adapters: `src/lib/adapters/chat/` contains `ChatTransport.ts` (interface), `web-chat-transport.ts` (fetch adapter for CRUD), `desktop-chat-transport.ts` (Electrobun RPC transport), `create-chat-transport.ts` (runtime mode resolver), and `create-chat-stream-transport.ts` (runtime-aware AI SDK streaming transport factory).
+- The `ChatTransport` handles CRUD operations (threads, agents, messages) and agent mutations (duplicate, inherit, save, update). The AI SDK `Chat` class handles streaming separately via the `ChatStreamFactory` injected from the composition layer.
+- The `ChatStreamFactory` returns a `DefaultChatTransport` for web mode (using `/api/chat/threads/[threadId]/stream`) and will return an Electrobun-backed stream transport for desktop mode.
+- API routes: `src/routes/api/chat/` provides REST endpoints for agents (list, duplicate, inherit, create user, update user), threads (list, create, get, delete), messages (list, send), and a streaming endpoint (`threads/[threadId]/stream`) that returns `toUIMessageStreamResponse()`.
+- Chat page model: `src/routes/experiments/chat/chat-page.svelte.ts` owns the AI SDK `Chat` instance and coordinates thread/agent/message state. It receives both `transport` (CRUD) and `streamFactory` (streaming) from composition. Do not destructure `Chat` properties.
+- Composition: `src/routes/experiments/chat/chat-page.composition.ts` wires both transports to the page model.
+- Route: `src/routes/experiments/chat/+page.svelte` renders a two-panel layout (thread sidebar, message timeline + composer) with agent selection and details in a slide-over sheet.
 - The chat page must wrap its content in `<Tooltip.Provider>` from `ui/source` because `ChatComposer` uses tooltips internally. Missing this provider causes a silent rendering error that prevents the thread content panel from mounting.
 
 ## Verification

@@ -18,6 +18,8 @@
 			isInherited: false,
 			isStandalone: false,
 			isEditable: false,
+			toolsEnabled: true,
+			toolState: {},
 			modelCard: {
 				label: 'GPT-4o',
 				registryId: 'openai:gpt-4o',
@@ -38,6 +40,8 @@
 			isInherited: false,
 			isStandalone: false,
 			isEditable: false,
+			toolsEnabled: true,
+			toolState: {},
 			modelCard: {
 				label: 'Claude 4 Sonnet',
 				registryId: 'anthropic:claude-4-sonnet',
@@ -58,6 +62,8 @@
 			isInherited: true,
 			isStandalone: false,
 			isEditable: true,
+			toolsEnabled: true,
+			toolState: {},
 			modelCard: {
 				label: 'Gemini 3.0 Pro',
 				registryId: 'google:gemini-3-pro',

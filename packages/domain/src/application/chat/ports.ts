@@ -5,6 +5,7 @@ import type {
   ChatMessage,
   ChatRun,
   AttachmentRef,
+  AttachmentStatus,
   CreateThreadInput,
   CreateMessageInput,
 } from '../../shared/chat/index.js';
@@ -19,13 +20,16 @@ export interface CreateUserAgentInput {
   readonly description: string;
   readonly modelCardId: string;
   readonly systemPrompt: string;
+  readonly toolsEnabled?: boolean;
   readonly toolOverrides?: Record<string, boolean>;
   readonly inheritsFromSystemAgentId?: string;
+  readonly duplicatedFromSystemAgentId?: string;
 }
 
 export interface UpdateUserAgentInput {
   readonly modelCardId?: string;
   readonly systemPrompt?: string;
+  readonly toolsEnabled?: boolean;
   readonly toolOverrides?: Record<string, boolean>;
   readonly userOverrides?: Record<string, unknown>;
 }
@@ -63,4 +67,5 @@ export interface IChatRunRepository {
 export interface IAttachmentRepository {
   create(attachment: Omit<AttachmentRef, 'id'>): Promise<AttachmentRef>;
   listByMessage(messageId: string): Promise<AttachmentRef[]>;
+  updateStatus(id: string, status: AttachmentStatus): Promise<AttachmentRef>;
 }

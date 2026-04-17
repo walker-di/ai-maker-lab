@@ -237,6 +237,47 @@ describe('SurrealChatMessageRepository', () => {
     expect(found!.content).toBe('Find me');
   });
 
+  test('persists structured assistant message parts', async () => {
+    const created = await repo.create({
+      threadId: 'thread-1',
+      role: 'assistant',
+      content: 'Here is your image.',
+      parts: [
+        { type: 'text', text: 'Here is your image.' },
+        {
+          type: 'image',
+          url: 'data:image/png;base64,abc123',
+          mimeType: 'image/png',
+          name: 'panda.png',
+          alt: 'Generated panda',
+        },
+      ],
+    });
+
+    expect(created.parts).toEqual([
+      { type: 'text', text: 'Here is your image.' },
+      {
+        type: 'image',
+        url: 'data:image/png;base64,abc123',
+        mimeType: 'image/png',
+        name: 'panda.png',
+        alt: 'Generated panda',
+      },
+    ]);
+
+    const messages = await repo.listByThread('thread-1');
+    expect(messages.at(-1)?.parts).toEqual([
+      { type: 'text', text: 'Here is your image.' },
+      {
+        type: 'image',
+        url: 'data:image/png;base64,abc123',
+        mimeType: 'image/png',
+        name: 'panda.png',
+        alt: 'Generated panda',
+      },
+    ]);
+  });
+
   test('persists parentMessageId for reply linkage', async () => {
     const parent = await repo.create({
       threadId: 'thread-1',
@@ -256,6 +297,53 @@ describe('SurrealChatMessageRepository', () => {
     const replies = await repo.listReplies(parent.id);
     expect(replies.length).toBe(1);
     expect(replies[0].content).toBe('Reply');
+  });
+
+  test('listReplies returns replies ordered by createdAt ascending', async () => {
+    const parent = await repo.create({
+      threadId: 'thread-1',
+      role: 'user',
+      content: 'Parent',
+    });
+
+    const firstReply = await repo.create({
+      threadId: 'thread-1',
+      role: 'assistant',
+      content: 'First reply',
+      parentMessageId: parent.id,
+    });
+
+    const secondReply = await repo.create({
+      threadId: 'thread-1',
+      role: 'assistant',
+      content: 'Second reply',
+      parentMessageId: parent.id,
+    });
+
+    const replies = await repo.listReplies(parent.id);
+    expect(replies.map((reply) => reply.id)).toEqual([firstReply.id, secondReply.id]);
+  });
+
+  test('persists tool invocations on assistant messages', async () => {
+    const created = await repo.create({
+      threadId: 'thread-1',
+      role: 'assistant',
+      content: 'Found sources',
+      toolInvocations: [{
+        toolCallId: 'tool-1',
+        toolName: 'web_search',
+        state: 'output-available',
+        input: { query: 'current dollar real rate' },
+        output: { results: [{ title: 'Wise', url: 'https://wise.com' }] },
+      }],
+    });
+
+    expect(created.toolInvocations).toHaveLength(1);
+    expect(created.toolInvocations[0].toolName).toBe('web_search');
+
+    const found = await repo.findById(created.id);
+    expect(found?.toolInvocations).toHaveLength(1);
+    expect(found?.toolInvocations[0].toolCallId).toBe('tool-1');
   });
 });
 
@@ -359,23 +447,33 @@ describe('SurrealAttachmentRepository', () => {
     expect(attachments).toEqual([]);
   });
 
-  test('creates and lists attachments by message', async () => {
+  test('creates and lists attachments by message with metadata-only fields', async () => {
     const att = await repo.create({
       messageId: 'msg-1',
       type: 'image',
       name: 'photo.jpg',
       mimeType: 'image/jpeg',
-      url: 'https://example.com/photo.jpg',
+      path: '/Users/test/photo.jpg',
+      size: 204800,
+      lastModified: '2025-06-01T12:00:00Z',
+      status: 'ready',
     });
 
     expect(att.id).toBeString();
     expect(att.type).toBe('image');
+    expect(att.path).toBe('/Users/test/photo.jpg');
+    expect(att.size).toBe(204800);
+    expect(att.status).toBe('ready');
 
     await repo.create({
       messageId: 'msg-1',
-      type: 'file',
+      type: 'pdf',
       name: 'doc.pdf',
       mimeType: 'application/pdf',
+      path: '/Users/test/doc.pdf',
+      size: 1024000,
+      lastModified: '2025-06-01T13:00:00Z',
+      status: 'pending',
     });
 
     await repo.create({
@@ -383,7 +481,10 @@ describe('SurrealAttachmentRepository', () => {
       type: 'text',
       name: 'note.txt',
       mimeType: 'text/plain',
-      content: 'Hello world',
+      path: '/Users/test/note.txt',
+      size: 42,
+      lastModified: '2025-06-01T14:00:00Z',
+      status: 'ready',
     });
 
     const forMsg1 = await repo.listByMessage('msg-1');
@@ -391,6 +492,47 @@ describe('SurrealAttachmentRepository', () => {
 
     const forMsg2 = await repo.listByMessage('msg-2');
     expect(forMsg2.length).toBe(1);
-    expect(forMsg2[0].content).toBe('Hello world');
+    expect(forMsg2[0].path).toBe('/Users/test/note.txt');
+  });
+
+  test('updates attachment status to unavailable', async () => {
+    const att = await repo.create({
+      messageId: 'msg-1',
+      type: 'image',
+      name: 'photo.jpg',
+      mimeType: 'image/jpeg',
+      path: '/Users/test/photo.jpg',
+      size: 204800,
+      lastModified: '2025-06-01T12:00:00Z',
+      status: 'ready',
+    });
+
+    const updated = await repo.updateStatus(att.id, 'unavailable');
+    expect(updated.status).toBe('unavailable');
+    expect(updated.name).toBe('photo.jpg');
+
+    const list = await repo.listByMessage('msg-1');
+    expect(list[0].status).toBe('unavailable');
+  });
+
+  test('preserves attachment record when file goes missing', async () => {
+    const att = await repo.create({
+      messageId: 'msg-1',
+      type: 'text',
+      name: 'deleted.txt',
+      mimeType: 'text/plain',
+      path: '/tmp/deleted.txt',
+      size: 10,
+      lastModified: '2025-01-01T00:00:00Z',
+      status: 'ready',
+    });
+
+    await repo.updateStatus(att.id, 'unavailable');
+
+    const list = await repo.listByMessage('msg-1');
+    expect(list).toHaveLength(1);
+    expect(list[0].status).toBe('unavailable');
+    expect(list[0].path).toBe('/tmp/deleted.txt');
+    expect(list[0].name).toBe('deleted.txt');
   });
 });

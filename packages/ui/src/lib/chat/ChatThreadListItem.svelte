@@ -6,10 +6,11 @@
 		thread: ChatThread;
 		active?: boolean;
 		onclick?: () => void;
+		ontitleedit?: () => void;
 		ondelete?: () => void;
 	}
 
-	let { thread, active = false, onclick, ondelete }: Props = $props();
+	let { thread, active = false, onclick, ontitleedit, ondelete }: Props = $props();
 </script>
 
 <div
@@ -26,7 +27,16 @@
 	}}
 >
 	<div class="min-w-0 flex-1">
-		<span class="text-sm font-medium leading-tight truncate block">{thread.title}</span>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<span
+			class="text-sm font-medium leading-tight truncate block"
+			ondblclick={(event) => {
+				event.stopPropagation();
+				ontitleedit?.();
+			}}
+		>
+			{thread.title}
+		</span>
 		<span class="text-muted-foreground text-xs">
 			{new Date(thread.updatedAt).toLocaleDateString()}
 		</span>

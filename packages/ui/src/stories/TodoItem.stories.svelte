@@ -1,7 +1,7 @@
 <script module>
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
-  import { TodoItem } from '../lib';
+  import { TodoItem } from '../lib/index.js';
 
   const { Story } = defineMeta({
     title: 'Lab/TodoItem',

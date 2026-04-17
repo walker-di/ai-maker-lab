@@ -28,6 +28,7 @@
 	},
 	"dependencies": {
 		"@ai-sdk/svelte": "^4.0.161",
+		"@lucide/svelte": "^1.8.0",
 		"@surrealdb/node": "^3.0.3",
 		"@surrealdb/node-darwin-arm64": "1.0.0-beta.3",
 		"ai": "^6.0.161",

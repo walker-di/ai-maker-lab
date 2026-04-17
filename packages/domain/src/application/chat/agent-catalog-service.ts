@@ -72,6 +72,7 @@ export class AgentCatalogService {
       modelCardId: snapshot.modelCardId,
       systemPrompt: snapshot.systemPrompt,
       toolOverrides: snapshot.toolOverrides,
+      duplicatedFromSystemAgentId: snapshot.duplicatedFromSystemAgentId,
     });
 
     return this.resolveUser(stored);

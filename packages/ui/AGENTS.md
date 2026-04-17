@@ -20,6 +20,8 @@
 - Keep the package root export valid for packaged builds from `dist`.
 - When you add a new public component, wire both the library entrypoint and any relevant stories in the same change.
 - Add shadcn components from `packages/ui` with `bun x shadcn-svelte@latest add <component> --overwrite`.
+- For Lucide icons, import directly from `@lucide/svelte/icons/<icon-name>`.
+- Do not use named imports or wildcard imports from `@lucide/svelte` in normal shared components. Reserve wildcard imports for intentional dynamic icon loaders and document the build-size tradeoff when you do.
 
 ## Chat Components
 

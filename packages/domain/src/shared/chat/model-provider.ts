@@ -14,6 +14,9 @@ export const SupportedModelId = {
   Claude35Haiku: 'claude-3-5-haiku-20241022',
   Gemini25Pro: 'gemini-2.5-pro',
   Gemini25Flash: 'gemini-2.5-flash',
+  Gemini25FlashLite: 'gemini-2.5-flash-lite',
+  Gemini31ProPreview: 'gemini-3.1-pro-preview',
+  Gemini31FlashLitePreview: 'gemini-3.1-flash-lite-preview',
 } as const;
 
 export type SupportedModelId = (typeof SupportedModelId)[keyof typeof SupportedModelId];

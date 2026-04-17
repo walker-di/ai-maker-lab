@@ -13,8 +13,10 @@ type UserAgentRecord = {
   id: string;
   source: 'user';
   inheritsFromSystemAgentId?: string;
+  duplicatedFromSystemAgentId?: string;
   modelCardId: string;
   systemPrompt: string;
+  toolsEnabled?: boolean;
   toolOverrides: Record<string, boolean>;
   userOverrides: Record<string, unknown>;
   createdAt: string;
@@ -26,8 +28,10 @@ function toStoredUserAgent(record: UserAgentRecord): StoredUserAgent {
     id: record.id,
     source: 'user',
     inheritsFromSystemAgentId: record.inheritsFromSystemAgentId ?? undefined,
+    duplicatedFromSystemAgentId: record.duplicatedFromSystemAgentId ?? undefined,
     modelCardId: record.modelCardId,
     systemPrompt: record.systemPrompt,
+    toolsEnabled: record.toolsEnabled ?? undefined,
     toolOverrides: record.toolOverrides ?? {},
     userOverrides: record.userOverrides ?? {},
     createdAt: record.createdAt,
@@ -65,8 +69,10 @@ export class SurrealUserAgentRepository implements IUserAgentRepository {
       `CREATE ${TABLE} CONTENT {
         source: $source,
         inheritsFromSystemAgentId: $inheritsFromSystemAgentId,
+        duplicatedFromSystemAgentId: $duplicatedFromSystemAgentId,
         modelCardId: $modelCardId,
         systemPrompt: $systemPrompt,
+        toolsEnabled: $toolsEnabled,
         toolOverrides: $toolOverrides,
         userOverrides: $userOverrides,
         createdAt: $createdAt,
@@ -75,8 +81,10 @@ export class SurrealUserAgentRepository implements IUserAgentRepository {
       {
         source: 'user',
         inheritsFromSystemAgentId: input.inheritsFromSystemAgentId ?? null,
+        duplicatedFromSystemAgentId: input.duplicatedFromSystemAgentId ?? null,
         modelCardId: input.modelCardId,
         systemPrompt: input.systemPrompt,
+        toolsEnabled: input.toolsEnabled ?? null,
         toolOverrides: input.toolOverrides ?? {},
         userOverrides: { name: input.name, description: input.description },
         createdAt: now,
@@ -98,8 +106,10 @@ export class SurrealUserAgentRepository implements IUserAgentRepository {
       {
         source: 'user',
         inheritsFromSystemAgentId: existing.inheritsFromSystemAgentId ?? null,
+        duplicatedFromSystemAgentId: existing.duplicatedFromSystemAgentId ?? null,
         modelCardId: input.modelCardId ?? existing.modelCardId,
         systemPrompt: input.systemPrompt ?? existing.systemPrompt,
+        toolsEnabled: input.toolsEnabled ?? existing.toolsEnabled ?? null,
         toolOverrides: input.toolOverrides ?? existing.toolOverrides,
         userOverrides: { ...existing.userOverrides, ...input.userOverrides },
         createdAt: existing.createdAt,

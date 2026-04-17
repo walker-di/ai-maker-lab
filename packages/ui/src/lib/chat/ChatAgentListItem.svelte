@@ -37,6 +37,8 @@
 				<Badge variant="outline" class="text-[10px]">System</Badge>
 			{:else if agent.isInherited}
 				<Badge variant="outline" class="text-[10px]">Inherited</Badge>
+			{:else if agent.isDuplicatedFromSystem}
+				<Badge variant="outline" class="text-[10px]">Duplicated</Badge>
 			{/if}
 		</div>
 		<p class="text-muted-foreground mt-0.5 text-xs truncate">{agent.modelCard.label}</p>

@@ -1,7 +1,7 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { expect, userEvent, waitFor, within } from 'storybook/test';
-  import { Page } from '../lib';
+  import { Page } from '../lib/index.js';
 
   // More on how to set up stories at: https://storybook.js.org/docs/writing-stories
   const { Story } = defineMeta({
@@ -12,9 +12,8 @@
       layout: 'fullscreen',
     },
   });
-</script>
 
-<Story name="Logged In" play={async ({ canvasElement }) => {
+  async function playLoggedIn({ canvasElement }: { canvasElement: HTMLElement }) {
     const canvas = within(canvasElement);
     const loginButton = canvas.getByRole('button', { name: /Log in/i });
     await expect(loginButton).toBeInTheDocument();
@@ -23,7 +22,9 @@
 
     const logoutButton = canvas.getByRole('button', { name: /Log out/i });
     await expect(logoutButton).toBeInTheDocument();
-  }}
-/>
+  }
+</script>
+
+<Story name="Logged In" play={playLoggedIn} />
 
 <Story name="Logged Out" />

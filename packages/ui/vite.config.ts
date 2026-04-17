@@ -12,6 +12,24 @@ const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(file
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
 export default defineConfig({
   plugins: [tailwindcss(), sveltekit(), devtoolsJson()],
+  optimizeDeps: {
+    include: [
+      '@lucide/svelte/icons/code-2',
+      '@lucide/svelte/icons/eye',
+      '@lucide/svelte/icons/eye-off',
+      '@lucide/svelte/icons/file-search',
+      '@lucide/svelte/icons/globe',
+      '@lucide/svelte/icons/image',
+      '@lucide/svelte/icons/info',
+      '@lucide/svelte/icons/map-pinned',
+      '@lucide/svelte/icons/radar',
+      '@lucide/svelte/icons/search',
+      '@lucide/svelte/icons/sparkles',
+      '@lucide/svelte/icons/square-terminal',
+      '@lucide/svelte/icons/waypoints',
+      '@lucide/svelte/icons/x',
+    ],
+  },
   test: {
     projects: [
       {

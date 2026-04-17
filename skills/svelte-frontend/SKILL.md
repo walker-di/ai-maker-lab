@@ -270,6 +270,12 @@ Chat UI composition rules:
 - The `packages/ui` chat types in `src/lib/chat/types.ts` are structural mirrors of domain types. Do not import `domain/shared` from `packages/ui`; domain types satisfy UI types structurally at the app boundary.
 - The chat page model + composition helper pattern follows the same layout as other experiment routes (e.g. `experiments/todo`).
 
+Lucide Svelte icon rule:
+- Prefer direct per-icon imports from `@lucide/svelte/icons/<icon-name>`.
+- Do not use named imports from `@lucide/svelte` as the default pattern in touched code.
+- Avoid `import * as icons from '@lucide/svelte'` in normal components because it weakens the bundle/build advantages of direct imports.
+- If a dynamic icon loader is truly required, keep it isolated, justify it in the change, and document the bundle-size/build-time tradeoff.
+
 Adapter rules:
 - API clients, local storage, analytics, and drag-drop/platform integrations belong in adapters.
 - Components and page models should depend on adapter abstractions or thin wrappers, not raw SDK usage everywhere.

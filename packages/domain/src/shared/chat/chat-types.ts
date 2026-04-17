@@ -18,15 +18,65 @@ export interface ChatThread {
   readonly updatedAt: string;
 }
 
+export type AttachmentClassification = 'text' | 'image' | 'pdf' | 'video' | 'unsupported';
+
+export type AttachmentStatus = 'pending' | 'ready' | 'unavailable' | 'rejected';
+
+export type ChatToolInvocationState =
+  | 'input-streaming'
+  | 'input-available'
+  | 'output-available'
+  | 'error'
+  | 'approval-requested'
+  | 'approval-responded';
+
 export interface AttachmentRef {
   readonly id: string;
   readonly messageId: string;
-  readonly type: 'image' | 'file' | 'pdf' | 'video' | 'text';
+  readonly type: AttachmentClassification;
   readonly name: string;
   readonly mimeType: string;
-  readonly url?: string;
-  readonly content?: string;
+  readonly path?: string;
+  readonly inlineDataBase64?: string;
+  readonly size: number;
+  readonly lastModified: string;
+  readonly status: AttachmentStatus;
 }
+
+export interface ChatToolInvocation {
+  readonly toolCallId: string;
+  readonly toolName: string;
+  readonly state: ChatToolInvocationState;
+  readonly input?: unknown;
+  readonly output?: unknown;
+  readonly errorText?: string;
+  readonly providerExecuted?: boolean;
+}
+
+export interface ChatTextMessagePart {
+  readonly type: 'text';
+  readonly text: string;
+}
+
+export interface ChatImageMessagePart {
+  readonly type: 'image';
+  readonly url: string;
+  readonly mimeType?: string;
+  readonly name?: string;
+  readonly alt?: string;
+}
+
+export interface ChatFileMessagePart {
+  readonly type: 'file';
+  readonly url: string;
+  readonly mimeType?: string;
+  readonly name: string;
+}
+
+export type ChatMessagePart =
+  | ChatTextMessagePart
+  | ChatImageMessagePart
+  | ChatFileMessagePart;
 
 export interface ChatMessage {
   readonly id: string;
@@ -36,8 +86,15 @@ export interface ChatMessage {
   readonly parentMessageId?: string;
   readonly agentId?: string;
   readonly chatRunId?: string;
+  readonly parts?: readonly ChatMessagePart[];
   readonly attachments: readonly AttachmentRef[];
+  readonly toolInvocations: readonly ChatToolInvocation[];
   readonly createdAt: string;
+}
+
+export interface ChatSubthread {
+  readonly parentMessage: ChatMessage;
+  readonly replies: readonly ChatMessage[];
 }
 
 export interface ModelSnapshot {
@@ -81,5 +138,7 @@ export interface CreateMessageInput {
   readonly content: string;
   readonly parentMessageId?: string;
   readonly agentId?: string;
-  readonly attachments?: readonly Omit<AttachmentRef, 'id' | 'messageId'>[];
+  readonly parts?: readonly ChatMessagePart[];
+  readonly attachments?: readonly Omit<AttachmentRef, 'id'>[];
+  readonly toolInvocations?: readonly ChatToolInvocation[];
 }

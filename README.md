@@ -20,6 +20,15 @@ Use the package surfaces intentionally:
 - Server entrypoints: use `domain/server`.
 - Do not import the `domain` package root from frontend code.
 
+## Icon Imports
+
+Lucide icons should follow the direct-import pattern recommended by the Lucide Svelte docs:
+
+- Import icons from `@lucide/svelte/icons/<icon-name>`.
+- Prefer direct icon imports over barrel imports from `@lucide/svelte` for better tree-shaking and faster builds.
+- Avoid `import * as icons from '@lucide/svelte'` in normal components.
+- Only use a wildcard Lucide import for an intentional dynamic icon loader, and document the bundle-size/build-time tradeoff in the same change.
+
 ## Reference Architecture
 
 The todo experiment is the current reference flow for the workspace architecture:

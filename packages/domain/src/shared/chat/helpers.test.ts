@@ -10,6 +10,9 @@ import {
   Claude4SonnetModelCard,
   Gemini25ProModelCard,
   Gemini25FlashModelCard,
+  Gemini25FlashLiteModelCard,
+  Gemini31ProPreviewModelCard,
+  Gemini31FlashLitePreviewModelCard,
   MODEL_CARD_CATALOG,
   ModelProvider,
   formatRegistryId,
@@ -34,6 +37,12 @@ describe('model-card lookups', () => {
     expect(card!.provider).toBe('anthropic');
   });
 
+  test('finds Google preview cards by modelId', () => {
+    const card = findModelCardByModelId('gemini-3.1-pro-preview');
+    expect(card).toBeDefined();
+    expect(card).toBe(Gemini31ProPreviewModelCard);
+  });
+
   test('returns undefined for unknown registryId', () => {
     expect(findModelCardByRegistryId('openai:nonexistent')).toBeUndefined();
   });
@@ -48,7 +57,7 @@ describe('model-card lookups', () => {
     expect(openaiCards.every((c) => c.provider === 'openai')).toBe(true);
 
     const googleCards = findModelCardByProvider(ModelProvider.Google);
-    expect(googleCards.length).toBe(2);
+    expect(googleCards.length).toBe(5);
   });
 
   test('formatRegistryId produces correct format', () => {
@@ -60,6 +69,11 @@ describe('model-card lookups', () => {
 describe('capability checks', () => {
   test('Gemini 2.5 Pro supports video', () => {
     expect(supportsModality(Gemini25ProModelCard.capabilities, 'video')).toBe(true);
+  });
+
+  test('Gemini 3.1 models support video', () => {
+    expect(supportsModality(Gemini31ProPreviewModelCard.capabilities, 'video')).toBe(true);
+    expect(supportsModality(Gemini31FlashLitePreviewModelCard.capabilities, 'video')).toBe(true);
   });
 
   test('GPT-4.1 does not support video', () => {
@@ -135,6 +149,7 @@ describe('agent resolution', () => {
     expect(resolved.id).toBe('user-agent-1');
     expect(resolved.source).toBe('user');
     expect(resolved.isInherited).toBe(true);
+    expect(resolved.isDuplicatedFromSystem).toBe(false);
     expect(resolved.isStandalone).toBe(false);
     expect(resolved.isEditable).toBe(true);
     expect(resolved.name).toBe('Test Agent');
@@ -158,10 +173,81 @@ describe('agent resolution', () => {
     const resolved = resolveUserAgent(standaloneUser, undefined, Claude4SonnetModelCard);
 
     expect(resolved.isInherited).toBe(false);
+    expect(resolved.isDuplicatedFromSystem).toBe(false);
     expect(resolved.isStandalone).toBe(true);
     expect(resolved.name).toBe('My Agent');
     expect(resolved.description).toBe('Custom description');
     expect(resolved.modelCard).toBe(Claude4SonnetModelCard);
+  });
+
+  test('resolveUserAgent keeps standalone runtime tool state explicit', () => {
+    const standaloneUser: StoredUserAgent = {
+      id: 'user-openai',
+      source: 'user',
+      modelCardId: Gpt41ModelCard.registryId,
+      systemPrompt: 'Standalone prompt.',
+      toolOverrides: {},
+      userOverrides: { name: 'OpenAI Agent', description: 'No hosted defaults enabled.' },
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+    };
+
+    const resolved = resolveUserAgent(standaloneUser, undefined, Gpt41ModelCard);
+
+    expect(resolved.toolState).toEqual({});
+  });
+
+  test('resolveSystemAgent defaults toolsEnabled to true when undefined', () => {
+    const resolved = resolveSystemAgent(systemDef);
+    expect(resolved.toolsEnabled).toBe(true);
+  });
+
+  test('resolveSystemAgent preserves explicit toolsEnabled=false from definition', () => {
+    const resolved = resolveSystemAgent({ ...systemDef, toolsEnabled: false });
+    expect(resolved.toolsEnabled).toBe(false);
+  });
+
+  test('resolveUserAgent inherits toolsEnabled from the system definition when not overridden', () => {
+    const userAgent: StoredUserAgent = {
+      id: 'user-inherit-tools',
+      source: 'user',
+      inheritsFromSystemAgentId: 'system-test',
+      modelCardId: Gpt41ModelCard.registryId,
+      systemPrompt: 'Inherit tools.',
+      toolOverrides: {},
+      userOverrides: {},
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+    };
+
+    const resolved = resolveUserAgent(
+      userAgent,
+      { ...systemDef, toolsEnabled: false },
+      Gpt41ModelCard,
+    );
+    expect(resolved.toolsEnabled).toBe(false);
+  });
+
+  test('resolveUserAgent prefers explicit toolsEnabled override on the stored user agent', () => {
+    const userAgent: StoredUserAgent = {
+      id: 'user-override-tools',
+      source: 'user',
+      inheritsFromSystemAgentId: 'system-test',
+      modelCardId: Gpt41ModelCard.registryId,
+      systemPrompt: 'Override tools.',
+      toolsEnabled: true,
+      toolOverrides: {},
+      userOverrides: {},
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+    };
+
+    const resolved = resolveUserAgent(
+      userAgent,
+      { ...systemDef, toolsEnabled: false },
+      Gpt41ModelCard,
+    );
+    expect(resolved.toolsEnabled).toBe(true);
   });
 });
 
@@ -170,7 +256,7 @@ describe('agent duplication', () => {
     id: 'system-dup-test',
     name: 'Dup Agent',
     description: 'Agent to duplicate.',
-    modelCard: Gemini25FlashModelCard,
+    modelCard: Gemini25FlashLiteModelCard,
     systemPrompt: 'Original prompt.',
     defaultToolState: { webSearch: true },
     metadata: { priority: 'high' },
@@ -182,7 +268,8 @@ describe('agent duplication', () => {
     expect(duplicated.id).toBe('user-dup-1');
     expect(duplicated.source).toBe('user');
     expect(duplicated.inheritsFromSystemAgentId).toBeUndefined();
-    expect(duplicated.modelCardId).toBe(Gemini25FlashModelCard.registryId);
+    expect(duplicated.duplicatedFromSystemAgentId).toBe('system-dup-test');
+    expect(duplicated.modelCardId).toBe(Gemini25FlashLiteModelCard.registryId);
     expect(duplicated.systemPrompt).toBe('Original prompt.');
     expect(duplicated.toolOverrides).toEqual({ webSearch: true });
     expect(duplicated.userOverrides).toEqual({
@@ -198,10 +285,11 @@ describe('agent duplication', () => {
 
   test('resolved duplicated agent is editable and not inherited', () => {
     const duplicated = duplicateSystemAgentAsUser(systemDef, 'user-dup-3');
-    const resolved = resolveUserAgent(duplicated, undefined, Gemini25FlashModelCard);
+    const resolved = resolveUserAgent(duplicated, undefined, Gemini25FlashLiteModelCard);
 
     expect(resolved.isEditable).toBe(true);
     expect(resolved.isInherited).toBe(false);
+    expect(resolved.isDuplicatedFromSystem).toBe(true);
     expect(resolved.isStandalone).toBe(true);
   });
 });

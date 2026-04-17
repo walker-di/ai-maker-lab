@@ -1,23 +1,42 @@
 <script lang="ts">
+	import ChatToolInvocationPill from './ChatToolInvocationPill.svelte';
+	import type { ToolInvocationInfo } from './types.js';
+
 	interface Props {
 		toolName: string;
 		status?: 'pending' | 'running' | 'completed' | 'failed';
+		invocation?: ToolInvocationInfo;
+		onclick?: () => void;
 	}
 
-	let { toolName, status = 'pending' }: Props = $props();
+	let { toolName, status = 'pending', invocation, onclick }: Props = $props();
 
-	const statusIcon: Record<string, string> = {
-		pending: '⏳',
-		running: '⚙️',
-		completed: '✅',
-		failed: '❌',
-	};
+	const effectiveStatus = $derived(
+		invocation
+			? invocation.state === 'output-available'
+				? 'completed'
+				: invocation.state === 'error'
+					? 'failed'
+					: invocation.state === 'input-streaming'
+						? 'running'
+						: 'running'
+			: status,
+	);
+
+	const synthesizedInvocation = $derived<ToolInvocationInfo>(
+		invocation ?? {
+			toolCallId: toolName,
+			toolName,
+			state:
+				effectiveStatus === 'completed'
+					? 'output-available'
+					: effectiveStatus === 'failed'
+						? 'error'
+						: 'input-streaming',
+			input: undefined,
+			output: undefined,
+		},
+	);
 </script>
 
-<div class="text-muted-foreground flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs">
-	<span>{statusIcon[status]}</span>
-	<span class="font-mono">{toolName}</span>
-	{#if status === 'running'}
-		<span class="animate-pulse">...</span>
-	{/if}
-</div>
+<ChatToolInvocationPill invocation={synthesizedInvocation} {onclick} />

@@ -36,6 +36,7 @@ export function resolveSystemAgent(definition: SystemAgentDefinition): ResolvedA
     isEditable: false,
     modelCard: definition.modelCard,
     systemPrompt: definition.systemPrompt,
+    toolsEnabled: definition.toolsEnabled ?? true,
     toolState: { ...definition.defaultToolState },
     metadata: { ...definition.metadata },
   };
@@ -47,11 +48,14 @@ export function resolveUserAgent(
   modelCard: ModelCard,
 ): ResolvedAgentProfile {
   const isInherited = userAgent.inheritsFromSystemAgentId != null && systemDefinition != null;
+  const isDuplicatedFromSystem = userAgent.duplicatedFromSystemAgentId != null;
 
   const baseName = isInherited ? systemDefinition!.name : userAgent.id;
   const baseDescription = isInherited ? systemDefinition!.description : '';
   const baseToolState = isInherited ? { ...systemDefinition!.defaultToolState } : {};
   const baseMetadata = isInherited ? { ...systemDefinition!.metadata } : {};
+  const baseToolsEnabled = isInherited ? systemDefinition!.toolsEnabled ?? true : true;
+  const toolsEnabled = userAgent.toolsEnabled ?? baseToolsEnabled;
 
   return {
     id: userAgent.id,
@@ -60,10 +64,12 @@ export function resolveUserAgent(
     source: 'user',
     inheritsFromSystemAgentId: userAgent.inheritsFromSystemAgentId,
     isInherited,
+    isDuplicatedFromSystem,
     isStandalone: !isInherited && userAgent.inheritsFromSystemAgentId == null,
     isEditable: true,
     modelCard,
     systemPrompt: userAgent.systemPrompt,
+    toolsEnabled,
     toolState: { ...baseToolState, ...userAgent.toolOverrides },
     metadata: { ...baseMetadata, ...userAgent.userOverrides },
   };
@@ -77,6 +83,7 @@ export function duplicateSystemAgentAsUser(
   return {
     id: newUserId,
     source: 'user',
+    duplicatedFromSystemAgentId: definition.id,
     modelCardId: definition.modelCard.registryId,
     systemPrompt: definition.systemPrompt,
     toolOverrides: { ...definition.defaultToolState },

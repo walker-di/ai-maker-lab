@@ -2,6 +2,11 @@ import type { ModelMessage, ToolSet } from 'ai';
 import type { ModelCard } from './model-card.js';
 import type { ModelCapabilityMatrix } from './model-capability-matrix.js';
 import type { ModelInputPolicy } from './model-input-policy.js';
+import type {
+  NativeToolSupportLevel,
+  HostedNativeToolName,
+  NativeToolFamily,
+} from './model-native-tools.js';
 import { ModelProvider, SupportedModelId, formatRegistryId } from './model-provider.js';
 import { DEFAULT_UI_PRESENTATION } from './model-ui-presentation.js';
 import { DEFAULT_INPUT_POLICY, VIDEO_CAPABLE_INPUT_POLICY } from './model-input-policy.js';
@@ -34,6 +39,10 @@ interface ModelFamily {
   readonly capabilities: ModelCapabilityMatrix;
   readonly inputPolicy: ModelInputPolicy;
   readonly disabledComposerControls: readonly string[];
+  readonly nativeToolSupportLevel: NativeToolSupportLevel;
+  readonly nativeTools: readonly HostedNativeToolName[];
+  readonly nativeToolFamilies: readonly NativeToolFamily[];
+  readonly toolPolicy?: Partial<ModelCard['toolPolicy']>;
   readonly strategy: ModelFamilyStrategy;
 }
 
@@ -59,7 +68,17 @@ function defineCard(family: ModelFamily, member: MemberSpec): ModelCard {
       disabledComposerControls: family.disabledComposerControls,
     },
     inputPolicy: family.inputPolicy,
-    toolPolicy: DEFAULT_TOOL_POLICY,
+    nativeToolSupportLevel: family.nativeToolSupportLevel,
+    nativeTools: family.nativeTools,
+    nativeToolFamilies: family.nativeToolFamilies,
+    toolPolicy: {
+      ...DEFAULT_TOOL_POLICY,
+      ...family.toolPolicy,
+      hostedToolConfigs: {
+        ...DEFAULT_TOOL_POLICY.hostedToolConfigs,
+        ...(family.toolPolicy?.hostedToolConfigs ?? {}),
+      },
+    },
     providerOptionsPreset: {},
   };
 }
@@ -119,6 +138,13 @@ const GPT41_FAMILY: ModelFamily = {
   capabilities: VISION_NO_VIDEO,
   inputPolicy: NO_VIDEO_INPUT_POLICY,
   disabledComposerControls: ['video-attach'],
+  nativeToolSupportLevel: 'hosted',
+  nativeTools: ['web_search', 'file_search', 'image_generation', 'code_interpreter'],
+  nativeToolFamilies: ['search', 'retrieval', 'imageGeneration', 'codeExecution'],
+  toolPolicy: {
+    defaultEnabledTools: ['web_search', 'image_generation'],
+    removableTools: ['web_search', 'file_search', 'image_generation', 'code_interpreter'],
+  },
   strategy: { prepareMessages: stripPartTypes(['file']) },
 };
 
@@ -151,6 +177,13 @@ const CLAUDE4_FAMILY: ModelFamily = {
   capabilities: VISION_NO_VIDEO,
   inputPolicy: NO_VIDEO_INPUT_POLICY,
   disabledComposerControls: ['video-attach'],
+  nativeToolSupportLevel: 'hosted',
+  nativeTools: ['web_search', 'web_fetch', 'code_execution'],
+  nativeToolFamilies: ['search', 'retrieval', 'codeExecution'],
+  toolPolicy: {
+    defaultEnabledTools: [],
+    removableTools: ['web_search', 'web_fetch', 'code_execution'],
+  },
   strategy: { prepareMessages: stripPartTypes(['file']) },
 };
 
@@ -169,6 +202,13 @@ const CLAUDE35_FAMILY: ModelFamily = {
   capabilities: VISION_TEXT_ONLY,
   inputPolicy: CLAUDE35_INPUT_POLICY,
   disabledComposerControls: ['video-attach', 'file-attach', 'pdf-attach'],
+  nativeToolSupportLevel: 'hosted',
+  nativeTools: ['web_search', 'web_fetch', 'code_execution'],
+  nativeToolFamilies: ['search', 'retrieval', 'codeExecution'],
+  toolPolicy: {
+    defaultEnabledTools: [],
+    removableTools: ['web_search', 'web_fetch', 'code_execution'],
+  },
   strategy: { prepareMessages: stripPartTypes(['file']) },
 };
 
@@ -187,6 +227,13 @@ const GEMINI25_FAMILY: ModelFamily = {
   capabilities: FULL_MULTIMODAL,
   inputPolicy: VIDEO_CAPABLE_INPUT_POLICY,
   disabledComposerControls: [],
+  nativeToolSupportLevel: 'hosted',
+  nativeTools: ['google_search', 'file_search', 'url_context', 'google_maps', 'code_execution'],
+  nativeToolFamilies: ['search', 'retrieval', 'urlContext', 'maps', 'codeExecution'],
+  toolPolicy: {
+    defaultEnabledTools: [],
+    removableTools: ['google_search', 'file_search', 'url_context', 'google_maps', 'code_execution'],
+  },
   strategy: {},
 };
 
@@ -204,6 +251,45 @@ export const Gemini25FlashModelCard = defineCard(GEMINI25_FAMILY, {
   badges: ['fast', 'video'],
 });
 
+export const Gemini25FlashLiteModelCard = defineCard(GEMINI25_FAMILY, {
+  modelId: SupportedModelId.Gemini25FlashLite,
+  label: 'Gemini 2.5 Flash-Lite',
+  description: 'Google Gemini 2.5 Flash-Lite — fastest low-cost multimodal model.',
+  badges: ['fast', 'budget', 'video'],
+});
+
+// ── Google Gemini 3.1 family ──
+
+const GEMINI31_FAMILY: ModelFamily = {
+  familyId: 'gemini31',
+  provider: ModelProvider.Google,
+  capabilities: FULL_MULTIMODAL,
+  inputPolicy: VIDEO_CAPABLE_INPUT_POLICY,
+  disabledComposerControls: [],
+  nativeToolSupportLevel: 'hosted',
+  nativeTools: ['google_search', 'file_search', 'url_context', 'google_maps', 'code_execution'],
+  nativeToolFamilies: ['search', 'retrieval', 'urlContext', 'maps', 'codeExecution'],
+  toolPolicy: {
+    defaultEnabledTools: [],
+    removableTools: ['google_search', 'file_search', 'url_context', 'google_maps', 'code_execution'],
+  },
+  strategy: {},
+};
+
+export const Gemini31ProPreviewModelCard = defineCard(GEMINI31_FAMILY, {
+  modelId: SupportedModelId.Gemini31ProPreview,
+  label: 'Gemini 3.1 Pro',
+  description: 'Google Gemini 3.1 Pro preview — advanced multimodal reasoning.',
+  badges: ['multimodal', 'video'],
+});
+
+export const Gemini31FlashLitePreviewModelCard = defineCard(GEMINI31_FAMILY, {
+  modelId: SupportedModelId.Gemini31FlashLitePreview,
+  label: 'Gemini 3.1 Flash-Lite',
+  description: 'Google Gemini 3.1 Flash-Lite preview — cost-efficient multimodal speed.',
+  badges: ['fast', 'budget', 'video'],
+});
+
 // ── Catalog ──
 
 export const MODEL_CARD_CATALOG: readonly ModelCard[] = [
@@ -214,6 +300,9 @@ export const MODEL_CARD_CATALOG: readonly ModelCard[] = [
   Claude35HaikuModelCard,
   Gemini25ProModelCard,
   Gemini25FlashModelCard,
+  Gemini25FlashLiteModelCard,
+  Gemini31ProPreviewModelCard,
+  Gemini31FlashLitePreviewModelCard,
 ];
 
 // ── Family strategies (keyed by familyId) ──
@@ -223,4 +312,5 @@ export const FAMILY_STRATEGIES: Record<string, ModelFamilyStrategy> = {
   [CLAUDE4_FAMILY.familyId]: CLAUDE4_FAMILY.strategy,
   [CLAUDE35_FAMILY.familyId]: CLAUDE35_FAMILY.strategy,
   [GEMINI25_FAMILY.familyId]: GEMINI25_FAMILY.strategy,
+  [GEMINI31_FAMILY.familyId]: GEMINI31_FAMILY.strategy,
 };

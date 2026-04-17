@@ -1,5 +1,11 @@
 import type { IDbClient } from '../../../core/interfaces/IDbClient.js';
-import type { ChatMessage, CreateMessageInput, AttachmentRef } from '../../../shared/chat/index.js';
+import type {
+  ChatMessage,
+  CreateMessageInput,
+  AttachmentRef,
+  ChatToolInvocation,
+  ChatMessagePart,
+} from '../../../shared/chat/index.js';
 import type { IChatMessageRepository } from '../../../application/chat/ports.js';
 import { createRecordId } from '../record-id.js';
 
@@ -13,7 +19,9 @@ type MessageRecord = {
   parentMessageId?: string;
   agentId?: string;
   chatRunId?: string;
+  parts?: ChatMessagePart[];
   attachments: AttachmentRef[];
+  toolInvocations: ChatToolInvocation[];
   createdAt: string;
 };
 
@@ -26,7 +34,9 @@ function toMessage(record: MessageRecord): ChatMessage {
     parentMessageId: record.parentMessageId ?? undefined,
     agentId: record.agentId ?? undefined,
     chatRunId: record.chatRunId ?? undefined,
+    parts: record.parts ?? [],
     attachments: record.attachments ?? [],
+    toolInvocations: record.toolInvocations ?? [],
     createdAt: record.createdAt,
   };
 }
@@ -64,7 +74,9 @@ export class SurrealChatMessageRepository implements IChatMessageRepository {
         content: $content,
         parentMessageId: $parentMessageId,
         agentId: $agentId,
+        parts: $parts,
         attachments: $attachments,
+        toolInvocations: $toolInvocations,
         createdAt: $createdAt
       };`,
       {
@@ -73,7 +85,9 @@ export class SurrealChatMessageRepository implements IChatMessageRepository {
         content: input.content,
         parentMessageId: input.parentMessageId ?? null,
         agentId: input.agentId ?? null,
+        parts: input.parts ?? [],
         attachments: input.attachments ?? [],
+        toolInvocations: input.toolInvocations ?? [],
         createdAt: new Date().toISOString(),
       },
     );

@@ -22,6 +22,8 @@
 			isInherited: false,
 			isStandalone: false,
 			isEditable: false,
+			toolsEnabled: true,
+			toolState: {},
 			modelCard: {
 				label: 'GPT-4o',
 				registryId: 'openai:gpt-4o',
@@ -42,6 +44,8 @@
 			isInherited: false,
 			isStandalone: false,
 			isEditable: false,
+			toolsEnabled: true,
+			toolState: {},
 			modelCard: {
 				label: 'Claude 4 Sonnet',
 				registryId: 'anthropic:claude-4-sonnet',
@@ -65,6 +69,10 @@
 		placeholder = 'Ask, search, or make anything...',
 		disabledControls = [],
 	}: Props = $props();
+
+	const defaultAgent = $derived(
+		agents.find((agent) => agent.name === selectedAgentName) ?? agents[0] ?? null,
+	);
 </script>
 
 <div class="dark bg-background text-foreground p-6" data-testid="composer-fixture" style="width: 480px; font-family: system-ui, sans-serif;">
@@ -72,13 +80,14 @@
 		<ChatComposer
 			bind:draft
 			{agents}
-			{selectedAgentName}
+			{defaultAgent}
 			{canSend}
 			{isSending}
 			{placeholder}
 			{disabledControls}
 			onSend={() => {}}
-			onSelectAgent={() => {}}
+			onAddParticipant={() => {}}
+			onSetDefaultAgent={() => {}}
 		/>
 	</Provider>
 </div>

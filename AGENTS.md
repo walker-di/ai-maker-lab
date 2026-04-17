@@ -76,6 +76,8 @@ Use the frontend skill for Svelte/SvelteKit UI work and the backend skill for sh
 - If a UI library or shared UI package already provides a component, use it instead of rebuilding it locally.
 - Wrap or style shared primitives when needed, but keep the underlying shared component boundary intact.
 - Focus on clean spacing, accessible interaction, and maintainable composition rather than one-off app-specific markup.
+- For Lucide icons in Svelte code, prefer direct per-icon imports from `@lucide/svelte/icons/<icon-name>` instead of named or wildcard imports from `@lucide/svelte`.
+- Avoid `import * as icons from '@lucide/svelte'` in normal components. Use it only for a deliberate dynamic icon loader, and document the performance tradeoff in the same change.
 - Use the AI SDK Svelte `Chat` class (from `@ai-sdk/svelte`) for streaming chat UIs. Do not destructure its reactive properties; always access via `chat.messages`, `chat.status`, etc.
 - Use reactive getters for `Chat` constructor arguments that may change: `new Chat({ get id() { return threadId; } })`.
 

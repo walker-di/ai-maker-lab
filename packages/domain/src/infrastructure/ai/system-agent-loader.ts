@@ -30,7 +30,10 @@ const DEFAULT_SYSTEM_AGENTS: SystemAgentDefinition[] = [
     description: 'An assistant for research and analysis tasks with multimodal capabilities.',
     modelCard: Gemini25ProModelCard,
     systemPrompt: 'You are a research analyst. Help users analyze data, documents, and media to extract insights.',
-    defaultToolState: {},
+    defaultToolState: {
+      google_search: true,
+      url_context: true,
+    },
     metadata: { category: 'research' },
   },
 ];

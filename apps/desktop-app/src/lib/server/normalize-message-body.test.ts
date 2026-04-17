@@ -7,6 +7,7 @@ describe('normalizeMessageBody', () => {
 		expect(result).toEqual({
 			text: 'Hello world',
 			parentMessageId: undefined,
+			toolOverrides: undefined,
 			attachments: undefined,
 		});
 	});
@@ -20,9 +21,18 @@ describe('normalizeMessageBody', () => {
 		expect(result.parentMessageId).toBe('msg-123');
 	});
 
-	test('legacy payload: preserves attachments', () => {
+	test('legacy payload: preserves valid inline attachments', () => {
 		const attachments = [
-			{ type: 'image', name: 'photo.png', mimeType: 'image/png', url: 'data:...' },
+			{
+				type: 'image',
+				name: 'photo.png',
+				mimeType: 'image/png',
+				inlineDataBase64: 'iVBORw0KGgo=',
+				size: 8,
+				lastModified: '2026-04-15T22:15:54.000Z',
+				status: 'pending',
+				messageId: '',
+			},
 		];
 		const result = normalizeMessageBody({
 			text: 'See attached',
@@ -103,6 +113,55 @@ describe('normalizeMessageBody', () => {
 		expect(result.parentMessageId).toBe('parent-42');
 	});
 
+	test('AI SDK payload: preserves attachment extras including inline data', () => {
+		const attachments = [
+			{
+				type: 'image',
+				name: 'screenshot.png',
+				mimeType: 'image/png',
+				inlineDataBase64: 'iVBORw0KGgo=',
+				size: 8,
+				lastModified: '2026-04-15T22:15:54.000Z',
+				status: 'pending',
+				messageId: '',
+			},
+		];
+		const result = normalizeMessageBody({
+			messages: [
+				{
+					id: 'msg-1',
+					role: 'user',
+					parts: [{ type: 'text', text: 'Describe this screenshot' }],
+				},
+			],
+			attachments,
+		});
+
+		expect(result.attachments).toEqual(attachments);
+	});
+
+	test('AI SDK payload: preserves boolean tool overrides from body extras', () => {
+		const result = normalizeMessageBody({
+			messages: [
+				{
+					id: 'msg-1',
+					role: 'user',
+					parts: [{ type: 'text', text: 'Search the web' }],
+				},
+			],
+			toolOverrides: {
+				web_search: true,
+				file_search: false,
+				ignored: 'yes',
+			},
+		});
+
+		expect(result.toolOverrides).toEqual({
+			web_search: true,
+			file_search: false,
+		});
+	});
+
 	test('AI SDK payload: ignores non-text parts', () => {
 		const result = normalizeMessageBody({
 			messages: [
@@ -163,5 +222,104 @@ describe('normalizeMessageBody', () => {
 				messages: [{ id: 'msg-1', role: 'user', parts: [] }],
 			}),
 		).toThrow('User message has no text parts.');
+	});
+
+	test('rejects attachments with a "path" field over HTTP', () => {
+		expect(() =>
+			normalizeMessageBody({
+				text: 'See attached',
+				attachments: [
+					{
+						type: 'image',
+						name: 'leak.png',
+						mimeType: 'image/png',
+						path: '/etc/passwd',
+						size: 0,
+						lastModified: '2026-04-15T22:15:54.000Z',
+						status: 'pending',
+						messageId: '',
+					},
+				],
+			}),
+		).toThrow(/path/);
+	});
+
+	test('rejects attachments without inlineDataBase64', () => {
+		expect(() =>
+			normalizeMessageBody({
+				text: 'See attached',
+				attachments: [
+					{
+						type: 'image',
+						name: 'photo.png',
+						mimeType: 'image/png',
+						size: 0,
+						lastModified: '2026-04-15T22:15:54.000Z',
+						status: 'pending',
+						messageId: '',
+					},
+				],
+			}),
+		).toThrow(/inlineDataBase64/);
+	});
+
+	test('rejects attachments with an unknown type', () => {
+		expect(() =>
+			normalizeMessageBody({
+				text: 'See attached',
+				attachments: [
+					{
+						type: 'audio',
+						name: 'sound.mp3',
+						mimeType: 'audio/mpeg',
+						inlineDataBase64: 'data',
+						size: 0,
+						lastModified: '2026-04-15T22:15:54.000Z',
+						status: 'pending',
+						messageId: '',
+					},
+				],
+			}),
+		).toThrow(/type/);
+	});
+
+	test('rejects attachment payloads larger than the per-attachment cap', () => {
+		const huge = 'A'.repeat(45 * 1024 * 1024);
+		expect(() =>
+			normalizeMessageBody({
+				text: 'See attached',
+				attachments: [
+					{
+						type: 'image',
+						name: 'big.png',
+						mimeType: 'image/png',
+						inlineDataBase64: huge,
+						size: huge.length,
+						lastModified: '2026-04-15T22:15:54.000Z',
+						status: 'pending',
+						messageId: '',
+					},
+				],
+			}),
+		).toThrow(/size limit/);
+	});
+
+	test('rejects attachment arrays larger than the per-message cap', () => {
+		const attachments = Array.from({ length: 17 }, (_, index) => ({
+			type: 'image',
+			name: `photo-${index}.png`,
+			mimeType: 'image/png',
+			inlineDataBase64: 'iVBORw0KGgo=',
+			size: 8,
+			lastModified: '2026-04-15T22:15:54.000Z',
+			status: 'pending',
+			messageId: '',
+		}));
+		expect(() =>
+			normalizeMessageBody({
+				text: 'See attached',
+				attachments,
+			}),
+		).toThrow(/per-message limit/);
 	});
 });

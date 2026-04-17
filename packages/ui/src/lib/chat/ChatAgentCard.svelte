@@ -8,9 +8,10 @@
 		agent: ChatAgentProfile;
 		onUse?: () => void;
 		onDuplicate?: () => void;
+		onInherit?: () => void;
 	}
 
-	let { agent, onUse, onDuplicate }: Props = $props();
+	let { agent, onUse, onDuplicate, onInherit }: Props = $props();
 </script>
 
 <div class="space-y-3 rounded-lg border p-4">
@@ -24,6 +25,8 @@
 				<Badge variant="outline" class="text-[10px]">System</Badge>
 			{:else if agent.isInherited}
 				<Badge variant="outline" class="text-[10px]">Inherited</Badge>
+			{:else if agent.isDuplicatedFromSystem}
+				<Badge variant="outline" class="text-[10px]">Duplicated</Badge>
 			{:else if agent.isStandalone}
 				<Badge variant="secondary" class="text-[10px]">Custom</Badge>
 			{/if}
@@ -52,6 +55,9 @@
 		{/if}
 		{#if !agent.isEditable && onDuplicate}
 			<Button variant="outline" size="sm" onclick={onDuplicate}>Duplicate</Button>
+		{/if}
+		{#if !agent.isEditable && onInherit}
+			<Button variant="outline" size="sm" onclick={onInherit}>Inherit</Button>
 		{/if}
 	</div>
 </div>
