@@ -14,7 +14,7 @@
 		Dialog,
 		Separator,
 		Sheet,
-		Tooltip,
+		cn,
 		ChatThreadListItem,
 		ChatMessageBubble,
 		ChatComposer,
@@ -25,8 +25,11 @@
 		ChatAgentListItem,
 		ChatAgentCard,
 		ChatToolInvocationDialog,
+		SideBySidePanelLayout,
 	} from 'ui/source';
+	import PanelLeftIcon from '@lucide/svelte/icons/panel-left';
 	import { createChatPage } from './chat-page.composition.ts';
+	import { pageHeader } from '$lib/state/page-header.svelte';
 
 	const model = createChatPage({
 		initialAgentId: page.url.searchParams.get('agent'),
@@ -49,6 +52,29 @@
 	let renameThreadId = $state<string | null>(null);
 	let renameThreadTitle = $state('');
 	let renameTitleInput = $state<HTMLInputElement | undefined>(undefined);
+
+	const THREADS_PERSIST_KEY = 'chat-threads-panel:open';
+	let threadsOpen = $state(true);
+
+	$effect(() => {
+		if (typeof localStorage === 'undefined') return;
+		const saved = localStorage.getItem(THREADS_PERSIST_KEY);
+		if (saved !== null) threadsOpen = saved === 'true';
+	});
+
+	function toggleThreads() {
+		threadsOpen = !threadsOpen;
+		if (typeof localStorage !== 'undefined') {
+			localStorage.setItem(THREADS_PERSIST_KEY, String(threadsOpen));
+		}
+	}
+
+	$effect(() => {
+		pageHeader.subtitle = model.activeThread?.title ?? null;
+		return () => {
+			pageHeader.subtitle = null;
+		};
+	});
 
 	$effect(() => {
 		const _len = model.chatMessages.length;
@@ -131,55 +157,8 @@
 	{/if}
 {/snippet}
 
-<Tooltip.Provider>
-<div class="flex h-screen overflow-hidden">
-	<!-- Left sidebar: Thread list -->
-	<aside class="border-border flex w-64 shrink-0 flex-col border-r">
-		<div class="border-border flex items-center justify-between border-b p-3">
-			<h2 class="text-sm font-semibold">Threads</h2>
-		</div>
-
-		<div class="flex gap-2 p-3">
-			<input
-				class="border-input bg-background placeholder:text-muted-foreground flex-1 rounded-md border px-2.5 py-1.5 text-sm"
-				placeholder="New thread..."
-				bind:value={newThreadTitle}
-				disabled={!model.canCreateThread}
-				onkeydown={(e) => {
-					if (e.key === 'Enter') handleNewThread();
-				}}
-			/>
-			<Button
-				variant="default"
-				size="sm"
-				onclick={handleNewThread}
-				disabled={!model.canCreateThread}
-			>+</Button>
-		</div>
-
-		<div class="flex-1 overflow-y-auto px-2 pb-2">
-			{#if model.isLoadingThreads && !model.hasLoaded}
-				<p class="text-muted-foreground p-3 text-center text-sm">Loading...</p>
-			{:else if model.threads.length === 0}
-				<p class="text-muted-foreground p-3 text-center text-sm">No threads yet</p>
-			{:else}
-				<div class="space-y-1">
-					{#each model.threads as thread (thread.id)}
-						<ChatThreadListItem
-							{thread}
-							active={thread.id === model.activeThreadId}
-							onclick={() => void model.selectThread(thread.id)}
-							ontitleedit={() => openRenameThreadDialog(thread.id, thread.title)}
-							ondelete={() => void model.deleteThread(thread.id)}
-						/>
-					{/each}
-				</div>
-			{/if}
-		</div>
-	</aside>
-
 	<!-- Center panel: Messages + Composer -->
-	<main class="flex min-w-0 flex-1 flex-col">
+	{#snippet centerContent()}
 		{#if model.errorMessage}
 			<div
 				class="flex items-center justify-between border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
@@ -218,12 +197,21 @@
 			</div>
 		{:else}
 			<!-- Thread header -->
-			<div class="border-border flex items-center justify-between border-b px-4 py-3">
-				<div>
-					<h2 class="text-sm font-semibold">{model.activeThread?.title}</h2>
-					<div class="flex items-center gap-2">
+			<div class="border-border flex items-center justify-between gap-2 border-b px-4 py-3">
+				<div class="flex min-w-0 items-center gap-2">
+					<Button
+						variant="ghost"
+						size="icon"
+						class="-ms-1 size-7"
+						aria-label="Toggle threads"
+						onclick={toggleThreads}
+					>
+						<PanelLeftIcon class="size-4" />
+					</Button>
+					<Separator orientation="vertical" class="h-4" />
+					<div class="flex min-w-0 items-center gap-2">
 						{#if model.defaultAgent}
-							<p class="text-muted-foreground text-xs">
+							<p class="text-muted-foreground truncate text-xs">
 								{model.defaultAgent.name} &middot; {model.defaultAgent.modelCard.label}
 							</p>
 						{/if}
@@ -407,17 +395,15 @@
 				</div>
 			</div>
 		{/if}
-	</main>
+	{/snippet}
 
-	{#if model.activeThread && model.isSubthreadOpen && model.activeSubthread}
-		{@const activeSubthread = model.activeSubthread}
-		<div class="h-full w-[420px] max-w-[38vw] shrink-0">
-			<ChatSubthreadPanel
-				title="Thread"
-				replyCount={model.activeSubthreadReplies.length + model.activeSubthreadSessionMessages.length}
-				onClose={() => model.closeSubthread()}
-			>
-				{#snippet parent()}
+	{#snippet subthreadPanel(activeSubthread: NonNullable<typeof model.activeSubthread>)}
+		<ChatSubthreadPanel
+			title="Thread"
+			replyCount={model.activeSubthreadReplies.length + model.activeSubthreadSessionMessages.length}
+			onClose={() => model.closeSubthread()}
+		>
+			{#snippet parent()}
 					{@const parentAgent = activeSubthread.parentMessage.agentId
 						? model.agents.find((a) => a.id === activeSubthread.parentMessage.agentId)
 						: undefined}
@@ -573,9 +559,88 @@
 					/>
 				{/snippet}
 			</ChatSubthreadPanel>
-		</div>
-	{/if}
+	{/snippet}
 
+<div class="flex h-full min-h-0 w-full overflow-hidden">
+	<!-- Threads panel: collapsible, controlled via threadsOpen -->
+	<aside
+		class={cn(
+			'border-border bg-background flex shrink-0 flex-col overflow-hidden border-r transition-[width] duration-200 ease-linear',
+			threadsOpen ? 'w-64' : 'w-0',
+		)}
+		aria-hidden={!threadsOpen}
+		data-state={threadsOpen ? 'expanded' : 'collapsed'}
+	>
+		<div class="border-border flex items-center border-b p-3">
+			<h2 class="text-sm font-semibold">Threads</h2>
+		</div>
+
+		<div class="flex gap-2 p-3">
+			<input
+				class="border-input bg-background placeholder:text-muted-foreground flex-1 rounded-md border px-2.5 py-1.5 text-sm"
+				placeholder="New thread..."
+				bind:value={newThreadTitle}
+				disabled={!model.canCreateThread}
+				onkeydown={(e) => {
+					if (e.key === 'Enter') handleNewThread();
+				}}
+			/>
+			<Button
+				variant="default"
+				size="sm"
+				onclick={handleNewThread}
+				disabled={!model.canCreateThread}
+			>+</Button>
+		</div>
+
+		<div class="flex-1 overflow-y-auto px-2 pb-2">
+			{#if model.isLoadingThreads && !model.hasLoaded}
+				<p class="text-muted-foreground p-3 text-center text-sm">Loading...</p>
+			{:else if model.threads.length === 0}
+				<p class="text-muted-foreground p-3 text-center text-sm">No threads yet</p>
+			{:else}
+				<div class="space-y-1">
+					{#each model.threads as thread (thread.id)}
+						<ChatThreadListItem
+							{thread}
+							active={thread.id === model.activeThreadId}
+							onclick={() => void model.selectThread(thread.id)}
+							ontitleedit={() => openRenameThreadDialog(thread.id, thread.title)}
+							ondelete={() => void model.deleteThread(thread.id)}
+						/>
+					{/each}
+				</div>
+			{/if}
+		</div>
+	</aside>
+
+	<main class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+		{#if model.activeThread && model.isSubthreadOpen && model.activeSubthread}
+			{@const activeSubthread = model.activeSubthread}
+			<SideBySidePanelLayout
+				leftLabel="Chat"
+				rightLabel="Thread"
+				defaultLeftSize={66}
+				minLeftSize={40}
+				minRightSize={22}
+				persistenceKey="chat-experiment"
+				allowCollapse={false}
+			>
+				{#snippet leftPane()}
+					<div class="flex h-full min-w-0 flex-1 flex-col">
+						{@render centerContent()}
+					</div>
+				{/snippet}
+				{#snippet rightPane()}
+					{@render subthreadPanel(activeSubthread)}
+				{/snippet}
+			</SideBySidePanelLayout>
+		{:else}
+			<div class="flex min-w-0 flex-1 flex-col">
+				{@render centerContent()}
+			</div>
+		{/if}
+	</main>
 </div>
 
 <!-- Agent panel -->
@@ -722,4 +787,3 @@
 	invocation={model.inspectedToolInvocation}
 	availability={model.inspectedToolAvailability}
 />
-</Tooltip.Provider>

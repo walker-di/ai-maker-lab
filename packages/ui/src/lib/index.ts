@@ -16,9 +16,12 @@ export * as Field from './components/ui/field/index.js';
 export * as InputGroup from './components/ui/input-group/index.js';
 export * as Popover from './components/ui/popover/index.js';
 export * as Sheet from './components/ui/sheet/index.js';
+export * as Sidebar from './components/ui/sidebar/index.js';
+export { useSidebar } from './components/ui/sidebar/index.js';
 export * as Tabs from './components/ui/tabs/index.js';
 export * as Tooltip from './components/ui/tooltip/index.js';
 export * as Dialog from './components/ui/dialog/index.js';
+export * as Resizable from './components/ui/resizable/index.js';
 
 export { default as CategoryCard } from './CategoryCard.svelte';
 export { default as Header } from './Header.svelte';
@@ -95,6 +98,7 @@ export {
 	AgentRegistryEmptyState,
 	AgentRegistryFilters,
 } from './agent-registry/index.js';
+export { SideBySidePanelLayout } from './layout/index.js';
 export {
 	type SettingsCopy,
 	type SettingsKeySource,

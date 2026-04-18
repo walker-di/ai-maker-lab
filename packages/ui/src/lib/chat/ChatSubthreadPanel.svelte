@@ -26,7 +26,7 @@
 	}: Props = $props();
 </script>
 
-<aside class={cn('border-border bg-background flex h-full w-full flex-col border-l', className)}>
+<aside class={cn('bg-background flex h-full w-full flex-col', className)}>
 	<div class="border-border border-b p-4">
 		<ChatSubthreadHeader {title} {replyCount} {onClose} />
 	</div>
