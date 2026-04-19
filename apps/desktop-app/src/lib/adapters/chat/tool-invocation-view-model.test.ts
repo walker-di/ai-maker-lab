@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { getAssistantPreviewImageUrl, getToolAssetExtractionOptions } from 'ui/source';
+import { getAssistantPreviewImageUrl, getToolAssetExtractionOptions } from 'ui/source/chat/headless';
 import {
 	ONE_PIXEL_PNG_BASE64,
 } from '../../../../../../packages/domain/src/application/chat/__test-helpers__/test-fixtures';

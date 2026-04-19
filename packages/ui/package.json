@@ -40,6 +40,11 @@
 			"svelte": "./src/lib/index.ts",
 			"default": "./src/lib/index.ts"
 		},
+		"./source/chat/headless": {
+			"types": "./src/lib/chat/headless.ts",
+			"svelte": "./src/lib/chat/headless.ts",
+			"default": "./src/lib/chat/headless.ts"
+		},
 		"./styles/*": "./src/lib/styles/*"
 	},
 	"peerDependencies": {

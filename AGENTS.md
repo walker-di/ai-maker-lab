@@ -31,6 +31,7 @@
 - Install dependencies from the repository root with `bun install`.
 - Prefer workspace package imports over copying code between apps and packages.
 - Import shared UI into the app from `ui/source`.
+- For server / bun composition code (anything reachable from `apps/desktop-app/src/bun/**` or `apps/desktop-app/src/lib/server/**`), import chat types and pure utilities from `ui/source/chat/headless` instead of `ui/source`. The headless barrel re-exports only types and pure functions, so the bun bundle does not pull in Svelte components or browser-only deps (`bits-ui`, `paneforge`, etc.).
 - Treat `shadcn-svelte` in `packages/ui` as the standard shared component system.
 - Keep generated shadcn components in `packages/ui` and consume them from apps through the workspace package instead of duplicating them locally.
 - Import browser-safe domain modules into the app from `domain/shared`.

@@ -1,6 +1,6 @@
 import type { ChatToolInvocation } from 'domain/shared';
 import { normalizeToolInvocationPart, resolveToolInvocationOutput } from 'domain/shared';
-import type { ChatToolInvocationInfo } from 'ui/source';
+import type { ChatToolInvocationInfo } from 'ui/source/chat/headless';
 
 function toInfoFromInvocation(invocation: ChatToolInvocation): ChatToolInvocationInfo {
 	return {

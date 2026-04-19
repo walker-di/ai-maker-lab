@@ -1,4 +1,4 @@
-import type { ChatAssistantMessagePart, ChatToolInvocationInfo } from 'ui/source';
+import type { ChatAssistantMessagePart, ChatToolInvocationInfo } from 'ui/source/chat/headless';
 import { toToolPreviewParts } from './ai-sdk-message-parts';
 
 function containsStructuredAssistantPart(

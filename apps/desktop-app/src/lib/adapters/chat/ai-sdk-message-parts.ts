@@ -1,6 +1,6 @@
 import type { ChatMessagePart } from 'domain/shared';
-import type { ChatAssistantMessagePart } from 'ui/source';
-import { extractAssistantAssetParts, getToolAssetExtractionOptions } from 'ui/source';
+import type { ChatAssistantMessagePart } from 'ui/source/chat/headless';
+import { extractAssistantAssetParts, getToolAssetExtractionOptions } from 'ui/source/chat/headless';
 
 function getTextPartText(rawPart: unknown): string | undefined {
 	if (
