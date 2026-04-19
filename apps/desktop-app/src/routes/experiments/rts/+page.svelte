@@ -124,11 +124,27 @@
             </Button>
           </div>
         </div>
-        <div
-          bind:this={canvas}
-          class="rts-canvas-host border-border bg-background relative flex aspect-[16/9] w-full items-center justify-center overflow-hidden rounded-2xl border"
-          data-testid="rts-canvas"
-        ></div>
+        <div class="relative">
+          <div
+            bind:this={canvas}
+            class="rts-canvas-host border-border bg-background relative flex aspect-[16/9] w-full touch-none select-none items-center justify-center overflow-hidden rounded-2xl border"
+            data-testid="rts-canvas"
+            role="presentation"
+            onpointerdown={(event) => model.handlePointerDown(event)}
+            onpointermove={(event) => model.handlePointerMove(event)}
+            onpointerup={(event) => model.handlePointerUp(event)}
+            oncontextmenu={(event) => model.handleContextMenu(event)}
+          ></div>
+          {#if model.dragRect}
+            <div
+              class="pointer-events-none fixed border-2 border-sky-300/80 bg-sky-300/10"
+              style:left="{model.dragRect.x}px"
+              style:top="{model.dragRect.y}px"
+              style:width="{model.dragRect.width}px"
+              style:height="{model.dragRect.height}px"
+            ></div>
+          {/if}
+        </div>
       </section>
     {/if}
   </div>
