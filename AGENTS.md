@@ -49,6 +49,7 @@
   - `packages/domain/README.md`
   - `skills/svelte-frontend/SKILL.md`
   - `skills/backend-implementtion/SKILL.md`
+  - `skills/excalidraw-diagram/SKILL.md`
 - Update docs in the same change set when workspace structure or import conventions change.
 - Prefer concise, executable Bun workspace commands over long prose.
 
@@ -56,8 +57,9 @@
 
 - `svelte-frontend`: `skills/svelte-frontend/SKILL.md`
 - `backend-implementtion`: `skills/backend-implementtion/SKILL.md`
+- `excalidraw-diagram`: `skills/excalidraw-diagram/SKILL.md`
 
-Use the frontend skill for Svelte/SvelteKit UI work and the backend skill for shared domain or application logic.
+Use the frontend skill for Svelte/SvelteKit UI work, the backend skill for shared domain or application logic, and the Excalidraw skill when creating or refining Excalidraw diagrams for workflows, architectures, or concepts.
 
 ## Skill Usage
 
