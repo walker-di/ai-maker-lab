@@ -5,6 +5,8 @@
 
   const todoHref = '/experiments/todo';
   const chatHref = '/experiments/chat';
+  const platformerHref = '/experiments/platformer';
+  const platformerEditorHref = '/experiments/platformer/editor';
   const agentRegistryHref = '/agents';
   const settingsHref = '/settings';
 </script>
@@ -39,6 +41,15 @@
   <SettingsIcon class="h-6 w-6" aria-hidden="true" />
 {/snippet}
 
+{#snippet platformerIcon()}
+  <svg aria-hidden="true" viewBox="0 0 24 24" class="h-6 w-6 fill-none stroke-current stroke-[1.75]">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M3 18h18" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="M5 18v-3h3v3" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="M14 18v-6h4v6" />
+    <circle cx="9" cy="10" r="1.5" />
+  </svg>
+{/snippet}
+
 <svelte:head>
   <title>{m.lab_home_title()}</title>
 </svelte:head>
@@ -64,12 +75,29 @@
     </Button>
   </header>
 
-  <section class="space-y-4">
+  <section class="space-y-6">
     <div class="space-y-2">
       <h2 class="text-foreground text-2xl font-semibold">{m.lab_category_game()}</h2>
       <p class="text-muted-foreground max-w-3xl text-base leading-7">
         {m.lab_category_game_description()}
       </p>
+    </div>
+
+    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <CategoryCard
+        href={platformerHref}
+        label="Platformer"
+        description="Run a small side-scroller with the in-app engine."
+        ctaLabel="Play"
+        icon={platformerIcon}
+      />
+      <CategoryCard
+        href={platformerEditorHref}
+        label="Platformer Editor"
+        description="Paint tiles, place entities, save user maps."
+        ctaLabel="Open editor"
+        icon={platformerIcon}
+      />
     </div>
   </section>
 

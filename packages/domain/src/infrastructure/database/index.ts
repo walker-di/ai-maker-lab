@@ -10,3 +10,7 @@ export {
   SurrealChatRunRepository,
   SurrealAttachmentRepository,
 } from './chat/index.js';
+export {
+  SurrealUserMapRepository,
+  SurrealPlayerProgressRepository,
+} from './platformer/index.js';
