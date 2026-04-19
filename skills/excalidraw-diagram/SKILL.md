@@ -7,7 +7,7 @@ description: Create Excalidraw diagram JSON files that make visual arguments. Us
 
 Generate `.excalidraw` JSON files that **argue visually**, not just display information.
 
-**Setup:** If the user asks you to set up this skill (renderer, dependencies, etc.), see `README.md` for instructions.
+**Setup:** If the user asks you to set up or repair this skill's renderer and dependencies, see `README.md` for the repo-local Codex setup steps.
 
 ## Customization
 
@@ -207,7 +207,7 @@ After generating the JSON, you MUST run the render-view-fix loop until the diagr
 
 ## Large / Comprehensive Diagram Strategy
 
-**For comprehensive or technical diagrams, you MUST build the JSON one section at a time.** Do NOT attempt to generate the entire file in a single pass. This is a hard constraint — Claude Code has a ~32,000 token output limit per response, and a comprehensive diagram easily exceeds that in one shot. Even if it didn't, generating everything at once leads to worse quality. Section-by-section is better in every way.
+**For comprehensive or technical diagrams, you MUST build the JSON one section at a time.** Do NOT attempt to generate the entire file in a single pass. This is a hard constraint — large diagrams are brittle, easy to truncate, and much harder to debug when generated all at once. Section-by-section is better in every way.
 
 ### The Section-by-Section Workflow
 
@@ -246,7 +246,7 @@ Each section should be independently understandable: its elements, internal arro
 ### What NOT to Do
 
 - **Don't generate the entire diagram in one response.** You will hit the output token limit and produce truncated, broken JSON. Even if the diagram is small enough to fit, splitting into sections produces better results.
-- **Don't use a coding agent** to generate the JSON. The agent won't have sufficient context about the skill's rules, and the coordination overhead negates any benefit.
+- **Don't delegate JSON generation to a separate agent or helper script.** The coordination overhead negates any benefit, and hand-edited JSON is much easier to debug and refine.
 - **Don't write a Python generator script.** The templating and coordinate math seem helpful but introduce a layer of indirection that makes debugging harder. Hand-crafted JSON with descriptive IDs is more maintainable.
 
 ---
@@ -451,16 +451,16 @@ You cannot judge a diagram from JSON alone. After generating or editing the Exca
 ### How to Render
 
 ```bash
-cd .claude/skills/excalidraw-diagram/references && uv run python render_excalidraw.py <path-to-file.excalidraw>
+cd skills/excalidraw-diagram/references && uv run python render_excalidraw.py <path-to-file.excalidraw>
 ```
 
-This outputs a PNG next to the `.excalidraw` file. Then use the **Read tool** on the PNG to actually view it.
+This outputs a PNG next to the `.excalidraw` file. Then inspect the PNG with Codex's image viewer tooling, for example `view_image`, or reference the absolute PNG path in the app so you can actually see the result.
 
 ### The Loop
 
 After generating the initial JSON, run this cycle:
 
-**1. Render & View** — Run the render script, then Read the PNG.
+**1. Render & View** — Run the render script, then inspect the PNG.
 
 **2. Audit against your original vision** — Before looking for bugs, compare the rendered result to what you designed in Steps 1-4. Ask:
 - Does the visual structure match the conceptual structure you planned?
@@ -487,7 +487,7 @@ After generating the initial JSON, run this cycle:
 - Reposition labels closer to the element they describe
 - Resize elements to rebalance visual weight across sections
 
-**5. Re-render & re-view** — Run the render script again and Read the new PNG.
+**5. Re-render & re-view** — Run the render script again and inspect the new PNG.
 
 **6. Repeat** — Keep cycling until the diagram passes both the vision check (Step 2) and the defect check (Step 3). Typically takes 2-4 iterations. Don't stop after one pass just because there are no critical bugs — if the composition could be better, improve it.
 
@@ -503,7 +503,7 @@ The loop is done when:
 ### First-Time Setup
 If the render script hasn't been set up yet:
 ```bash
-cd .claude/skills/excalidraw-diagram/references
+cd skills/excalidraw-diagram/references
 uv sync
 uv run playwright install chromium
 ```

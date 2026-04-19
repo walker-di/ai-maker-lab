@@ -1,0 +1,4 @@
+interface:
+  display_name: "Excalidraw Diagram"
+  short_description: "Create Excalidraw diagrams and visually validate rendered output"
+  default_prompt: "Use $excalidraw-diagram to create or refine an Excalidraw diagram in this workspace. Plan the visual argument first, build the JSON section by section when needed, render to PNG, inspect the result, and iterate until the composition is clean. Task:"
