@@ -6,13 +6,37 @@ import { cors } from 'hono/cors';
 import { TodoService } from './application/index.js';
 import { MapCatalogService } from './application/platformer/index.js';
 import {
+  MapCatalogService as RtsMapCatalogService,
+  MapGenerator,
+  createListMaps as createRtsListMaps,
+  createLoadMap as createRtsLoadMap,
+  createStartMatch,
+  createRecordMatchResult,
+  createListMatchResults,
+  createGenerateMap,
+  createSaveUserMap as createRtsSaveUserMap,
+  createListUserMaps as createRtsListUserMaps,
+  createLoadUserMap as createRtsLoadUserMap,
+  createDeleteUserMap as createRtsDeleteUserMap,
+  type StartMatchInput,
+  type SaveUserMapUseCaseInput as RtsSaveUserMapInput,
+} from './application/rts/index.js';
+import {
   getDb,
   SurrealDbAdapter,
   SurrealTodoRepository,
   SurrealUserMapRepository,
   SurrealPlayerProgressRepository,
+  SurrealRtsUserMapRepository,
+  SurrealRtsMatchResultRepository,
   JsonBuiltInWorldRepository,
 } from './infrastructure/index.js';
+import { BuiltInRtsMapSource } from './infrastructure/rts/index.js';
+import type {
+  Generation as RtsGeneration,
+  MapDefinition as RtsMapDefinition,
+  MatchResult as RtsMatchResult,
+} from './shared/rts/index.js';
 
 const app = new Hono();
 
@@ -39,6 +63,22 @@ const mapCatalogService = new MapCatalogService(
   new SurrealUserMapRepository(new SurrealDbAdapter(surreal)),
   new SurrealPlayerProgressRepository(new SurrealDbAdapter(surreal)),
 );
+
+const rtsBuiltIns = new BuiltInRtsMapSource();
+const rtsUserMapRepo = new SurrealRtsUserMapRepository(new SurrealDbAdapter(surreal));
+const rtsMatchResultRepo = new SurrealRtsMatchResultRepository(new SurrealDbAdapter(surreal));
+const rtsMapCatalog = new RtsMapCatalogService(rtsBuiltIns, rtsUserMapRepo);
+const rtsGenerator = new MapGenerator();
+const rtsListMaps = createRtsListMaps(rtsMapCatalog);
+const rtsLoadMap = createRtsLoadMap(rtsMapCatalog);
+const rtsStartMatch = createStartMatch(rtsMapCatalog);
+const rtsRecordMatch = createRecordMatchResult(rtsMatchResultRepo);
+const rtsListMatchResults = createListMatchResults(rtsMatchResultRepo);
+const rtsGenerateMap = createGenerateMap(rtsGenerator);
+const rtsSaveUserMap = createRtsSaveUserMap(rtsUserMapRepo);
+const rtsListUserMaps = createRtsListUserMaps(rtsUserMapRepo);
+const rtsLoadUserMap = createRtsLoadUserMap(rtsUserMapRepo);
+const rtsDeleteUserMap = createRtsDeleteUserMap(rtsUserMapRepo);
 
 function getErrorStatus(error: unknown): 400 | 404 | 500 {
   if (!(error instanceof Error)) {
@@ -164,6 +204,105 @@ app.get('/api/platformer/players/:id', async (c) => {
     const profile = await mapCatalogService.loadPlayerProfile(id);
     if (!profile) return c.json({ error: 'not found' }, 404);
     return c.json(profile);
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, getErrorStatus(error));
+  }
+});
+
+app.get('/api/rts/maps', async (c) => {
+  try {
+    return c.json(await rtsListMaps.execute());
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, getErrorStatus(error));
+  }
+});
+
+app.get('/api/rts/maps/:id{.+}', async (c) => {
+  try {
+    const id = decodeURIComponent(c.req.param('id'));
+    const map = await rtsLoadMap.execute(id);
+    if (!map) return c.json({ error: 'not found' }, 404);
+    return c.json(map);
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, getErrorStatus(error));
+  }
+});
+
+app.post('/api/rts/maps/generate', async (c) => {
+  try {
+    const params = await c.req.json<RtsGeneration.MapGenerationParams>();
+    return c.json(await rtsGenerateMap.execute(params));
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, getErrorStatus(error));
+  }
+});
+
+app.post('/api/rts/user-maps', async (c) => {
+  try {
+    const body = await c.req.json<RtsSaveUserMapInput>();
+    return c.json(await rtsSaveUserMap.execute(body));
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, getErrorStatus(error));
+  }
+});
+
+app.get('/api/rts/user-maps', async (c) => {
+  try {
+    return c.json(await rtsListUserMaps.execute());
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, getErrorStatus(error));
+  }
+});
+
+app.get('/api/rts/user-maps/:id{.+}', async (c) => {
+  try {
+    const id = decodeURIComponent(c.req.param('id'));
+    const map = await rtsLoadUserMap.execute(id);
+    if (!map) return c.json({ error: 'not found' }, 404);
+    return c.json(map);
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, getErrorStatus(error));
+  }
+});
+
+app.delete('/api/rts/user-maps/:id{.+}', async (c) => {
+  try {
+    const id = decodeURIComponent(c.req.param('id'));
+    await rtsDeleteUserMap.execute(id);
+    return c.json({ ok: true });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, getErrorStatus(error));
+  }
+});
+
+app.post('/api/rts/matches/start', async (c) => {
+  try {
+    const body = await c.req.json<StartMatchInput>();
+    return c.json(await rtsStartMatch.execute(body));
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, getErrorStatus(error));
+  }
+});
+
+app.post('/api/rts/matches/results', async (c) => {
+  try {
+    const body = await c.req.json<RtsMatchResult>();
+    return c.json(await rtsRecordMatch.execute(body));
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, getErrorStatus(error));
+  }
+});
+
+app.get('/api/rts/matches/results', async (c) => {
+  try {
+    const filter = {
+      mapId: c.req.query('mapId') ?? undefined,
+      winner: c.req.query('winner') ?? undefined,
+      since: c.req.query('since') ?? undefined,
+      until: c.req.query('until') ?? undefined,
+      limit: c.req.query('limit') ? Number(c.req.query('limit')) : undefined,
+    };
+    return c.json(await rtsListMatchResults.execute(filter));
   } catch (error) {
     return c.json({ error: getErrorMessage(error) }, getErrorStatus(error));
   }

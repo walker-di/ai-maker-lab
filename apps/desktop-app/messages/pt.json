@@ -41,6 +41,8 @@
 	"lab_experiment_platformer_description": "Rode um pequeno side-scroller com o motor interno.",
 	"lab_experiment_platformer_editor_label": "Editor de fases",
 	"lab_experiment_platformer_editor_description": "Pinte tiles, posicione entidades e salve mapas do jogador.",
+	"lab_experiment_rts_label": "Escaramuça RTS",
+	"lab_experiment_rts_description": "Estratégia em tempo real isométrica com mapas procedurais e IA por script.",
 	"lab_settings_label": "Configuracoes",
 	"lab_settings_description": "Gerencie chaves de API dos provedores e outras configuracoes globais.",
 	"lab_category_system": "Sistema",

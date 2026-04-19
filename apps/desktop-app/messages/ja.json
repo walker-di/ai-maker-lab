@@ -41,6 +41,8 @@
 	"lab_experiment_platformer_description": "アプリ内エンジンで動く小さな横スクロールアクションを動かします。",
 	"lab_experiment_platformer_editor_label": "ステージエディター",
 	"lab_experiment_platformer_editor_description": "タイルを描き、エンティティを配置してユーザーマップを保存します。",
+	"lab_experiment_rts_label": "RTS スカーミッシュ",
+	"lab_experiment_rts_description": "等角投影のリアルタイムストラテジー。手続き生成マップとスクリプト AI を搭載。",
 	"lab_settings_label": "設定",
 	"lab_settings_description": "プロバイダーAPIキーやアプリ全体の構成を管理します。",
 	"lab_category_system": "システム",

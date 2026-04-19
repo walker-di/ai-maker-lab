@@ -7,6 +7,7 @@
   const chatHref = '/experiments/chat';
   const platformerHref = '/experiments/platformer';
   const platformerEditorHref = '/experiments/platformer/editor';
+  const rtsHref = '/experiments/rts';
   const agentRegistryHref = '/agents';
   const settingsHref = '/settings';
 </script>
@@ -47,6 +48,15 @@
     <path stroke-linecap="round" stroke-linejoin="round" d="M5 18v-3h3v3" />
     <path stroke-linecap="round" stroke-linejoin="round" d="M14 18v-6h4v6" />
     <circle cx="9" cy="10" r="1.5" />
+  </svg>
+{/snippet}
+
+{#snippet rtsIcon()}
+  <svg aria-hidden="true" viewBox="0 0 24 24" class="h-6 w-6 fill-none stroke-current stroke-[1.75]">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M14.5 17.5 3 6V3h3l11.5 11.5" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="M13 19l6-6" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="M16 16l5 5" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="M5 14L3 18l4-2" />
   </svg>
 {/snippet}
 
@@ -97,6 +107,13 @@
         description="Paint tiles, place entities, save user maps."
         ctaLabel="Open editor"
         icon={platformerIcon}
+      />
+      <CategoryCard
+        href={rtsHref}
+        label={m.lab_experiment_rts_label()}
+        description={m.lab_experiment_rts_description()}
+        ctaLabel={m.lab_open_experiment()}
+        icon={rtsIcon}
       />
     </div>
   </section>
