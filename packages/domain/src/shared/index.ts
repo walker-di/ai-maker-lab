@@ -6,3 +6,4 @@ export type WorkspacePackage = (typeof workspacePackages)[number];
 
 export * from './todo';
 export * from './chat';
+export * as Platformer from './platformer/index.js';

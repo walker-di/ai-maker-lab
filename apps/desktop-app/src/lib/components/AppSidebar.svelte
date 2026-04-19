@@ -6,6 +6,8 @@
 	import BotIcon from '@lucide/svelte/icons/bot';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
+	import GamepadIcon from '@lucide/svelte/icons/gamepad-2';
+	import PencilRulerIcon from '@lucide/svelte/icons/pencil-ruler';
 	import { m } from '$lib/paraglide/messages.js';
 
 	type Props = {
@@ -39,6 +41,20 @@
 			href: '/agents',
 			icon: BotIcon,
 			match: (p) => p.startsWith('/agents'),
+		},
+		{
+			title: m.lab_experiment_platformer_label(),
+			href: '/experiments/platformer',
+			icon: GamepadIcon,
+			match: (p) =>
+				p === '/experiments/platformer' ||
+				(p.startsWith('/experiments/platformer') && !p.startsWith('/experiments/platformer/editor')),
+		},
+		{
+			title: m.lab_experiment_platformer_editor_label(),
+			href: '/experiments/platformer/editor',
+			icon: PencilRulerIcon,
+			match: (p) => p.startsWith('/experiments/platformer/editor'),
 		},
 	];
 
