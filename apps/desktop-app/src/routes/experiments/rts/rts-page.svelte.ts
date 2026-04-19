@@ -60,7 +60,17 @@ export function createRtsPageModel({ transport }: RtsPageDeps) {
   let ai: InstanceType<typeof AiController> | null = null;
   let aiTickHandle: number | null = null;
   let mountTarget: HTMLDivElement | null = null;
+  let mountResolvers: Array<(target: HTMLDivElement) => void> = [];
   let unsubs: Array<() => void> = [];
+  let dragStart = $state<{ x: number; y: number; tile: DomainRts.TilePos } | null>(null);
+  let dragCurrent = $state<{ x: number; y: number } | null>(null);
+
+  function whenMounted(): Promise<HTMLDivElement> {
+    if (mountTarget) return Promise.resolve(mountTarget);
+    return new Promise((resolve) => {
+      mountResolvers.push(resolve);
+    });
+  }
 
   async function bootstrap() {
     if (isLoading) return;
@@ -77,6 +87,11 @@ export function createRtsPageModel({ transport }: RtsPageDeps) {
 
   function setMountTarget(target: HTMLDivElement | null) {
     mountTarget = target;
+    if (target && mountResolvers.length > 0) {
+      const pending = mountResolvers;
+      mountResolvers = [];
+      for (const resolve of pending) resolve(target);
+    }
   }
 
   function disposeEngine() {
@@ -95,12 +110,9 @@ export function createRtsPageModel({ transport }: RtsPageDeps) {
   }
 
   async function startMatch(choice: MatchSetupChoice): Promise<void> {
-    if (!mountTarget) {
-      errorMessage = 'Match canvas is not ready yet.';
-      return;
-    }
     errorMessage = null;
     disposeEngine();
+    view = 'match';
     try {
       const factions: Faction[] = [
         { id: PLAYER_FACTION_ID, label: 'You', color: '#4dabff', isPlayer: true, isAi: false },
@@ -176,10 +188,10 @@ export function createRtsPageModel({ transport }: RtsPageDeps) {
         }),
       );
 
-      await next.mount(mountTarget);
+      const target = await whenMounted();
+      await next.mount(target);
       next.start();
       runActive = true;
-      view = 'match';
       lastWinner = null;
 
       if (typeof window !== 'undefined' && ai) {
@@ -194,6 +206,53 @@ export function createRtsPageModel({ transport }: RtsPageDeps) {
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : 'Failed to start match';
     }
+  }
+
+  function handlePointerDown(event: PointerEvent): void {
+    if (!engine) return;
+    if (event.button === 2) return; // context menu handled separately
+    const tile = engine.screenToTile(event.clientX, event.clientY);
+    if (!tile) return;
+    (event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId);
+    dragStart = { x: event.clientX, y: event.clientY, tile };
+    dragCurrent = { x: event.clientX, y: event.clientY };
+  }
+
+  function handlePointerMove(event: PointerEvent): void {
+    if (!dragStart) return;
+    dragCurrent = { x: event.clientX, y: event.clientY };
+  }
+
+  function handlePointerUp(event: PointerEvent): void {
+    if (!engine || !dragStart) return;
+    (event.currentTarget as HTMLElement | null)?.releasePointerCapture?.(event.pointerId);
+    const tile = engine.screenToTile(event.clientX, event.clientY);
+    const dx = event.clientX - dragStart.x;
+    const dy = event.clientY - dragStart.y;
+    const dragged = Math.hypot(dx, dy) > 6;
+    if (dragged && tile) {
+      engine.selectInBox(dragStart.tile, tile);
+    } else if (tile) {
+      engine.handleClickAtTile(tile, event.shiftKey);
+    }
+    dragStart = null;
+    dragCurrent = null;
+  }
+
+  function handleContextMenu(event: MouseEvent): void {
+    event.preventDefault();
+    if (!engine) return;
+    const tile = engine.screenToTile(event.clientX, event.clientY);
+    if (!tile) return;
+    const targetEntity = engine.pickEntityAtTile(tile);
+    if (targetEntity != null) {
+      const selectionIds = engine.getSelection();
+      if (selectionIds.length > 0) {
+        engine.orderAttackTarget(targetEntity);
+        return;
+      }
+    }
+    engine.orderMoveSelectionTo(tile);
   }
 
   function togglePause(): void {
@@ -251,6 +310,7 @@ export function createRtsPageModel({ transport }: RtsPageDeps) {
 
   function dispose(): void {
     disposeEngine();
+    mountResolvers = [];
   }
 
   return {
@@ -267,6 +327,15 @@ export function createRtsPageModel({ transport }: RtsPageDeps) {
     get lastGenerated() { return lastGenerated; },
     get mapgenError() { return mapgenError; },
     get audio() { return new NullAudioBus(); },
+    get dragRect() {
+      if (!dragStart || !dragCurrent) return null;
+      const x = Math.min(dragStart.x, dragCurrent.x);
+      const y = Math.min(dragStart.y, dragCurrent.y);
+      const width = Math.abs(dragCurrent.x - dragStart.x);
+      const height = Math.abs(dragCurrent.y - dragStart.y);
+      if (width < 4 && height < 4) return null;
+      return { x, y, width, height };
+    },
     bootstrap,
     setMountTarget,
     startMatch,
@@ -276,6 +345,10 @@ export function createRtsPageModel({ transport }: RtsPageDeps) {
     closeMapGen,
     generate,
     saveGenerated,
+    handlePointerDown,
+    handlePointerMove,
+    handlePointerUp,
+    handleContextMenu,
     dispose,
   };
 }
