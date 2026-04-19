@@ -7,6 +7,7 @@
   const chatHref = '/experiments/chat';
   const platformerHref = '/experiments/platformer';
   const platformerEditorHref = '/experiments/platformer/editor';
+  const voxsimHref = '/experiments/voxsim';
   const rtsHref = '/experiments/rts';
   const agentRegistryHref = '/agents';
   const settingsHref = '/settings';
@@ -48,6 +49,14 @@
     <path stroke-linecap="round" stroke-linejoin="round" d="M5 18v-3h3v3" />
     <path stroke-linecap="round" stroke-linejoin="round" d="M14 18v-6h4v6" />
     <circle cx="9" cy="10" r="1.5" />
+  </svg>
+{/snippet}
+
+{#snippet voxsimIcon()}
+  <svg aria-hidden="true" viewBox="0 0 24 24" class="h-6 w-6 fill-none stroke-current stroke-[1.75]">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 3 4 7v10l8 4 8-4V7l-8-4Z" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="M4 7l8 4 8-4" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 11v10" />
   </svg>
 {/snippet}
 
@@ -159,6 +168,13 @@
         description={m.lab_experiment_chat_description()}
         ctaLabel={m.lab_open_experiment()}
         icon={chatIcon}
+      />
+      <CategoryCard
+        href={voxsimHref}
+        label="Voxsim Lab"
+        description="Voxel arenas, articulated agents, and AI training experiments."
+        ctaLabel="Open lab"
+        icon={voxsimIcon}
       />
     </div>
   </section>

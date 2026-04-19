@@ -18,3 +18,14 @@ export {
   SurrealRtsUserMapRepository,
   SurrealRtsMatchResultRepository,
 } from './rts/index.js';
+export {
+  SurrealUserArenaRepository,
+  SurrealAgentRepository,
+  SurrealTrainingRunRepository,
+  SurrealEpisodeRepository,
+  SurrealReplayRepository,
+  SurrealWeightCheckpointRepository,
+  SurrealNeatGenomeRepository,
+  SurrealNeatSpeciesRepository,
+  SurrealNeatInnovationLogRepository,
+} from './voxsim/index.js';

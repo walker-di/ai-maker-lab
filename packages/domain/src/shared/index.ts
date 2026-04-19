@@ -8,3 +8,4 @@ export * from './todo';
 export * from './chat';
 export * as Platformer from './platformer/index.js';
 export * as Rts from './rts/index.js';
+export * as Voxsim from './voxsim/index.js';

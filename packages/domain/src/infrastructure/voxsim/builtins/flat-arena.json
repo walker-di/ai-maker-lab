@@ -1,0 +1,33 @@
+{
+  "id": "flat-arena",
+  "version": 1,
+  "metadata": {
+    "title": "Flat Arena",
+    "author": "voxsim",
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z",
+    "source": "builtin"
+  },
+  "chunkSize": { "sx": 8, "sy": 4, "sz": 8 },
+  "voxelSize": 1,
+  "bounds": {
+    "min": { "cx": -2, "cy": 0, "cz": -2 },
+    "max": { "cx": 1, "cy": 0, "cz": 1 }
+  },
+  "fills": [
+    { "type": "yPlane", "y": 0, "kind": "solid" }
+  ],
+  "spawns": [
+    {
+      "id": "spawn-default",
+      "tag": "Default Spawn",
+      "pose": {
+        "position": { "x": 0, "y": 2, "z": 0 },
+        "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 }
+      }
+    }
+  ],
+  "entities": [],
+  "gravity": { "x": 0, "y": -9.81, "z": 0 },
+  "skybox": "default"
+}
