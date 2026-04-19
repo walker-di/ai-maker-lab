@@ -255,6 +255,27 @@ Page rules:
 - If route data is supplied from an allowed route file, transform it into view-ready state at the page boundary.
 - Avoid giant `+page.svelte` files. Extract stateful sections into paired component/model files.
 
+AI SDK Svelte rules:
+- Use `@ai-sdk/svelte` `Chat` class for streaming chat UIs, not React hooks.
+- Never destructure `Chat` properties (`let { messages } = chat` breaks reactivity). Always access via `chat.messages`, `chat.status`, etc.
+- Use reactive getters for `Chat` constructor arguments that may change: `new Chat({ get id() { return threadId; } })`.
+- The page model owns the `Chat` instance. The `+page.svelte` file renders from `model.chatMessages` and `model.chatStatus`.
+- Keep `DefaultChatTransport` pointed at the streaming API endpoint. Keep CRUD operations (list threads, list agents) in a separate `ChatTransport` adapter.
+- When switching threads, recreate the `Chat` instance with the new thread's streaming URL.
+
+Chat UI composition rules:
+- Chat UI components live in `packages/ui/src/lib/chat/` and are imported from `ui/source`.
+- `ChatComposer` follows the shadcn-svelte `notion-prompt-form` pattern (InputGroup + DropdownMenu + Tooltip).
+- `ChatComposer` requires `Tooltip.Provider` from `ui/source` as an ancestor in the component tree. Pages that include `ChatComposer` — even conditionally inside `{#if}` branches — must wrap content with `<Tooltip.Provider>`. A missing provider causes a context error that silently prevents the branch from rendering.
+- The `packages/ui` chat types in `src/lib/chat/types.ts` are structural mirrors of domain types. Do not import `domain/shared` from `packages/ui`; domain types satisfy UI types structurally at the app boundary.
+- The chat page model + composition helper pattern follows the same layout as other experiment routes (e.g. `experiments/todo`).
+
+Lucide Svelte icon rule:
+- Prefer direct per-icon imports from `@lucide/svelte/icons/<icon-name>`.
+- Do not use named imports from `@lucide/svelte` as the default pattern in touched code.
+- Avoid `import * as icons from '@lucide/svelte'` in normal components because it weakens the bundle/build advantages of direct imports.
+- If a dynamic icon loader is truly required, keep it isolated, justify it in the change, and document the bundle-size/build-time tradeoff.
+
 Adapter rules:
 - API clients, local storage, analytics, and drag-drop/platform integrations belong in adapters.
 - Components and page models should depend on adapter abstractions or thin wrappers, not raw SDK usage everywhere.

@@ -11,7 +11,7 @@
     "dev:app": "bun run build:ui && bun run --filter desktop-app dev:app",
     "dev:app:hmr": "bun run build:ui && bun run --filter desktop-app dev:app:hmr",
     "check:desktop-app": "bun run --filter ui prepack && bun run --filter desktop-app check",
-    "build:desktop-app": "bun run --filter ui prepack && bun run --filter desktop-app build",
+    "build:desktop-app": "bun run --filter ui prepack && cd apps/desktop-app && bun run build",
     "build:ui": "bun run --filter ui prepack",
     "dev:domain": "bun run --filter domain dev"
   }

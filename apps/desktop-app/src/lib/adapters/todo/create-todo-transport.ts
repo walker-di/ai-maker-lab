@@ -2,52 +2,42 @@ import type { TodoTransport, TodoRuntimeMode } from './TodoTransport';
 import { createWebTodoTransport } from './web-todo-transport';
 
 type ElectrobunWindow = Window & {
-  __electrobun?: unknown;
-  __electrobunWebviewId?: number;
-  __electrobunRpcSocketPort?: number;
+	__electrobun?: unknown;
+	__electrobunWebviewId?: number;
+	__electrobunRpcSocketPort?: number;
 };
 
 function hasElectrobunBridge(): boolean {
-  if (typeof window === 'undefined') {
-    return false;
-  }
-
-  const electrobunWindow = window as ElectrobunWindow;
-  return (
-    typeof electrobunWindow.__electrobun !== 'undefined' ||
-    typeof electrobunWindow.__electrobunWebviewId === 'number' ||
-    typeof electrobunWindow.__electrobunRpcSocketPort === 'number'
-  );
+	if (typeof window === 'undefined') return false;
+	const electrobunWindow = window as ElectrobunWindow;
+	return (
+		typeof electrobunWindow.__electrobun !== 'undefined' ||
+		typeof electrobunWindow.__electrobunWebviewId === 'number' ||
+		typeof electrobunWindow.__electrobunRpcSocketPort === 'number'
+	);
 }
 
 export function resolveTodoRuntimeMode(): TodoRuntimeMode {
-  return hasElectrobunBridge() ? 'desktop' : 'web';
+	return hasElectrobunBridge() ? 'desktop' : 'web';
 }
 
-export function createTodoTransport(mode: TodoRuntimeMode = resolveTodoRuntimeMode()): TodoTransport {
-  if (mode === 'web') {
-    return createWebTodoTransport();
-  }
+async function loadDesktopTodoTransport(): Promise<TodoTransport> {
+	const { getDesktopRuntime } = await import('../runtime/desktop-runtime');
+	return getDesktopRuntime().todoTransport;
+}
 
-  return {
-    async list() {
-      const { createDesktopTodoTransport } = await import('./desktop-todo-transport');
-      return createDesktopTodoTransport().list();
-    },
+export function createTodoTransport(
+	mode: TodoRuntimeMode = resolveTodoRuntimeMode(),
+): TodoTransport {
+	if (mode === 'web') return createWebTodoTransport();
 
-    async create(title: string) {
-      const { createDesktopTodoTransport } = await import('./desktop-todo-transport');
-      return createDesktopTodoTransport().create(title);
-    },
+	let cached: TodoTransport | undefined;
+	const get = async () => (cached ??= await loadDesktopTodoTransport());
 
-    async toggle(id: string) {
-      const { createDesktopTodoTransport } = await import('./desktop-todo-transport');
-      return createDesktopTodoTransport().toggle(id);
-    },
-
-    async remove(id: string) {
-      const { createDesktopTodoTransport } = await import('./desktop-todo-transport');
-      return createDesktopTodoTransport().remove(id);
-    },
-  };
+	return {
+		list: async () => (await get()).list(),
+		create: async (title) => (await get()).create(title),
+		toggle: async (id) => (await get()).toggle(id),
+		remove: async (id) => (await get()).remove(id),
+	};
 }

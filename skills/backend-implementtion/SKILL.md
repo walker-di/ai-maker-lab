@@ -90,6 +90,13 @@ Workspace packaging and transport selection:
 - Keep one application/domain implementation reused by every consumer when both app and server entrypoints exist.
 - Avoid duplicating orchestration in app-specific wiring and server adapters. Put orchestration in use cases/services and keep both transports thin.
 
+Streaming endpoint pattern:
+- When a domain service returns `StreamTextResult` (e.g. `ChatService.sendMessage()`), the streaming API endpoint returns `result.streamResult.toUIMessageStreamResponse()` directly instead of awaiting the full text.
+- Keep a separate JSON endpoint for non-streaming reads (e.g. `GET .../messages` returns all messages as JSON).
+- The streaming endpoint path convention is `POST /api/chat/threads/[threadId]/stream`.
+- The AI SDK `Chat` class with `DefaultChatTransport` consumes this streaming endpoint. CRUD operations (threads, agents, messages) use separate JSON endpoints via the app's `ChatTransport` adapter.
+- The AI SDK v5 streaming response uses SSE format with the `x-vercel-ai-ui-message-stream: v1` header. Events are `data:` lines with typed JSON payloads (`start`, `text-start`, `text-delta`, `text-end`, `finish`). Do not use the legacy `0:` prefix format from earlier AI SDK versions.
+
 Implementation process:
 1. Inspect the current code paths relevant to the task.
 2. Identify:
@@ -151,9 +158,13 @@ Testing rules:
 - Add domain tests for invariants and rules.
 - Add application/use-case tests for orchestration and port interactions.
 - Add adapter/integration tests only where boundary behavior matters.
-- Mock or fake ports at the application boundary.
+- All repository and service tests must use a real SurrealDB `mem://` in-memory instance via `createDbConnection({ host: 'mem://' })` + `SurrealDbAdapter` + real Surreal repository implementations.
+- Never create hand-rolled in-memory repository fakes or test doubles for database-backed ports. No `InMemoryFooRepository` classes.
+- Only mock boundaries that are genuinely external and have no SurrealDB implementation: AI SDK language models, file-system-based definition sources, and third-party network APIs.
+- Each test file that uses SurrealDB must open its own connection in `beforeEach` with a unique namespace/database (`crypto.randomUUID()`) and close it in `afterEach`.
 - Do not mock pure domain logic.
 - Add regression coverage for the bug, scenario, or acceptance path being changed.
+- Reference test pattern: `SurrealTodoRepository.test.ts` and `surreal-chat-repositories.test.ts`.
 
 Quality bar before finishing:
 1. No new inward dependency points outward.

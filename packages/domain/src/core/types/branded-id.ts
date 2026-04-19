@@ -53,6 +53,7 @@ export type FeedbackId = BrandedId<'feedback'>;
 export type AgentId = BrandedId<'agent'>;
 export type AgentIssueId = BrandedId<'agent_issue'>;
 export type AiToolId = BrandedId<'ai_tool'>;
+export type ModelCardId = BrandedId<'model_card'>;
 export type ThreadId = BrandedId<'thread'>;
 export type SandboxId = BrandedId<'sandbox'>;
 export type AgentSessionId = BrandedId<'agent_session'>;

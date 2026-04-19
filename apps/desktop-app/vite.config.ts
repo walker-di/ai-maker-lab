@@ -42,6 +42,19 @@ export default defineConfig({
           }]
         }
       }
+    }, {
+      extends: true,
+      resolve: {
+        conditions: ['svelte'],
+        alias: {
+          '@ai-sdk/svelte': path.resolve(dirname, 'node_modules/@ai-sdk/svelte/dist/index.js'),
+        },
+      },
+      test: {
+        name: 'unit',
+        include: ['src/**/*.test.ts'],
+        environment: 'node',
+      }
     }]
   }
 });

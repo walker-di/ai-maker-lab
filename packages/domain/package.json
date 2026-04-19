@@ -28,7 +28,11 @@
     "dev": "bun run --hot src/server.ts"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.69",
+    "@ai-sdk/google": "^3.0.63",
+    "@ai-sdk/openai": "^3.0.53",
     "@surrealdb/node": "^3.0.3",
+    "ai": "^6.0.160",
     "hono": "^4.12.10",
     "surrealdb": "^2.0.3"
   },

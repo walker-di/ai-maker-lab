@@ -1,80 +1,29 @@
-import { mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { ApplicationMenu, BrowserView, BrowserWindow, Utils } from 'electrobun/bun';
-import { TodoService } from 'domain/application';
-import { getDb, SurrealDbAdapter, SurrealTodoRepository } from 'domain/infrastructure';
+import { BrowserWindow } from 'electrobun/bun';
 import { resolveMainViewUrl } from '../lib/adapters/runtime/main-view-url';
-import type { TodoRpcSchema } from '../lib/adapters/todo/electrobun-todo-rpc';
+import { installApplicationMenu } from './application-menu';
+import { bootstrapDesktopServices } from './bootstrap-services';
+import { createDesktopBunRpc } from './desktop-rpc';
+import { loadRuntimeEnv } from './load-runtime-env';
 
-ApplicationMenu.setApplicationMenu([
-	{
-		submenu: [{ label: 'Quit', role: 'quit' }]
-	},
-	{
-		label: 'Edit',
-		submenu: [
-			{ role: 'undo' },
-			{ role: 'redo' },
-			{ type: 'separator' },
-			{ role: 'cut' },
-			{ role: 'copy' },
-			{ role: 'paste' },
-			{ role: 'pasteAndMatchStyle' },
-			{ role: 'delete' },
-			{ role: 'selectAll' }
-		]
-	}
-]);
+// macOS launchd does not propagate the user's shell env to GUI-launched .app
+// bundles, so production builds cannot rely on `process.env.OPENAI_API_KEY`
+// being inherited from `~/.zshrc`. Hydrate `process.env` from the per-channel
+// `secrets.env` in `Application Support` BEFORE any module that reads provider
+// keys (`buildProviderRegistry` runs inside `bootstrapDesktopServices`). The
+// returned `SecretsStore` is reused by the Settings RPC so the in-app editor
+// writes to the same file we just loaded.
+const { store: secretsStore } = loadRuntimeEnv();
 
-const desktopDbPath = join(Utils.paths.userData, 'surrealdb', 'desktop.db');
-mkdirSync(dirname(desktopDbPath), { recursive: true });
+installApplicationMenu();
 
-const surreal = await getDb({
-	host: `surrealkv://${desktopDbPath}`,
-	namespace: 'app',
-	database: 'desktop'
-});
-const todoService = new TodoService(
-	new SurrealTodoRepository(new SurrealDbAdapter(surreal))
-);
-
-function toPlain<T>(data: T): T {
-	return JSON.parse(JSON.stringify(data));
-}
-
-const todoRpc = BrowserView.defineRPC<TodoRpcSchema>({
-	handlers: {
-		requests: {
-			async listTodos() {
-				const todos = await todoService.listTodos();
-				return toPlain(todos);
-			},
-			async createTodo({ title }) {
-				const todos = await todoService.createTodo(title);
-				return toPlain(todos);
-			},
-			async toggleTodo({ id }) {
-				const todos = await todoService.toggleTodo(id);
-				return toPlain(todos);
-			},
-			async removeTodo({ id }) {
-				const todos = await todoService.removeTodo(id);
-				return toPlain(todos);
-			}
-		}
-	}
-});
+const services = await bootstrapDesktopServices({ secretsStore });
+const rpc = createDesktopBunRpc(services);
 
 const mainWindow = new BrowserWindow({
 	title: 'AI Maker Lab',
 	url: await resolveMainViewUrl(),
-	rpc: todoRpc,
-	frame: {
-		width: 1200,
-		height: 800,
-		x: 100,
-		y: 100
-	}
+	rpc,
+	frame: { width: 1200, height: 800, x: 100, y: 100 },
 });
 
 console.log(`Desktop app started: ${mainWindow.title}`);

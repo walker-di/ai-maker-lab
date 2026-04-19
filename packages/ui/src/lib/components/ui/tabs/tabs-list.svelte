@@ -1,0 +1,22 @@
+<script lang="ts">
+	import { Tabs as TabsPrimitive } from "bits-ui";
+	import { cn } from "$ui/utils.js";
+	import { tabsListVariants, type TabsListVariant } from "./tabs-list.shared.js";
+
+	let {
+		ref = $bindable(null),
+		variant = "default",
+		class: className,
+		...restProps
+	}: TabsPrimitive.ListProps & {
+		variant?: TabsListVariant;
+	} = $props();
+</script>
+
+<TabsPrimitive.List
+	bind:ref
+	data-slot="tabs-list"
+	data-variant={variant}
+	class={cn(tabsListVariants({ variant }), className)}
+	{...restProps}
+/>
