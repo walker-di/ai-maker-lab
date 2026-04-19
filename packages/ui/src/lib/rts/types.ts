@@ -15,6 +15,11 @@ export interface TilePos {
   row: number;
 }
 
+/**
+ * Generic 2D screen coordinate used by the projection. Named `IsoCoord` for
+ * historical reasons; the active renderer is now top-down orthogonal so this
+ * is just `{ x, y }` in pixel space.
+ */
 export interface IsoCoord {
   x: number;
   y: number;

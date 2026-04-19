@@ -1,4 +1,5 @@
-export { IsoProjection } from './iso.js';
+export { OrthoProjection, IsoProjection } from './iso.js';
+export type { OrthoProjectionConfig, IsoProjectionConfig } from './iso.js';
 export { TileGrid } from './tile-grid.js';
 export { findPath } from './pathfinding.js';
 export { SeededRng } from './rng.js';

@@ -69,6 +69,14 @@ export interface RtsRenderer {
   loadMap(map: MapDefinition): void;
   render(snapshot: RtsRendererSnapshot): void;
   dispose(): void;
+  /**
+   * Convert a `clientX` / `clientY` mouse coordinate into a tile position,
+   * accounting for the canvas bounding rect, internal pixel ratio and the
+   * current camera transform. Returns `null` when the renderer cannot map.
+   */
+  screenToTile?(clientX: number, clientY: number): TilePos | null;
+  /** Underlying canvas element (or null when not mounted). */
+  getCanvas?(): HTMLCanvasElement | null;
 }
 
 export interface RtsEngineConfig {
@@ -196,6 +204,63 @@ export class RtsEngine {
   // ---------------------------------------------------------------------------
   // Public commands
   // ---------------------------------------------------------------------------
+
+  screenToTile(clientX: number, clientY: number): TilePos | null {
+    if (!this.renderer?.screenToTile) return null;
+    return this.renderer.screenToTile(clientX, clientY);
+  }
+
+  getCanvas(): HTMLCanvasElement | null {
+    return this.renderer?.getCanvas?.() ?? null;
+  }
+
+  /** Find the topmost entity whose tile matches `tile`, preferring units. */
+  pickEntityAtTile(tile: TilePos): number | null {
+    let buildingHit: number | null = null;
+    for (const id of this.world.query([C.position, C.selectable])) {
+      const pos = this.world.getComponent<PositionComponent>(id, C.position)!;
+      if (this.world.hasComponent(id, C.unit)) {
+        if (Math.floor(pos.col) === tile.col && Math.floor(pos.row) === tile.row) {
+          return id;
+        }
+      } else if (this.world.hasComponent(id, C.building)) {
+        const b = this.world.getComponent<BuildingComponent>(id, C.building)!;
+        if (
+          tile.col >= b.origin.col &&
+          tile.col < b.origin.col + b.footprint.cols &&
+          tile.row >= b.origin.row &&
+          tile.row < b.origin.row + b.footprint.rows
+        ) {
+          buildingHit = id;
+        }
+      }
+    }
+    return buildingHit;
+  }
+
+  /** Single-click selection. Targets enemy units/buildings as attack orders. */
+  handleClickAtTile(tile: TilePos, additive = false): void {
+    const entityId = this.pickEntityAtTile(tile);
+    if (entityId != null) {
+      const f = this.world.getComponent<FactionComponent>(entityId, C.faction);
+      if (f && f.factionId === this.localFactionId) {
+        if (!additive) this.selection.clear();
+        this.selection.add(entityId);
+        this.emitter.emit('selectionChanged', { entityIds: [...this.selection] });
+        return;
+      }
+      // Enemy entity: if we have a selection, treat as attack order.
+      if (this.selection.size > 0 && f && f.factionId !== this.localFactionId) {
+        this.orderAttackTarget(entityId);
+        return;
+      }
+    }
+    // Empty tile click: clear selection if not additive.
+    if (!additive) {
+      this.selection.clear();
+      this.emitter.emit('selectionChanged', { entityIds: [] });
+    }
+  }
 
   selectByIds(ids: number[]): void {
     this.selection = new Set(ids.filter((id) => this.world.isAlive(id)));
