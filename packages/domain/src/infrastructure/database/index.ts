@@ -14,3 +14,7 @@ export {
   SurrealUserMapRepository,
   SurrealPlayerProgressRepository,
 } from './platformer/index.js';
+export {
+  SurrealRtsUserMapRepository,
+  SurrealRtsMatchResultRepository,
+} from './rts/index.js';

@@ -100,6 +100,7 @@ export {
 } from './agent-registry/index.js';
 export { SideBySidePanelLayout } from './layout/index.js';
 export * as Platformer from './platformer/index.js';
+export * as Rts from './rts/index.js';
 export {
 	type SettingsCopy,
 	type SettingsKeySource,

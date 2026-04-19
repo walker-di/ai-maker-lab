@@ -41,6 +41,8 @@
 	"lab_experiment_platformer_description": "Run a small side-scroller with the in-app engine.",
 	"lab_experiment_platformer_editor_label": "Platformer Editor",
 	"lab_experiment_platformer_editor_description": "Paint tiles, place entities, save user maps.",
+	"lab_experiment_rts_label": "RTS Skirmish",
+	"lab_experiment_rts_description": "Isometric real-time strategy with procedural maps and a scripted AI opponent.",
 	"lab_settings_label": "Settings",
 	"lab_settings_description": "Manage provider API keys and other app-wide configuration.",
 	"lab_category_system": "System",
