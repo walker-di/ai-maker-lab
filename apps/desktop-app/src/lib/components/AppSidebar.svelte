@@ -7,6 +7,7 @@
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
 	import GamepadIcon from '@lucide/svelte/icons/gamepad-2';
+	import SwordsIcon from '@lucide/svelte/icons/swords';
 	import PencilRulerIcon from '@lucide/svelte/icons/pencil-ruler';
 	import { m } from '$lib/paraglide/messages.js';
 
@@ -55,6 +56,12 @@
 			href: '/experiments/platformer/editor',
 			icon: PencilRulerIcon,
 			match: (p) => p.startsWith('/experiments/platformer/editor'),
+		},
+		{
+			title: m.lab_experiment_rts_label(),
+			href: '/experiments/rts',
+			icon: SwordsIcon,
+			match: (p) => p.startsWith('/experiments/rts'),
 		},
 	];
 

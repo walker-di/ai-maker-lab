@@ -41,6 +41,8 @@
 	"lab_experiment_platformer_description": "Ejecuta un pequeno side-scroller con el motor integrado.",
 	"lab_experiment_platformer_editor_label": "Editor de niveles",
 	"lab_experiment_platformer_editor_description": "Pinta tiles, coloca entidades y guarda mapas de usuario.",
+	"lab_experiment_rts_label": "Escaramuza RTS",
+	"lab_experiment_rts_description": "Estrategia en tiempo real isométrica con mapas procedurales y una IA con guion.",
 	"lab_settings_label": "Configuracion",
 	"lab_settings_description": "Administra las claves de API de los proveedores y otras opciones globales.",
 	"lab_category_system": "Sistema",
