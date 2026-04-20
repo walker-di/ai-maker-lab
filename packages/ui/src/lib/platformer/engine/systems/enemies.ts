@@ -8,10 +8,11 @@ import type {
   RenderableComponent,
   VelocityComponent,
 } from '../components.js';
-import type { System, EngineWorld } from '../world.js';
+import type { Entity, System, EngineWorld, SystemContext } from '../world.js';
 import type { TileGrid } from '../tile-grid.js';
 import type { Tunables } from '../tunables.js';
 import type { AssetBundle } from '../assets.js';
+import { aabbIntersects } from '../aabb.js';
 
 export interface EnemyOptions {
   grid: TileGrid;
@@ -113,5 +114,44 @@ export class BulletShooterSystem implements System {
         ctx.bus.emit({ type: 'bulletSpawned', entity });
       }
     }
+  }
+}
+
+/**
+ * A kicked shell ricochets through the level and removes other stompable enemies on contact.
+ */
+export class ShellVsEnemySystem implements System {
+  readonly name = 'shell-vs-enemy';
+  update(world: EngineWorld, _dt: number, ctx: SystemContext): void {
+    const victims = new Set<Entity>();
+    for (const shell of world.query([COMPONENT_KINDS.enemyAi, COMPONENT_KINDS.body])) {
+      const shellAi = world.getComponent<EnemyAiComponent>(shell, COMPONENT_KINDS.enemyAi)!;
+      if (shellAi.kind !== 'shellEnemy' || shellAi.deathState !== 'kicked') continue;
+      const shellBody = world.getComponent<BodyComponent>(shell, COMPONENT_KINDS.body)!;
+
+      for (const other of [...world.query([COMPONENT_KINDS.enemyAi, COMPONENT_KINDS.body])]) {
+        if (other === shell) continue;
+        const oai = world.getComponent<EnemyAiComponent>(other, COMPONENT_KINDS.enemyAi)!;
+        if (oai.deathState === 'gone') continue;
+        if (oai.kind === 'fireBar' || oai.kind === 'bulletShooter') continue;
+
+        const stompable =
+          oai.kind === 'walkerEnemy' || oai.kind === 'shellEnemy' || oai.kind === 'flyingEnemy';
+        if (!stompable) continue;
+
+        const ob = world.getComponent<BodyComponent>(other, COMPONENT_KINDS.body)!;
+        if (!aabbIntersects(shellBody.aabb, ob.aabb)) continue;
+
+        victims.add(other);
+      }
+    }
+    for (const other of victims) {
+      if (!world.isAlive(other)) continue;
+      ctx.bus.emit({ type: 'enemyKilled', entity: other, by: 'shell' });
+      const oai = world.getComponent<EnemyAiComponent>(other, COMPONENT_KINDS.enemyAi);
+      if (oai) oai.deathState = 'gone';
+      world.removeEntity(other);
+    }
+    void _dt;
   }
 }

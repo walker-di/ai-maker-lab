@@ -1,4 +1,4 @@
-import type { MapDefinition, PowerUpKind, RunOutcome } from '../types.js';
+import type { EntityKind, MapDefinition, PowerUpKind, RunOutcome } from '../types.js';
 import { COMPONENT_KINDS } from './components.js';
 import type {
   BodyComponent,
@@ -17,13 +17,20 @@ import { DEFAULT_TUNABLES, type Tunables } from './tunables.js';
 import { type AssetBundle, getAssetBundle } from './assets.js';
 import { type AudioBus, NullAudioBus } from './audio-bus.js';
 import { createEmptyInputState, type InputSource, type InputState } from './input.js';
-import { spawnFromDefinition, spawnPlayer } from './systems/factory.js';
+import {
+  extractQuestionLootKind,
+  shouldDeferQuestionLoot,
+  spawnFromDefinition,
+  spawnPlayer,
+  spawnRevealedItemPickup,
+} from './systems/factory.js';
 import { PlayerControllerSystem } from './systems/player-controller.js';
 import { IntegrationSystem } from './systems/integration.js';
 import {
   BulletShooterSystem,
   FireBarSystem,
   FlyingEnemySystem,
+  ShellVsEnemySystem,
   WalkerEnemySystem,
 } from './systems/enemies.js';
 import { PlayerEntityCollisionSystem } from './systems/collisions.js';
@@ -99,6 +106,8 @@ export class PlatformerEngine {
   private lives = 3;
   private goalReached = false;
   private pendingTileUpdates: RenderSnapshot['tileUpdates'] = [];
+  /** Cell key `col,row` → loot kind for `question` tiles (deferred from map load). */
+  private questionLootByCell = new Map<string, EntityKind>();
 
   constructor(config: PlatformerEngineConfig) {
     this.mode = config.mode;
@@ -127,7 +136,14 @@ export class PlatformerEngine {
     const player = spawnPlayer({ world: this.world, bundle: this.bundle, grid: this.grid }, map.spawn.col, map.spawn.row);
     this.playerEntityRef.value = player;
 
+    this.questionLootByCell.clear();
     for (const spawn of map.entities) {
+      const tileAt = map.tiles[spawn.tile.row]?.[spawn.tile.col];
+      if (tileAt && shouldDeferQuestionLoot(spawn, tileAt)) {
+        const loot = extractQuestionLootKind(spawn)!;
+        this.questionLootByCell.set(`${spawn.tile.col},${spawn.tile.row}`, loot);
+        continue;
+      }
       spawnFromDefinition({ world: this.world, bundle: this.bundle, grid: this.grid }, spawn);
     }
 
@@ -231,6 +247,7 @@ export class PlatformerEngine {
       { grid, tunables, bundle: this.bundle },
       (x, y, vx) => this.spawnBullet(x, y, vx),
     );
+    const shellHits = new ShellVsEnemySystem();
     const collisions = new PlayerEntityCollisionSystem({
       tunables,
       playerEntityRef: this.playerEntityRef,
@@ -243,7 +260,7 @@ export class PlatformerEngine {
       this.playerEntityRef,
     );
 
-    return [playerCtrl, walkers, flyers, fireBars, shooters, integration, collisions, camera];
+    return [playerCtrl, walkers, flyers, fireBars, shooters, integration, shellHits, collisions, camera];
   }
 
   private runFixedStep(): void {
@@ -308,26 +325,36 @@ export class PlatformerEngine {
     } else if (kind === 'question') {
       this.grid.setTile(col, row, 'hardBlock');
       this.pendingTileUpdates.push({ col, row, kind: 'hardBlock' });
-      this.audio.playSfx('coin');
-      // Spawn coin or item from question block; default coin.
-      const item = this.itemFromQuestion(col, row);
-      if (item === 'coin') {
+      const key = `${col},${row}`;
+      const reserved = this.questionLootByCell.get(key);
+      this.questionLootByCell.delete(key);
+      const loot = reserved ?? this.itemFromQuestion(col, row);
+      if (loot === 'coin') {
+        this.audio.playSfx('coin');
         this.coins++;
         this.addScore(this.tunables.coinScore);
         this.emitter.emit('coin', { total: this.coins });
-      } else {
-        // future: spawn mushroom / flower entity above the block
+      } else if (this.grid) {
+        this.audio.playSfx('powerUp');
+        spawnRevealedItemPickup(
+          { world: this.world, bundle: this.bundle, grid: this.grid },
+          loot,
+          col,
+          row,
+        );
       }
     }
   }
 
-  private itemFromQuestion(col: number, row: number): 'coin' | 'mushroom' | 'flower' | 'star' | 'oneUp' {
+  private itemFromQuestion(col: number, row: number): EntityKind {
     const map = this.map;
     if (!map) return 'coin';
-    const spawn = map.entities.find(
-      (e) => e.tile.col === col && e.tile.row === row && (e.kind === 'mushroom' || e.kind === 'flower' || e.kind === 'star' || e.kind === 'oneUp'),
-    );
-    return (spawn?.kind as 'coin' | 'mushroom' | 'flower' | 'star' | 'oneUp') ?? 'coin';
+    for (const e of map.entities) {
+      if (e.tile.col !== col || e.tile.row !== row) continue;
+      const loot = extractQuestionLootKind(e);
+      if (loot) return loot;
+    }
+    return 'coin';
   }
 
   private handleHazard(col: number, row: number): void {

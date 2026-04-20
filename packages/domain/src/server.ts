@@ -135,6 +135,14 @@ app.delete('/api/todos/:id', async (c) => {
   }
 });
 
+app.get('/api/platformer/worlds', async (c) => {
+  try {
+    return c.json(await mapCatalogService.listBuiltInWorlds());
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, getErrorStatus(error));
+  }
+});
+
 app.get('/api/platformer/maps', async (c) => {
   try {
     const source = c.req.query('source') as 'builtin' | 'user' | 'all' | undefined;

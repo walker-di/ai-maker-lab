@@ -15,6 +15,7 @@ import {
   type MapMetadata,
   type PlayerProfile,
   type ResolvedMapEntry,
+  type WorldDefinition,
 } from '../../shared/platformer/index.js';
 
 const HISTORY_LIMIT = 50;
@@ -29,6 +30,10 @@ export class MapCatalogService implements IMapCatalogService {
     private readonly userMaps: IUserMapRepository,
     private readonly progress: IPlayerProgressRepository,
   ) {}
+
+  async listBuiltInWorlds(): Promise<WorldDefinition[]> {
+    return this.builtIns.listWorlds();
+  }
 
   async listMaps(options: ListMapsOptions = {}): Promise<ResolvedMapEntry[]> {
     const source = options.source ?? 'all';
