@@ -99,6 +99,7 @@ export {
 	AgentRegistryFilters,
 } from './agent-registry/index.js';
 export { SideBySidePanelLayout } from './layout/index.js';
+export * as Platformer from './platformer/index.js';
 export {
 	type SettingsCopy,
 	type SettingsKeySource,

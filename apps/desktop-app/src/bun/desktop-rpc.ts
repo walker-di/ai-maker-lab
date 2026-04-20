@@ -11,6 +11,7 @@ import type { DesktopRpcSchema } from '../lib/adapters/runtime/desktop-rpc-schem
 import type { DesktopServices } from './bootstrap-services';
 import { extractPersistedAssistantCompletionFromUiMessageParts } from '../lib/server/persisted-assistant-completion';
 import { buildSettingsRequestHandlers } from './desktop-settings-rpc';
+import { buildPlatformerRequestHandlers } from './desktop-platformer-rpc';
 
 export type DesktopBunRpc = ReturnType<typeof BrowserView.defineRPC<DesktopRpcSchema>>;
 
@@ -207,6 +208,7 @@ export function createDesktopBunRpc(services: DesktopServices): DesktopBunRpc {
 				secretsStore: services.secretsStore,
 				providerRegistryRef: services.providerRegistryRef,
 			}),
+			...buildPlatformerRequestHandlers(services.mapCatalogService),
 		},
 	};
 

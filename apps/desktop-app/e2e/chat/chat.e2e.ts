@@ -195,7 +195,7 @@ test.describe('Chat page – CRUD', () => {
 		await createThread(page, 'Agent test thread');
 		await selectAgentInRoster(page, 'Creative Writer');
 
-		const header = mainPanel(page).locator('.border-b').first();
+		const header = mainPanel(page).getByTestId('chat-main-toolbar');
 		await expect(
 			header.getByText('Creative Writer', { exact: false }),
 		).toBeVisible();
@@ -352,7 +352,7 @@ test.describe('Chat page – CRUD', () => {
 		await threadComposer.press('Enter');
 
 		await expect(subthreadPanel.getByText('Threaded assistant reply')).toBeVisible();
-		await expect(mainPanel(page).getByText('3 replies')).toBeVisible();
+		await expect(mainPanel(page).getByText('3 replies').first()).toBeVisible();
 		await page.unrouteAll({ behavior: 'ignoreErrors' });
 	});
 
@@ -875,7 +875,7 @@ test.describe('Chat page – URL state sync', () => {
 		await waitForAgentsLoaded(page);
 
 		await createThread(page, 'Creative agent thread');
-		const header = mainPanel(page).locator('.border-b').first();
+		const header = mainPanel(page).getByTestId('chat-main-toolbar');
 		await expect(
 			header.getByText('Creative Writer', { exact: false }),
 		).toBeVisible({ timeout: 10_000 });

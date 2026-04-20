@@ -51,6 +51,7 @@
 		"svelte": "^5.0.0"
 	},
 	"devDependencies": {
+		"@types/bun": "latest",
 		"@chromatic-com/storybook": "^5.1.1",
 		"@playwright/test": "^1.58.2",
 		"@storybook/addon-a11y": "^10.3.4",
@@ -87,10 +88,13 @@
 	],
 	"dependencies": {
 		"@lucide/svelte": "^1.7.0",
+		"@pixi/sound": "^6.0.1",
+		"@pixi/tilemap": "^5.0.2",
 		"bits-ui": "^2.17.2",
 		"clsx": "^2.1.1",
 		"marked": "^18.0.0",
 		"paneforge": "^1.0.2",
+		"pixi.js": "^8.18.1",
 		"sanitize-html": "^2.17.3",
 		"tailwind-merge": "^3.5.0",
 		"tailwind-variants": "^3.2.2",

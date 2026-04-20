@@ -2,10 +2,12 @@ import { Electroview } from 'electrobun/view';
 import type { ChatTransport } from '../chat/ChatTransport';
 import type { TodoTransport } from '../todo/TodoTransport';
 import type { SettingsTransport } from '../settings/SettingsTransport';
+import type { PlatformerTransport } from '../platformer/PlatformerTransport';
 import type { DesktopChatStreamBridge } from '../chat/desktop-chat-stream-bridge';
 import { createDesktopChatTransport } from '../chat/desktop-chat-transport';
 import { createDesktopTodoTransport } from '../todo/desktop-todo-transport';
 import { createDesktopSettingsTransport } from '../settings/desktop-settings-transport';
+import { createDesktopPlatformerTransport } from '../platformer/desktop-platformer-transport';
 import { createDesktopChatStreamBridge } from '../chat/desktop-chat-stream-bridge';
 import type { DesktopRpcSchema } from './desktop-rpc-schema';
 
@@ -16,6 +18,7 @@ export interface DesktopRuntime {
 	chatTransport: ChatTransport;
 	todoTransport: TodoTransport;
 	settingsTransport: SettingsTransport;
+	platformerTransport: PlatformerTransport;
 	streamBridge: DesktopChatStreamBridge;
 }
 
@@ -48,6 +51,7 @@ export function getDesktopRuntime(): DesktopRuntime {
 		chatTransport: createDesktopChatTransport(rpc),
 		todoTransport: createDesktopTodoTransport(rpc),
 		settingsTransport: createDesktopSettingsTransport(rpc),
+		platformerTransport: createDesktopPlatformerTransport(rpc),
 		streamBridge: createDesktopChatStreamBridge(rpc),
 	};
 

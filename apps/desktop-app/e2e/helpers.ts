@@ -11,15 +11,29 @@ export async function patchEmptyTableErrors(page: Page) {
 		if (request.method() !== 'GET') {
 			return route.fallback();
 		}
-		const response = await route.fetch();
-		if (response.ok()) {
-			return route.fulfill({ response });
+		try {
+			const response = await route.fetch();
+			if (response.ok()) {
+				const body = await response.body();
+				return route.fulfill({
+					status: response.status(),
+					headers: response.headers(),
+					body,
+				});
+			}
+			return route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify([]),
+			});
+		} catch {
+			// Teardown races: in-flight GETs can outlive the browser context.
+			return route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify([]),
+			});
 		}
-		return route.fulfill({
-			status: 200,
-			contentType: 'application/json',
-			body: JSON.stringify([]),
-		});
 	});
 }
 
@@ -53,15 +67,14 @@ export async function openAgentRoster(page: Page) {
 }
 
 export function mainPanel(page: Page) {
-	return page.locator('main');
+	// Shell layout can wrap experiments in an outer `<main>`; chat nests a second
+	// `<main>` for the thread panel. Prefer the innermost `main` for message UI.
+	return page.locator('main').last();
 }
 
-/**
- * The thread header h2 shows the title inside <main> only when activeThread is set.
- * We look for a font-semibold h2 that is NOT the "Select or create a thread" heading.
- */
+/** Title of the active thread, rendered in the main chat chrome when a thread is selected. */
 export function threadHeader(page: Page) {
-	return mainPanel(page).locator('.text-sm.font-semibold').first();
+	return mainPanel(page).getByTestId('chat-thread-title');
 }
 
 export async function createThread(page: Page, title: string) {

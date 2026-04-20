@@ -4,7 +4,15 @@ import { fileURLToPath } from 'node:url';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { TodoService } from './application/index.js';
-import { getDb, SurrealDbAdapter, SurrealTodoRepository } from './infrastructure/index.js';
+import { MapCatalogService } from './application/platformer/index.js';
+import {
+  getDb,
+  SurrealDbAdapter,
+  SurrealTodoRepository,
+  SurrealUserMapRepository,
+  SurrealPlayerProgressRepository,
+  JsonBuiltInWorldRepository,
+} from './infrastructure/index.js';
 
 const app = new Hono();
 
@@ -24,6 +32,12 @@ const surreal = await getDb({
 });
 const todoService = new TodoService(
   new SurrealTodoRepository(new SurrealDbAdapter(surreal)),
+);
+
+const mapCatalogService = new MapCatalogService(
+  new JsonBuiltInWorldRepository(),
+  new SurrealUserMapRepository(new SurrealDbAdapter(surreal)),
+  new SurrealPlayerProgressRepository(new SurrealDbAdapter(surreal)),
 );
 
 function getErrorStatus(error: unknown): 400 | 404 | 500 {
@@ -76,6 +90,80 @@ app.post('/api/todos/:id/toggle', async (c) => {
 app.delete('/api/todos/:id', async (c) => {
   try {
     return c.json(await todoService.removeTodo(c.req.param('id')));
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, getErrorStatus(error));
+  }
+});
+
+app.get('/api/platformer/maps', async (c) => {
+  try {
+    const source = c.req.query('source') as 'builtin' | 'user' | 'all' | undefined;
+    const playerId = c.req.query('playerId') ?? undefined;
+    return c.json(await mapCatalogService.listMaps({ source, playerId }));
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, getErrorStatus(error));
+  }
+});
+
+app.get('/api/platformer/maps/:id{.+}', async (c) => {
+  try {
+    const id = decodeURIComponent(c.req.param('id'));
+    const map = await mapCatalogService.getMap(id);
+    if (!map) return c.json({ error: 'not found' }, 404);
+    return c.json(map);
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, getErrorStatus(error));
+  }
+});
+
+app.post('/api/platformer/maps', async (c) => {
+  try {
+    const body = await c.req.json<{
+      id?: string;
+      metadata: import('./shared/platformer/index.js').MapMetadata;
+      definition: import('./shared/platformer/index.js').MapDefinition;
+      builtInId?: string;
+    }>();
+    return c.json(await mapCatalogService.saveUserMap(body));
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, getErrorStatus(error));
+  }
+});
+
+app.delete('/api/platformer/maps/:id{.+}', async (c) => {
+  try {
+    const id = decodeURIComponent(c.req.param('id'));
+    await mapCatalogService.deleteUserMap(id);
+    return c.json({ ok: true });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, getErrorStatus(error));
+  }
+});
+
+app.post('/api/platformer/maps/duplicate', async (c) => {
+  try {
+    const body = await c.req.json<{ builtInId: string; metadata?: Partial<import('./shared/platformer/index.js').MapMetadata> }>();
+    return c.json(await mapCatalogService.duplicateBuiltIn(body.builtInId, body.metadata ?? {}));
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, getErrorStatus(error));
+  }
+});
+
+app.post('/api/platformer/runs', async (c) => {
+  try {
+    const body = await c.req.json<import('./application/platformer/index.js').RecordRunResultInput>();
+    return c.json(await mapCatalogService.recordRunResult(body));
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, getErrorStatus(error));
+  }
+});
+
+app.get('/api/platformer/players/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const profile = await mapCatalogService.loadPlayerProfile(id);
+    if (!profile) return c.json({ error: 'not found' }, 404);
+    return c.json(profile);
   } catch (error) {
     return c.json({ error: getErrorMessage(error) }, getErrorStatus(error));
   }
