@@ -3,13 +3,8 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { json } from '@sveltejs/kit';
 import { Platformer } from 'domain/application';
-import {
-	getDb,
-	JsonBuiltInWorldRepository,
-	SurrealDbAdapter,
-	SurrealPlayerProgressRepository,
-	SurrealUserMapRepository
-} from 'domain/infrastructure';
+import { getDb, SurrealDbAdapter } from 'domain/infrastructure';
+import { createMapCatalogService } from './platformer-map-catalog-factory';
 
 let mapCatalogServicePromise: Promise<Platformer.MapCatalogService> | undefined;
 
@@ -33,11 +28,7 @@ export function getMapCatalogService(): Promise<Platformer.MapCatalogService> {
 				token: process.env.SURREAL_TOKEN
 			});
 			const adapter = new SurrealDbAdapter(surreal);
-			return new Platformer.MapCatalogService(
-				new JsonBuiltInWorldRepository(),
-				new SurrealUserMapRepository(adapter),
-				new SurrealPlayerProgressRepository(adapter)
-			);
+			return createMapCatalogService(adapter);
 		})();
 	}
 	return mapCatalogServicePromise;

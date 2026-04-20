@@ -20,6 +20,8 @@ import {
 	SurrealChatRunRepository,
 	type ProviderRegistry,
 } from 'domain/infrastructure';
+import type { Platformer } from 'domain/application';
+import { createMapCatalogService } from '../lib/server/platformer-map-catalog-factory';
 import type { SecretsStore } from './secrets-store';
 
 /**
@@ -35,6 +37,7 @@ export interface DesktopServices {
 	todoService: TodoService;
 	catalogService: AgentCatalogService;
 	chatService: ChatService;
+	mapCatalogService: Platformer.MapCatalogService;
 	secretsStore: SecretsStore;
 	providerRegistryRef: ProviderRegistryRef;
 }
@@ -74,11 +77,13 @@ export async function bootstrapDesktopServices(
 		modelHandler,
 	);
 	const todoService = new TodoService(new SurrealTodoRepository(dbAdapter));
+	const mapCatalogService = createMapCatalogService(dbAdapter);
 
 	return {
 		todoService,
 		catalogService,
 		chatService,
+		mapCatalogService,
 		secretsStore: options.secretsStore,
 		providerRegistryRef,
 	};

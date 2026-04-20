@@ -21,16 +21,46 @@ export function resolvePlatformerRuntimeMode(): PlatformerRuntimeMode {
   return hasElectrobunBridge() ? 'desktop' : 'web';
 }
 
+async function loadDesktopPlatformerTransport(): Promise<PlatformerTransport> {
+  const { getDesktopRuntime } = await import('../runtime/desktop-runtime');
+  return getDesktopRuntime().platformerTransport;
+}
+
 /**
- * For now the desktop bridge falls through to the web transport.
- * The vertical slice exposes the platformer service over the same Hono
- * server that already powers `dev:web` and the bundled `views://mainview`
- * static path; the Electrobun RPC route can be added later without
- * touching consumers because this factory always returns a stable
- * `PlatformerTransport`.
+ * Returns a transport that talks to the map catalog over `/api/platformer/**`
+ * in web builds, and over Electrobun RPC (prefixed `*Platformer*` methods on
+ * the shared desktop channel) when the renderer is hosted inside the desktop
+ * webview.
  */
 export function createPlatformerTransport(
-  _mode: PlatformerRuntimeMode = resolvePlatformerRuntimeMode(),
+  mode: PlatformerRuntimeMode = resolvePlatformerRuntimeMode(),
 ): PlatformerTransport {
-  return createWebPlatformerTransport();
+  if (mode === 'web') return createWebPlatformerTransport();
+
+  let cached: PlatformerTransport | undefined;
+  const get = async () => (cached ??= await loadDesktopPlatformerTransport());
+
+  return {
+    async listMaps(options) {
+      return (await get()).listMaps(options);
+    },
+    async getMap(id) {
+      return (await get()).getMap(id);
+    },
+    async saveUserMap(input) {
+      return (await get()).saveUserMap(input);
+    },
+    async deleteUserMap(id) {
+      return (await get()).deleteUserMap(id);
+    },
+    async duplicateBuiltIn(builtInId, metadata) {
+      return (await get()).duplicateBuiltIn(builtInId, metadata);
+    },
+    async recordRunResult(input) {
+      return (await get()).recordRunResult(input);
+    },
+    async loadPlayerProfile(playerId) {
+      return (await get()).loadPlayerProfile(playerId);
+    },
+  };
 }
