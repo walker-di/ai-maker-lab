@@ -48,6 +48,7 @@
   - `apps/desktop-app/AGENTS.md`
   - `packages/ui/AGENTS.md`
   - `packages/domain/README.md`
+  - `docs/sprint/003/` — paperclip company definition (CEO / Orchestrator / Coder / QA / Designer) used to drive experiment redo.
   - `skills/svelte-frontend/SKILL.md`
   - `skills/backend-implementtion/SKILL.md`
   - `skills/excalidraw-diagram/SKILL.md`
