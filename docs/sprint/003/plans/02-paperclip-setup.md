@@ -39,27 +39,98 @@ Out of scope for this step:
    mkdir -p ~/paperclip/ai-maker-lab
    cd ~/paperclip/ai-maker-lab
    ```
-3. Run paperclip onboarding.
+3. Run paperclip onboarding with an explicit data directory so Postgres and instance files never land under the repo.
    ```bash
-   npx paperclipai onboard --yes
+   npx paperclipai onboard -y --data-dir "$HOME/paperclip/ai-maker-lab"
    ```
+   - You can run the command from any working directory; `-d` / `--data-dir` pins all instance state under that path.
    - Accept the embedded Postgres option during onboarding.
    - Pick a company name like `ai-maker-lab` so the multi-company isolation is obvious from the dashboard.
+   - Optional: append `--run` to start the server immediately after config is saved.
 4. Wire provider keys.
    - Create `~/paperclip/ai-maker-lab/.env` with the three keys above plus any paperclip-specific vars the onboarding emits.
    - Do **not** commit this file. It lives outside the repo, but call this rule out so future contributors do not move it.
-5. Document the daemon lifecycle.
-   - Start: documented command from paperclip onboarding output.
-   - Stop: documented command from paperclip onboarding output.
-   - Status / dashboard URL: capture the local URL paperclip prints.
-   - Logs: capture the log path paperclip uses.
-   - Reset: a clear "drop everything" recipe (delete the install directory, re-run onboarding) for when an early-stage misconfig needs a clean slate.
+5. Document the daemon lifecycle (see **Operator runbook** below).
+   - Start: `npx paperclipai run -d "$HOME/paperclip/ai-maker-lab"` (or `onboard ... --run` right after first-time setup).
+   - Stop: graceful shutdown of the Paperclip Node process (foreground: Ctrl+C).
+   - Status / dashboard URL: URL printed at startup (typically `http://127.0.0.1:<port>/`; confirm the port from CLI output or your generated config).
+   - Logs: foreground terminal output; use `npx paperclipai doctor -d ...` and `npx paperclipai env -d ...` for path and health diagnostics.
+   - Reset: stop Paperclip, delete the install/data directory, re-run onboarding.
 6. Smoke test.
    - From the dashboard, hire a single throwaway agent (any provider, low budget, e.g. `$1`).
    - File a single throwaway ticket: *"Reply with the string OK."*.
    - Confirm: ticket transitions to `done`, a trace is recorded, the budget did not blow up.
    - Delete the throwaway agent and ticket. The install is now ready for `03-company-org-chart.md` to model the real company.
 7. Capture a one-page runbook in this file (start, stop, dashboard URL, log path, reset, smoke test) so future contributors do not re-derive it.
+
+## Operator runbook
+
+Use a single **install and data root** outside the monorepo. The canonical example path in this document is `~/paperclip/ai-maker-lab` (equivalently `$HOME/paperclip/ai-maker-lab`). Do not move this directory under `ai-maker-lab` source control.
+
+### One-time install
+
+```bash
+mkdir -p "$HOME/paperclip/ai-maker-lab"
+npx paperclipai onboard -y --data-dir "$HOME/paperclip/ai-maker-lab"
+```
+
+- `-y` / `--yes` accepts quickstart defaults for trusted local loopback (override reachability with `onboard --bind lan|tailnet` if you need more than loopback).
+- Embedded Postgres and Paperclip instance files stay under this directory tree.
+
+### Provider keys (install-local `.env`)
+
+Create `$HOME/paperclip/ai-maker-lab/.env` (never commit it) with at least:
+
+```bash
+OPENAI_API_KEY=...
+ANTHROPIC_API_KEY=...
+GEMINI_API_KEY=...
+```
+
+Before starting Paperclip, load these into the shell (for example `set -a && source .env && set +a` from that folder) or configure your process manager to inject them.
+
+### Start
+
+```bash
+cd "$HOME/paperclip/ai-maker-lab"
+set -a && [ -f .env ] && . ./.env && set +a
+npx paperclipai run --data-dir "$HOME/paperclip/ai-maker-lab"
+```
+
+- `run` bootstraps with `onboard` + `doctor` when needed, then starts the API and dashboard.
+- After the first successful onboard, you can also use `npx paperclipai onboard -y --data-dir "$HOME/paperclip/ai-maker-lab" --run` for a one-shot “save config and start” path.
+
+### Stop
+
+- **Foreground:** Ctrl+C in the terminal running `paperclipai run`.
+- **Background:** stop the supervising unit or send **SIGTERM** to the Node process running Paperclip. Avoid SIGKILL during database writes.
+
+### Dashboard URL
+
+The CLI prints the local dashboard URL when the server listens. Expect a loopback URL such as `http://127.0.0.1:<PORT>/` (common default `PORT` is `3100` if free—always confirm from your run output or generated config).
+
+### Logs and diagnostics
+
+- **Foreground logs:** stdout/stderr from the `paperclipai run` process.
+- **Health check:** `npx paperclipai doctor --data-dir "$HOME/paperclip/ai-maker-lab"` (add `--repair` / `-y` per `doctor --help` when fixing drift).
+- **Effective paths and env expectations:** `npx paperclipai env --data-dir "$HOME/paperclip/ai-maker-lab"` (shows config file location, storage roots, and required variables for your setup mode).
+
+### Reset (drop everything for this lane)
+
+1. Stop Paperclip.
+2. Delete the install/data directory, for example `rm -rf "$HOME/paperclip/ai-maker-lab"`, **only** when you intend to wipe companies, tickets, traces, and embedded Postgres for that path.
+3. Re-run **One-time install** above.
+
+### Smoke test (release gate)
+
+From the dashboard:
+
+1. Hire one throwaway agent (any provider, low monthly budget, for example about one dollar).
+2. Create one throwaway issue: *Reply with the string OK.*
+3. Confirm the issue reaches `done`, a trace is visible, and spend stayed within the test budget.
+4. Delete the throwaway issue and retire/delete the throwaway agent.
+
+Then confirm persistence: restart `paperclipai run`, reload the dashboard, and verify the database-backed history you expect is still present (excluding anything you intentionally deleted).
 
 ## Tests
 
