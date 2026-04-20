@@ -91,6 +91,7 @@ export const DEFAULT_BUNDLE: AssetBundle = {
       levelComplete: { id: 'levelComplete' },
       gameOver: { id: 'gameOver' },
       fireball: { id: 'fireball' },
+      pipe: { id: 'pipe' },
     },
   },
   backgrounds: {

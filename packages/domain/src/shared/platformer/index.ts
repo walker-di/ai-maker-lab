@@ -20,6 +20,7 @@ export type {
   MapDefinition,
   MapMetadata,
   MapSource,
+  PipeTeleportLink,
   ScrollMode,
   WorldDefinition,
 } from './map-types.js';

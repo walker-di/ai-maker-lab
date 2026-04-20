@@ -17,8 +17,9 @@ import { DEFAULT_TUNABLES, type Tunables } from './tunables.js';
 import { type AssetBundle, getAssetBundle } from './assets.js';
 import { type AudioBus, NullAudioBus } from './audio-bus.js';
 import { createEmptyInputState, type InputSource, type InputState } from './input.js';
-import { spawnFromDefinition, spawnPlayer } from './systems/factory.js';
+import { isQuestionBlockReserveSpawn, spawnFromDefinition, spawnPlayer } from './systems/factory.js';
 import { PlayerControllerSystem } from './systems/player-controller.js';
+import { PipeTeleportSystem } from './systems/teleport.js';
 import { IntegrationSystem } from './systems/integration.js';
 import {
   BulletShooterSystem,
@@ -37,6 +38,8 @@ export interface PlatformerEngineConfig {
   fixedStepHz?: number;
   tunables?: Partial<Tunables>;
   audio?: AudioBus;
+  /** Countdown starting value after each `loadMap` (default 300_000 ms). */
+  timeLimitMs?: number;
   /** Optional renderer factory; the default constructs a Pixi adapter on `mount`. */
   rendererFactory?: () => Promise<EngineRenderer>;
 }
@@ -94,6 +97,7 @@ export class PlatformerEngine {
   private rafHandle: number | null = null;
   private elapsedMs = 0;
   private timeRemainingMs = 300_000;
+  private readonly timeLimitMs: number;
   private score = 0;
   private coins = 0;
   private lives = 3;
@@ -107,6 +111,7 @@ export class PlatformerEngine {
     this.audio = config.audio ?? new NullAudioBus();
     this.loop = new FixedStepLoop({ hz: config.fixedStepHz ?? 60 });
     this.rendererFactory = config.rendererFactory;
+    this.timeLimitMs = config.timeLimitMs ?? 300_000;
   }
 
   async mount(target: HTMLCanvasElement | HTMLDivElement): Promise<void> {
@@ -128,6 +133,7 @@ export class PlatformerEngine {
     this.playerEntityRef.value = player;
 
     for (const spawn of map.entities) {
+      if (isQuestionBlockReserveSpawn(map, spawn)) continue;
       spawnFromDefinition({ world: this.world, bundle: this.bundle, grid: this.grid }, spawn);
     }
 
@@ -146,7 +152,7 @@ export class PlatformerEngine {
     this.coins = 0;
     this.goalReached = false;
     this.elapsedMs = 0;
-    this.timeRemainingMs = 300_000;
+    this.timeRemainingMs = this.timeLimitMs;
     this.pendingTileUpdates = [];
 
     this.audio.playMusic(map.music, { crossfadeMs: 500 });
@@ -223,6 +229,17 @@ export class PlatformerEngine {
       onAttack: (entity) => this.spawnFireball(entity),
       onJump: () => this.audio.playSfx('jump'),
     });
+    const pipeTeleport = new PipeTeleportSystem({
+      grid,
+      bundle: this.bundle,
+      getMap: () => this.map,
+      getInput: () => this.currentInput,
+      playerEntityRef: this.playerEntityRef,
+      onTeleport: (payload) => {
+        this.emitter.emit('pipeTeleport', payload);
+        this.audio.playSfx('pipe');
+      },
+    });
     const integration = new IntegrationSystem({ grid, tunables });
     const walkers = new WalkerEnemySystem({ grid, tunables, bundle: this.bundle });
     const flyers = new FlyingEnemySystem({ grid, tunables, bundle: this.bundle });
@@ -243,7 +260,7 @@ export class PlatformerEngine {
       this.playerEntityRef,
     );
 
-    return [playerCtrl, walkers, flyers, fireBars, shooters, integration, collisions, camera];
+    return [playerCtrl, pipeTeleport, walkers, flyers, fireBars, shooters, integration, collisions, camera];
   }
 
   private runFixedStep(): void {
@@ -308,15 +325,22 @@ export class PlatformerEngine {
     } else if (kind === 'question') {
       this.grid.setTile(col, row, 'hardBlock');
       this.pendingTileUpdates.push({ col, row, kind: 'hardBlock' });
-      this.audio.playSfx('coin');
-      // Spawn coin or item from question block; default coin.
       const item = this.itemFromQuestion(col, row);
       if (item === 'coin') {
+        this.audio.playSfx('coin');
         this.coins++;
         this.addScore(this.tunables.coinScore);
         this.emitter.emit('coin', { total: this.coins });
-      } else {
-        // future: spawn mushroom / flower entity above the block
+      } else if (row > 0) {
+        const spawned = spawnFromDefinition(
+          { world: this.world, bundle: this.bundle, grid: this.grid },
+          { kind: item, tile: { col, row: row - 1 } },
+        );
+        if (spawned != null) {
+          const vel = this.world.getComponent<VelocityComponent>(spawned, COMPONENT_KINDS.velocity);
+          if (vel) vel.vy = -200;
+        }
+        this.audio.playSfx('powerUp');
       }
     }
   }

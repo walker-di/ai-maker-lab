@@ -9,6 +9,7 @@ export type EngineEventMap = {
   hazardHit: { col: number; row: number };
   runFinished: { outcome: RunOutcome; score: number; coins: number; timeMs: number };
   pause: { paused: boolean };
+  pipeTeleport: { from: { col: number; row: number }; to: { col: number; row: number } };
 };
 
 export type EngineEvent = {

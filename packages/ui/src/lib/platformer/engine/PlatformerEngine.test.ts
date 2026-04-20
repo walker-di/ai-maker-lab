@@ -3,12 +3,23 @@ import { PlatformerEngine } from './PlatformerEngine.js';
 import { ScriptedInputSource } from './input.js';
 import { COMPONENT_KINDS } from './components.js';
 import type {
+  BodyComponent,
   PlayerStateComponent,
   PositionComponent,
   VelocityComponent,
   CameraComponent,
 } from './components.js';
 import type { MapDefinition, TileKind } from '../types.js';
+import type { TileGrid } from './tile-grid.js';
+import type { ItemComponent } from './components.js';
+
+function engineGrid(engine: PlatformerEngine): TileGrid {
+  return (engine as unknown as { grid: TileGrid | null }).grid!;
+}
+
+type BumpableHarness = Pick<PlatformerEngine, never> & {
+  handleBumpableHit(col: number, row: number, kind: TileKind): void;
+};
 
 function emptyTiles(cols: number, rows: number, fill: TileKind = 'empty'): TileKind[][] {
   return Array.from({ length: rows }, () =>
@@ -128,6 +139,105 @@ describe('PlatformerEngine', () => {
     engine.on('runFinished', (p) => { outcome = p.outcome; });
     for (let i = 0; i < 600 && outcome === null; i++) engine.tickFixed();
     expect(outcome === 'completed').toBe(true);
+  });
+
+  test('time reaching zero triggers lifeLost (timer drain)', () => {
+    const engine = new PlatformerEngine({ mode: 'play', timeLimitMs: 45 });
+    const input = new ScriptedInputSource();
+    engine.setInput(input);
+    engine.loadMap(makeFlatLevel());
+    let lost = 0;
+    let firstLives = -1;
+    engine.on('lifeLost', (p) => {
+      lost++;
+      if (firstLives < 0) firstLives = p.lives;
+    });
+    for (let i = 0; i < 8; i++) engine.tickFixed();
+    expect(lost).toBeGreaterThanOrEqual(1);
+    expect(firstLives).toBe(2);
+    expect(engine.getLives()).toBeLessThan(3);
+  });
+
+  test('small Mario bump does not break brick; super Mario breaks it', () => {
+    const cols = 16;
+    const rows = 12;
+    const brickCol = 8;
+    const brickRow = rows - 5;
+    const tiles = emptyTiles(cols, rows);
+    for (let c = 0; c < cols; c++) tiles[rows - 1]![c] = 'ground';
+    tiles[brickRow]![brickCol] = 'brick';
+
+    const base = {
+      ...makeFlatLevel({ size: { cols, rows }, tiles, spawn: { col: 2, row: rows - 2 } }),
+    } as MapDefinition;
+
+    const small = new PlatformerEngine({ mode: 'play' });
+    const inSmall = new ScriptedInputSource();
+    small.setInput(inSmall);
+    small.loadMap(base);
+    const smallPlayer = [...small.world.query([COMPONENT_KINDS.playerState])][0]!;
+    small.world.getComponent<PlayerStateComponent>(smallPlayer, COMPONENT_KINDS.playerState)!.power = 'none';
+    (small as unknown as BumpableHarness).handleBumpableHit(brickCol, brickRow, 'brick');
+    expect(engineGrid(small).tileAt(brickCol, brickRow)).toBe('brick');
+
+    const big = new PlatformerEngine({ mode: 'play' });
+    const inBig = new ScriptedInputSource();
+    big.setInput(inBig);
+    big.loadMap(base);
+    const bigPlayer = [...big.world.query([COMPONENT_KINDS.playerState])][0]!;
+    big.world.getComponent<PlayerStateComponent>(bigPlayer, COMPONENT_KINDS.playerState)!.power = 'grow';
+    (big as unknown as BumpableHarness).handleBumpableHit(brickCol, brickRow, 'brick');
+    expect(engineGrid(big).tileAt(brickCol, brickRow)).toBe('empty');
+  });
+
+  test('question block spawns reserved flower above; pickup grants fire', () => {
+    const cols = 20;
+    const rows = 12;
+    const qCol = 10;
+    const qRow = rows - 5;
+    const tiles = emptyTiles(cols, rows);
+    for (let c = 0; c < cols; c++) tiles[rows - 1]![c] = 'ground';
+    tiles[qRow]![qCol] = 'question';
+
+    const map = {
+      id: 'qb-flower',
+      version: 1,
+      size: { cols, rows },
+      tileSize: 16,
+      scrollMode: 'horizontal' as const,
+      spawn: { col: qCol, row: rows - 2 },
+      goal: { col: cols - 2, row: rows - 2, kind: 'flag' as const },
+      tiles,
+      entities: [{ kind: 'flower' as const, tile: { col: qCol, row: qRow } }],
+      background: 'sky',
+      music: 'overworld',
+    } satisfies MapDefinition;
+
+    const engine = new PlatformerEngine({ mode: 'play' });
+    const input = new ScriptedInputSource();
+    engine.setInput(input);
+    engine.loadMap(map);
+
+    (engine as unknown as BumpableHarness).handleBumpableHit(qCol, qRow, 'question');
+    expect(engineGrid(engine).tileAt(qCol, qRow)).toBe('hardBlock');
+
+    const flowers = [...engine.world.query([COMPONENT_KINDS.item])].filter((e) => {
+      const it = engine.world.getComponent<ItemComponent>(e, COMPONENT_KINDS.item);
+      return it?.kind === 'flower';
+    });
+    expect(flowers.length).toBe(1);
+
+    const flowerId = flowers[0]!;
+    const fpos = engine.world.getComponent<PositionComponent>(flowerId, COMPONENT_KINDS.position)!;
+    const player = [...engine.world.query([COMPONENT_KINDS.playerState])][0]!;
+    const ppos = engine.world.getComponent<PositionComponent>(player, COMPONENT_KINDS.position)!;
+    const body = engine.world.getComponent<BodyComponent>(player, COMPONENT_KINDS.body)!;
+    ppos.x = fpos.x;
+    ppos.y = fpos.y;
+    body.aabb.x = fpos.x;
+    body.aabb.y = fpos.y;
+    tickFor(engine, 4);
+    expect(engine.getPlayerPower()).toBe('fire');
   });
 
   test('camera never scrolls back as the player moves right', () => {

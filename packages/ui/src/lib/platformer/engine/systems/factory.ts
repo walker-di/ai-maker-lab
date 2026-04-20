@@ -1,7 +1,7 @@
 import type { EnemyAiComponent, ItemComponent, RenderableComponent } from '../components.js';
 import { COMPONENT_KINDS } from '../components.js';
 import type { EngineWorld, Entity } from '../world.js';
-import type { EntityKind, EntitySpawn } from '../../types.js';
+import type { EntityKind, EntitySpawn, MapDefinition } from '../../types.js';
 import type { TileGrid } from '../tile-grid.js';
 import type { AssetBundle } from '../assets.js';
 
@@ -143,4 +143,12 @@ export function isItem(kind: EntityKind): boolean {
     kind === 'oneUp' ||
     kind === 'spring'
   );
+}
+
+/** Power-ups hidden inside a `question` tile are spawned when the block is hit, not at load time. */
+export function isQuestionBlockReserveSpawn(map: MapDefinition, spawn: EntitySpawn): boolean {
+  const { col, row } = spawn.tile;
+  if (row < 0 || row >= map.size.rows || col < 0 || col >= map.size.cols) return false;
+  if (map.tiles[row]![col] !== 'question') return false;
+  return spawn.kind === 'mushroom' || spawn.kind === 'flower' || spawn.kind === 'star' || spawn.kind === 'oneUp';
 }

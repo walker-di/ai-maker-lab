@@ -5,6 +5,12 @@ export type ScrollMode = 'horizontal' | 'free';
 
 export type GoalKind = 'flag' | 'door' | 'edgeExit';
 
+/** Warp when the player stands on `from` (a `pipeTop` tile) and holds down. */
+export interface PipeTeleportLink {
+  readonly from: { readonly col: number; readonly row: number };
+  readonly to: { readonly col: number; readonly row: number };
+}
+
 export interface MapDefinition {
   id: string;
   version: number;
@@ -18,6 +24,8 @@ export interface MapDefinition {
   entities: EntitySpawn[];
   background: string;
   music: string;
+  /** Optional pipe warps; `from` must reference a `pipeTop` cell. */
+  pipeTeleports?: readonly PipeTeleportLink[];
 }
 
 export type MapSource = 'builtin' | 'user';
