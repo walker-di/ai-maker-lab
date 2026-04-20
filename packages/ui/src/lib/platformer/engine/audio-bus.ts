@@ -1,5 +1,10 @@
 import type { AssetBundle } from './assets.js';
 
+export type PlayMusicOptions = {
+  /** When set, crossfade from the current music instance over this duration. */
+  crossfadeMs?: number;
+};
+
 /**
  * Lightweight audio bus. Keeps track of the active music track and dispatches
  * sfx by id. The Pixi adapter will swap this for a `@pixi/sound`-backed
@@ -7,7 +12,7 @@ import type { AssetBundle } from './assets.js';
  * during SSR.
  */
 export interface AudioBus {
-  playMusic(trackId: string): void;
+  playMusic(trackId: string, options?: PlayMusicOptions): void;
   stopMusic(): void;
   playSfx(sfxId: string): void;
   setMuted(muted: boolean): void;
@@ -17,7 +22,7 @@ export interface AudioBus {
 export class NullAudioBus implements AudioBus {
   private currentMusic: string | null = null;
   readonly events: { type: 'music' | 'sfx' | 'stop' | 'mute'; id?: string; muted?: boolean }[] = [];
-  playMusic(trackId: string): void {
+  playMusic(trackId: string, _options?: PlayMusicOptions): void {
     if (this.currentMusic === trackId) return;
     this.currentMusic = trackId;
     this.events.push({ type: 'music', id: trackId });
@@ -46,7 +51,7 @@ export class HtmlAudioBus implements AudioBus {
   private currentMusic: string | null = null;
   private muted = false;
   constructor(private readonly bundle: AssetBundle, private readonly basePath = '/platformer/assets') {}
-  playMusic(trackId: string): void {
+  playMusic(trackId: string, _options?: PlayMusicOptions): void {
     if (this.currentMusic === trackId) return;
     this.stopMusic();
     const track = this.bundle.audio.music[trackId];

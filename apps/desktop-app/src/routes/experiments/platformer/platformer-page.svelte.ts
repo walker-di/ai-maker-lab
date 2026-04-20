@@ -11,7 +11,7 @@ const {
   KeyboardSource,
   createPlatformerHudModel,
   createPixiRendererFactory,
-  HtmlAudioBus,
+  PixiAudioBus,
   DEFAULT_BUNDLE,
 } = Platformer;
 
@@ -79,7 +79,7 @@ export function createPlatformerPageModel({ transport }: PlatformerPageDeps) {
     const viewportRows = entry.definition.size.rows;
     const next = new PlatformerEngine({
       mode: 'play',
-      audio: typeof window !== 'undefined' ? new HtmlAudioBus(DEFAULT_BUNDLE) : undefined,
+      audio: typeof window !== 'undefined' ? new PixiAudioBus(DEFAULT_BUNDLE) : undefined,
       rendererFactory: createPixiRendererFactory({
         width: tileSize * viewportCols,
         height: tileSize * viewportRows,

@@ -235,4 +235,4 @@ Out of scope for this step:
 
 - Systems, player controller, HUD presentation, and runtime wiring described in this doc live under `packages/ui/src/lib/platformer/engine/systems/*`, `packages/ui/src/lib/platformer/runtime/*`, and the runtime route in `05-route-integration.md`.
 - **Partial:** pipe teleport, level time countdown, fall-off-screen `lifeLost`, fireball lifecycle, bumpable bricks, and music crossfade still need a focused gameplay completeness pass against the acceptance bullets above.
-- **Audio:** `@pixi/sound` is not yet adopted; crossfade behavior remains blocked on that milestone.
+- **Audio:** `@pixi/sound` is adopted for the runtime route (`PixiAudioBus`). Music swaps use `AudioBus.playMusic(trackId, { crossfadeMs })` from `loadMap` (default **500ms**). Replace `static/platformer/assets/silence.wav` with real CC0 tracks when ready.

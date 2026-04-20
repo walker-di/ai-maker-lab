@@ -149,7 +149,7 @@ export class PlatformerEngine {
     this.timeRemainingMs = 300_000;
     this.pendingTileUpdates = [];
 
-    this.audio.playMusic(map.music);
+    this.audio.playMusic(map.music, { crossfadeMs: 500 });
 
     if (this.renderer) this.renderer.loadMap(map, this.bundle);
   }

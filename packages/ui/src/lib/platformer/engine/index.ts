@@ -41,7 +41,8 @@ export {
 } from './input.js';
 export type { InputSource, InputState } from './input.js';
 export { NullAudioBus, HtmlAudioBus } from './audio-bus.js';
-export type { AudioBus } from './audio-bus.js';
+export type { AudioBus, PlayMusicOptions } from './audio-bus.js';
+export { PixiAudioBus } from './pixi-audio-bus.js';
 export { createPixiRendererFactory } from './pixi-renderer.js';
 export type { PixiRendererOptions } from './pixi-renderer.js';
 export { spawnFromDefinition, spawnPlayer, isEnemyKind, isItem } from './systems/factory.js';

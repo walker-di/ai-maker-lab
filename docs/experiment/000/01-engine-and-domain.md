@@ -258,5 +258,6 @@ flowchart LR
 
 - Shared types and `validateMapDefinition`: `packages/domain/src/shared/platformer/*` with tests.
 - Engine / ECS-lite / physics / fixed step: `packages/ui/src/lib/platformer/engine/*` (see `PlatformerEngine.ts`, `world.ts`, `tile-grid.ts`, `fixed-step-loop.ts`, `physics.ts`).
-- Renderer: `packages/ui/src/lib/platformer/engine/pixi-renderer.ts` uses **Pixi v8** and **`@pixi/tilemap` `CompositeTilemap`** for the static tile layer (placeholder textures generated from the shape bundle). **`@pixi/sound` is not yet integrated**; `audio-bus.ts` still defaults to a null implementation for tests.
+- Renderer: `packages/ui/src/lib/platformer/engine/pixi-renderer.ts` uses **Pixi v8** and **`@pixi/tilemap` `CompositeTilemap`** for the static tile layer (placeholder textures generated from the shape bundle).
+- Audio: **`@pixi/sound`** is integrated via `pixi-audio-bus.ts` (`PixiAudioBus`). The browser runtime route composes `PixiAudioBus`; tests and SSR keep **`NullAudioBus`**. Placeholder assets resolve under `/platformer/assets/silence.wav` (see `apps/desktop-app/static/platformer/assets/`) until real CC0 clips are wired through the bundle URLs.
 - Tile grid patching helpers (no Pixi): `packages/ui/src/lib/platformer/engine/tile-layer-ops.ts` + `tile-layer-ops.test.ts`.
