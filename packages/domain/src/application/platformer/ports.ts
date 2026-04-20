@@ -57,6 +57,8 @@ export interface SaveUserMapInput {
 
 export interface IMapCatalogService {
   listMaps(options?: ListMapsOptions): Promise<ResolvedMapEntry[]>;
+  /** Raw built-in `WorldDefinition[]` for clients that need world grouping (REST `GET /api/platformer/worlds`). */
+  listBuiltInWorlds(): Promise<WorldDefinition[]>;
   getMap(id: string): Promise<ResolvedMapEntry | null>;
   saveUserMap(input: SaveUserMapInput): Promise<ResolvedMapEntry>;
   deleteUserMap(id: string): Promise<void>;
