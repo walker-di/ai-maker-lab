@@ -3,6 +3,8 @@ import {
   type EditorOperation,
   type EditorToolKind,
 } from './operations.js';
+import { getTool } from './tools/index.js';
+import type { ToolPointerPayload } from './tools/index.js';
 import type {
   EntityKind,
   MapDefinition,
@@ -56,10 +58,13 @@ export class MapEditorModel {
   validation = $state<MapValidationResult>({ ok: true, errors: [], warnings: [] });
   playtest = $state<PlaytestState>({ active: false, lastEditedAt: 0 });
   dirty = $state<boolean>(false);
+  /** Anchor cell for rectangle tool drag (set on pointer down, cleared on up). */
+  rectangleAnchor = $state<{ col: number; row: number } | null>(null);
 
   private history: MapDefinition[] = [];
   private historyIndex = -1;
   private lastBrushKey: string | null = null;
+  private panDrag: { lastX: number; lastY: number } | null = null;
   private events: MapEditorEvents;
 
   constructor(events: MapEditorEvents = {}) {
@@ -139,6 +144,56 @@ export class MapEditorModel {
   }
   exitPlaytest(): void {
     this.playtest = { ...this.playtest, active: false };
+  }
+
+  canPlaytest(): boolean {
+    return this.validation.errors.length === 0;
+  }
+
+  /** ESC / overlay dismiss — exits playtest when active. */
+  cancelPlaytest(): void {
+    if (this.playtest.active) this.exitPlaytest();
+  }
+
+  handlePointerDown(evt: ToolPointerPayload): void {
+    getTool(this.selectedTool).onPointerDown(this, evt);
+  }
+
+  handlePointerDrag(evt: ToolPointerPayload): void {
+    getTool(this.selectedTool).onPointerDrag?.(this, evt);
+  }
+
+  handlePointerUp(evt: ToolPointerPayload): void {
+    getTool(this.selectedTool).onPointerUp?.(this, evt);
+  }
+
+  setRectangleAnchor(col: number, row: number): void {
+    this.rectangleAnchor = { col, row };
+    this.beginStroke();
+  }
+
+  clearRectangleAnchor(): void {
+    this.rectangleAnchor = null;
+  }
+
+  markPanDragStart(clientX: number, clientY: number): void {
+    this.panDrag = { lastX: clientX, lastY: clientY };
+  }
+
+  panDragTo(clientX: number, clientY: number): void {
+    if (!this.panDrag) return;
+    const dx = clientX - this.panDrag.lastX;
+    const dy = clientY - this.panDrag.lastY;
+    this.viewport = {
+      ...this.viewport,
+      offsetX: this.viewport.offsetX + dx,
+      offsetY: this.viewport.offsetY + dy,
+    };
+    this.panDrag = { lastX: clientX, lastY: clientY };
+  }
+
+  endPanDrag(): void {
+    this.panDrag = null;
   }
 
   serializeForPlaytest(): MapDefinition {

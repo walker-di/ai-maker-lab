@@ -38,7 +38,7 @@
       type="button"
       data-testid="editor-playtest"
       onclick={() => model.enterPlaytest()}
-      disabled={model.validation.errors.length > 0}
+      disabled={!model.canPlaytest()}
     >Playtest</button>
     {#if model.playtest.active}
       <button type="button" data-testid="editor-stop-playtest" onclick={() => model.exitPlaytest()}>Stop</button>

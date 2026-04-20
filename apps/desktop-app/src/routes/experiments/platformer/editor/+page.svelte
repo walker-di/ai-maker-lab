@@ -2,7 +2,14 @@
   import { Button, Tooltip, Platformer } from 'ui/source';
   import { createEditorPage } from './editor-page.composition.ts';
 
-  const { MapEditorCanvas, MapEditorToolbar, MapEditorPalette, MapMetadataForm } = Platformer;
+  const {
+    MapEditorCanvas,
+    MapEditorToolbar,
+    MapEditorPalette,
+    MapValidationPanel,
+    PlaytestOverlay,
+    MapMetadataForm,
+  } = Platformer;
   const model = createEditorPage();
 </script>
 
@@ -86,24 +93,10 @@
 
       <div class="border-border bg-background relative h-[60vh] min-h-[480px] overflow-hidden rounded-xl border">
         <MapEditorCanvas model={model.editor} />
+        <PlaytestOverlay model={model.editor} />
       </div>
 
-      <aside
-        class="border-border bg-muted/20 flex flex-col gap-2 rounded-xl border p-3 text-sm"
-        data-testid="editor-validation"
-      >
-        <h2 class="text-foreground font-medium">Validation</h2>
-        {#if model.editor.validation.errors.length === 0 && model.editor.validation.warnings.length === 0}
-          <p class="text-muted-foreground text-xs">Map is valid.</p>
-        {:else}
-          {#each model.editor.validation.errors as issue}
-            <p class="text-xs text-red-500">{issue.message}</p>
-          {/each}
-          {#each model.editor.validation.warnings as issue}
-            <p class="text-xs text-amber-500">{issue.message}</p>
-          {/each}
-        {/if}
-      </aside>
+      <MapValidationPanel model={model.editor} />
     </div>
   </div>
 </Tooltip.Provider>

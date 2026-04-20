@@ -1,13 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { MapEditorModel } from './map-editor.svelte.ts';
+  import type { ToolPointerPayload } from './tools/index.js';
   import { DEFAULT_BUNDLE } from '../engine/assets.js';
 
   let { model }: { model: MapEditorModel } = $props();
 
   let canvasEl: HTMLCanvasElement | undefined = $state();
   let dragging = $state(false);
-  let dragStart: { col: number; row: number } | null = null;
 
   function tileSizePx(): number {
     return model.map.tileSize * model.viewport.zoom;
@@ -23,71 +23,65 @@
     return { col, row };
   }
 
-  function paintAt(col: number, row: number) {
-    const tool = model.selectedTool;
-    if (tool === 'brush') {
-      model.applyOperation({ type: 'paintTile', col, row, kind: model.selectedTile });
-    } else if (tool === 'eraser') {
-      model.applyOperation({ type: 'eraseTile', col, row });
-    } else if (tool === 'fill') {
-      model.applyOperation({ type: 'fillTile', col, row, kind: model.selectedTile });
-    } else if (tool === 'entity' && model.selectedEntity) {
-      model.applyOperation({ type: 'placeEntity', col, row, kind: model.selectedEntity });
-    } else if (tool === 'spawn') {
-      model.applyOperation({ type: 'setSpawn', col, row });
-    } else if (tool === 'goal') {
-      model.applyOperation({ type: 'setGoal', col, row, kind: model.map.goal.kind });
-    }
+  function buildPayload(event: PointerEvent, cell: { col: number; row: number }): ToolPointerPayload {
+    return {
+      col: cell.col,
+      row: cell.row,
+      modifier: event.ctrlKey || event.metaKey,
+      clientX: event.clientX,
+      clientY: event.clientY,
+    };
+  }
+
+  function dummyPayload(event: PointerEvent): ToolPointerPayload {
+    return {
+      col: 0,
+      row: 0,
+      modifier: false,
+      clientX: event.clientX,
+      clientY: event.clientY,
+    };
+  }
+
+  function resolveCellForUp(event: PointerEvent): { col: number; row: number } | null {
+    return pointToCell(event.clientX, event.clientY) ?? model.cursor;
   }
 
   function handlePointerDown(event: PointerEvent) {
     const cell = pointToCell(event.clientX, event.clientY);
     if (!cell) return;
-    if (model.selectedTool === 'pan') {
-      dragging = true;
-      dragStart = { col: event.clientX, row: event.clientY };
-      return;
-    }
     dragging = true;
-    model.beginStroke();
-    if (model.selectedTool === 'rectangle') {
-      dragStart = cell;
-    } else {
-      paintAt(cell.col, cell.row);
-    }
+    model.handlePointerDown(buildPayload(event, cell));
   }
 
   function handlePointerMove(event: PointerEvent) {
     const cell = pointToCell(event.clientX, event.clientY);
     if (cell) model.cursor = cell;
+    else model.cursor = null;
     if (!dragging) return;
-    if (model.selectedTool === 'pan' && dragStart) {
-      const dx = event.clientX - dragStart.col;
-      const dy = event.clientY - dragStart.row;
-      model.viewport = { ...model.viewport, offsetX: model.viewport.offsetX + dx, offsetY: model.viewport.offsetY + dy };
-      dragStart = { col: event.clientX, row: event.clientY };
+    if (model.selectedTool === 'pan') {
+      model.handlePointerDrag(dummyPayload(event));
       return;
     }
     if (!cell) return;
-    if (model.selectedTool === 'brush' || model.selectedTool === 'eraser') paintAt(cell.col, cell.row);
+    model.handlePointerDrag(buildPayload(event, cell));
   }
 
   function handlePointerUp(event: PointerEvent) {
-    const cell = pointToCell(event.clientX, event.clientY);
-    if (model.selectedTool === 'rectangle' && dragStart && cell && typeof dragStart.col === 'number') {
-      const start = dragStart;
-      const c0 = Math.min(start.col, cell.col);
-      const c1 = Math.max(start.col, cell.col);
-      const r0 = Math.min(start.row, cell.row);
-      const r1 = Math.max(start.row, cell.row);
-      model.applyOperation({
-        type: 'paintRect',
-        rect: { col: c0, row: r0, cols: c1 - c0 + 1, rows: r1 - r0 + 1 },
-        kind: model.selectedTile,
-      });
+    if (!dragging) return;
+    if (model.selectedTool === 'pan') {
+      model.handlePointerUp(dummyPayload(event));
+    } else {
+      let cell = resolveCellForUp(event);
+      if (!cell && model.rectangleAnchor && model.selectedTool === 'rectangle') {
+        cell = model.rectangleAnchor;
+      }
+      if (cell) model.handlePointerUp(buildPayload(event, cell));
+      else if (model.rectangleAnchor && model.selectedTool === 'rectangle') {
+        model.clearRectangleAnchor();
+      }
     }
     dragging = false;
-    dragStart = null;
   }
 
   function handleWheel(event: WheelEvent) {
@@ -167,7 +161,14 @@
     }
   }
 
-  function paintShape(ctx: CanvasRenderingContext2D, shape: 'rect' | 'roundRect' | 'circle' | 'triangle', x: number, y: number, w: number, h: number): void {
+  function paintShape(
+    ctx: CanvasRenderingContext2D,
+    shape: 'rect' | 'roundRect' | 'circle' | 'triangle',
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+  ): void {
     if (shape === 'rect') {
       ctx.fillRect(x, y, w, h);
     } else if (shape === 'roundRect') {
@@ -199,7 +200,10 @@
 
   $effect(() => {
     // Touch reactive sources, then redraw.
-    void model.map; void model.cursor; void model.viewport;
+    void model.map;
+    void model.cursor;
+    void model.viewport;
+    void model.rectangleAnchor;
     draw();
   });
 
@@ -218,7 +222,7 @@
   onpointerdown={handlePointerDown}
   onpointermove={handlePointerMove}
   onpointerup={handlePointerUp}
-  onpointerleave={() => model.cursor = null}
+  onpointerleave={() => (model.cursor = null)}
   onwheel={handleWheel}
 ></canvas>
 
