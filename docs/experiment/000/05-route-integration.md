@@ -170,3 +170,10 @@ Out of scope for this step:
 - The page models must not import Pixi directly. Engine instantiation lives behind the `PlatformerEngine` surface from `ui/source`.
 - The packaged desktop build serves static assets from `views://mainview`. Confirm `@pixi/sound` and `@pixi/tilemap` assets resolve under that scheme. If not, add a thin asset rewrite at the engine boundary, not at the route boundary.
 - E2E timing for gameplay flakes if asserting on absolute frame counts. Assert on engine events surfaced through the page model, not on raw frame timings.
+
+## Implementation status (repository)
+
+- Experiments index card and platformer routes: `apps/desktop-app/src/routes/+page.svelte`, `apps/desktop-app/src/routes/experiments/platformer/*`, `apps/desktop-app/src/routes/experiments/platformer/editor/*` with `.svelte.ts` page models and `*.composition.ts` wiring per `apps/desktop-app/AGENTS.md`.
+- Transports: `apps/desktop-app/src/lib/adapters/platformer/*` (`create-platformer-transport.ts`, `web-platformer-transport.ts`). Desktop still uses the web transport (see `04-persistence-and-services.md` implementation status).
+- **E2E:** `apps/desktop-app/e2e/platformer/*`. Filtered script **`bun run test:e2e:platformer`** is defined in `apps/desktop-app/package.json` and runs only that folder.
+- **Editor shell vs this doc:** `editor/+page.svelte` uses `MapEditorPalette` (combined) rather than separate `TilePalette` / `EntityPalette` components; validation UI and `PlaytestOverlay` are not yet split per `03-map-editor.md`.

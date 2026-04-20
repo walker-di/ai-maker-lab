@@ -72,6 +72,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@lucide/svelte": "^1.7.0",
+        "@pixi/tilemap": "^5.0.2",
         "bits-ui": "^2.17.2",
         "clsx": "^2.1.1",
         "marked": "^18.0.0",
@@ -97,6 +98,7 @@
         "@tailwindcss/forms": "^0.5.11",
         "@tailwindcss/typography": "^0.5.19",
         "@tailwindcss/vite": "^4.1.18",
+        "@types/bun": "latest",
         "@types/node": "^24",
         "@types/sanitize-html": "^2.16.1",
         "@vitest/browser-playwright": "^4.1.2",
@@ -249,6 +251,8 @@
     "@opentelemetry/api": ["@opentelemetry/api@1.9.0", "", {}, "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg=="],
 
     "@pixi/colord": ["@pixi/colord@2.9.6", "", {}, "sha512-nezytU2pw587fQstUu1AsJZDVEynjskwOL+kibwcdxsMBFqPsFFNA7xl0ii/gXuDi6M0xj3mfRJj8pBSc2jCfA=="],
+
+    "@pixi/tilemap": ["@pixi/tilemap@5.0.2", "", { "peerDependencies": { "pixi.js": ">=8.5.0" } }, "sha512-J+K1eU7uB58WPVD33d7usXrhKA03IGq3IfPvXBFr1027Bb9ScxrGhH0NomR9VpVVUPiHkK7FcTGuOtJMVGAv6A=="],
 
     "@playwright/test": ["@playwright/test@1.59.1", "", { "dependencies": { "playwright": "1.59.1" }, "bin": { "playwright": "cli.js" } }, "sha512-PG6q63nQg5c9rIi4/Z5lR5IVF7yU5MqmKaPOe0HSc0O2cX1fPi96sUQu5j7eo4gKCkB2AnNGoWt7y4/Xx3Kcqg=="],
 

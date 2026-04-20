@@ -230,3 +230,9 @@ Out of scope for this step:
 - Enemies must stay deterministic at fixed step. Avoid `Math.random()` inside system updates without a seeded RNG.
 - The IP guardrail is non-negotiable. A single sprite of the wrong character can sink the experiment publicly. Treat asset review as part of code review.
 - Audio crossfades can cause clicks if sample rates differ. Standardize on `44100Hz` mono OGG for SFX and stereo OGG for music.
+
+## Implementation status (repository)
+
+- Systems, player controller, HUD presentation, and runtime wiring described in this doc live under `packages/ui/src/lib/platformer/engine/systems/*`, `packages/ui/src/lib/platformer/runtime/*`, and the runtime route in `05-route-integration.md`.
+- **Partial:** pipe teleport, level time countdown, fall-off-screen `lifeLost`, fireball lifecycle, bumpable bricks, and music crossfade still need a focused gameplay completeness pass against the acceptance bullets above.
+- **Audio:** `@pixi/sound` is not yet adopted; crossfade behavior remains blocked on that milestone.

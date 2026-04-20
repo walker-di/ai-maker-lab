@@ -243,3 +243,10 @@ Out of scope for this step:
 - Undo coalescing must reset between strokes so two distinct strokes do not merge.
 - Playtest must serialize the map before running. Live references would let gameplay mutate editor state.
 - Resizing maps is a destructive operation. Always confirm before truncating.
+
+## Implementation status (repository)
+
+- Editor model and pure transforms: `packages/ui/src/lib/platformer/editor/map-editor.svelte.ts`, `operations.ts`, `MapEditorCanvas.svelte`, `MapEditorToolbar.svelte`, `MapMetadataForm.svelte`.
+- **Palette:** shipped as a single tabbed component `MapEditorPalette.svelte` (tile + entity tabs), not separate `TilePalette` / `EntityPalette` files yet.
+- **Missing vs this doc:** dedicated `MapValidationPanel.svelte`, `PlaytestOverlay.svelte`, and `editor/tools/*.ts` tool-dispatch layer (logic currently folded into the model + `operations.ts`).
+- Route shell: `apps/desktop-app/src/routes/experiments/platformer/editor/+page.svelte` mounts the combined palette and catalog sidebar described in `05-route-integration.md`.

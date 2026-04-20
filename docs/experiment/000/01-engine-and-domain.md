@@ -253,3 +253,10 @@ flowchart LR
 - The fixed-step loop must stay separate from Pixi's render ticker so tests stay deterministic and so slow frames don't break gameplay.
 - Keep the engine surface small. Resist adding tool-specific or editor-specific methods here. Editor concerns belong in `03-map-editor.md`.
 - The local UI types mirror exists for a real reason: `packages/ui` cannot depend on `packages/domain` per `packages/ui/AGENTS.md`. Keep both shapes structurally compatible.
+
+## Implementation status (repository)
+
+- Shared types and `validateMapDefinition`: `packages/domain/src/shared/platformer/*` with tests.
+- Engine / ECS-lite / physics / fixed step: `packages/ui/src/lib/platformer/engine/*` (see `PlatformerEngine.ts`, `world.ts`, `tile-grid.ts`, `fixed-step-loop.ts`, `physics.ts`).
+- Renderer: `packages/ui/src/lib/platformer/engine/pixi-renderer.ts` uses **Pixi v8** and **`@pixi/tilemap` `CompositeTilemap`** for the static tile layer (placeholder textures generated from the shape bundle). **`@pixi/sound` is not yet integrated**; `audio-bus.ts` still defaults to a null implementation for tests.
+- Tile grid patching helpers (no Pixi): `packages/ui/src/lib/platformer/engine/tile-layer-ops.ts` + `tile-layer-ops.test.ts`.

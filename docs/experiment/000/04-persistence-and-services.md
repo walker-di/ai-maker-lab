@@ -243,3 +243,11 @@ Out of scope for this step:
 - The `inheritsFromBuiltInId` field is reserved for forward compatibility. The first cut treats `DuplicateBuiltInMap` as a snapshot only; do not implement live override merging in this experiment.
 - Player progress upsert on `(worldId, levelId)` must be atomic. Use a single Surreal query rather than read-modify-write to avoid lost updates.
 - Built-in JSON validation at load time prevents shipping a broken world bundle and is preferable to runtime crashes.
+
+## Implementation status (repository)
+
+- **Application surface:** `MapCatalogService` in `packages/domain/src/application/platformer/MapCatalogService.ts` exposes the catalog, map CRUD, duplicate, validation, and progress flows as **methods on one service** rather than separate `use-cases/*.ts` files. Method names intentionally mirror the old use-case names for a future file split.
+- **Built-in worlds:** a single JSON bundle `packages/domain/src/infrastructure/file/platformer/built-in-worlds.json` loaded by `JsonBuiltInWorldRepository` (not `world-1.json` / `world-2.json` / `world-3.json`).
+- **Persistence:** Surreal repositories for `user_map` and `player_progress` under `packages/domain/src/infrastructure/database/platformer/*` with `mem://` tests per workspace rules.
+- **REST (actual paths):** `GET/POST /api/platformer/maps`, `GET/PUT/DELETE /api/platformer/maps/[id]`, `POST /api/platformer/maps/duplicate`, `GET /api/platformer/worlds`, `POST /api/platformer/runs` (record run), `GET /api/platformer/players/[id]` (load profile). The older `/api/platformer/progress` naming was **not** used; the spec sections above that still mention `/progress` are **legacy relative to the shipped code**.
+- **Desktop transport:** `apps/desktop-app/src/lib/adapters/platformer/create-platformer-transport.ts` still returns the **web** transport when `mode === 'desktop'`; Electrobun RPC mirroring chat is **not** implemented yet.

@@ -127,7 +127,7 @@ describe('PlatformerEngine', () => {
     let outcome: string | null = null;
     engine.on('runFinished', (p) => { outcome = p.outcome; });
     for (let i = 0; i < 600 && outcome === null; i++) engine.tickFixed();
-    expect(outcome).toBe('completed');
+    expect(outcome === 'completed').toBe(true);
   });
 
   test('camera never scrolls back as the player moves right', () => {
