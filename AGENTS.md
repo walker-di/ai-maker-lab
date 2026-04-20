@@ -55,6 +55,15 @@
 - Update docs in the same change set when workspace structure or import conventions change.
 - Prefer concise, executable Bun workspace commands over long prose.
 
+## OpenSpec (spec-driven changes)
+
+This repo uses **[OpenSpec](https://openspec.dev/)** for lightweight, **git-resident** functional specs and reviewable change deltas (MIT, [`@fission-ai/openspec`](https://www.npmjs.com/package/@fission-ai/openspec), upstream [`Fission-AI/OpenSpec`](https://github.com/Fission-AI/OpenSpec)).
+
+- **CLI:** `bunx @fission-ai/openspec@latest` (see `init --help`, `change --help`).
+- **IDE integrations:** Cursor / Codex / Claude Code skills and slash commands live under `.cursor/`, `.codex/skills/openspec-*`, and `.claude/` (restart the IDE after updates so `/opsx:*` commands register).
+- **Workflow:** start substantive work with **`/opsx:propose`** (Cursor) or `openspec new change "<kebab-name>"`, then drive **`/opsx:apply`** / **`/opsx:archive`** when tasks complete.
+- **Governance split:** OpenSpec holds **what the system shall do** as living markdown; **Paperclip** holds assignment, checkout, review routing, and optional issue **`plan`** docs—link the active `openspec/changes/<id>/` folder from the Paperclip task thread.
+
 ## Skills
 
 - `svelte-frontend`: `skills/svelte-frontend/SKILL.md`
