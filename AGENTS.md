@@ -49,6 +49,7 @@
   - `packages/ui/AGENTS.md`
   - `packages/domain/README.md`
   - `docs/sprint/003/` — paperclip company definition (CEO / Orchestrator / Coder / QA / Designer) used to drive experiment redo.
+  - `docs/process/` — Definition of Ready and Paperclip `plan` templates for OpenSpec-backed delivery.
   - `skills/svelte-frontend/SKILL.md`
   - `skills/backend-implementtion/SKILL.md`
   - `skills/excalidraw-diagram/SKILL.md`
@@ -59,10 +60,14 @@
 
 This repo uses **[OpenSpec](https://openspec.dev/)** for lightweight, **git-resident** functional specs and reviewable change deltas (MIT, [`@fission-ai/openspec`](https://www.npmjs.com/package/@fission-ai/openspec), upstream [`Fission-AI/OpenSpec`](https://github.com/Fission-AI/OpenSpec)).
 
-- **CLI:** `bunx @fission-ai/openspec@latest` (see `init --help`, `change --help`).
+- **CLI:** `bunx @fission-ai/openspec@latest` (see `init --help`, `change --help`, `validate --help`).
+- **Layout primer:** `openspec/README.md` (schemas, default config, active adoption change).
+- **Adoption change (AIMA-11 rollout):** `openspec/changes/sdd-workflow-adoption/`.
+- **Gates:** `docs/process/definition-of-ready.md` and `docs/process/paperclip-plan-template.md`.
 - **IDE integrations:** Cursor / Codex / Claude Code skills and slash commands live under `.cursor/`, `.codex/skills/openspec-*`, and `.claude/` (restart the IDE after updates so `/opsx:*` commands register).
 - **Workflow:** start substantive work with **`/opsx:propose`** (Cursor) or `openspec new change "<kebab-name>"`, then drive **`/opsx:apply`** / **`/opsx:archive`** when tasks complete.
 - **Governance split:** OpenSpec holds **what the system shall do** as living markdown; **Paperclip** holds assignment, checkout, review routing, and optional issue **`plan`** docs—link the active `openspec/changes/<id>/` folder from the Paperclip task thread.
+- **Validate a change before implementation:** `bunx @fission-ai/openspec@latest validate sdd-workflow-adoption --type change --no-interactive` (swap the change name as appropriate).
 
 ## Skills
 
