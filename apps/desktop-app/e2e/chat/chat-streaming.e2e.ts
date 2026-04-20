@@ -45,6 +45,10 @@ test.describe('Chat page – streaming (mocked)', () => {
 		await waitForAgentsLoaded(page);
 	});
 
+	test.afterEach(async ({ page }) => {
+		await page.unroute('**/api/chat/threads/*/stream');
+	});
+
 	test('sends a message and sees mocked assistant response', async ({ page }) => {
 		await page.route('**/api/chat/threads/*/stream', async (route) => {
 			await route.fulfill({
@@ -99,8 +103,15 @@ test.describe('Chat page – streaming (mocked)', () => {
 	test('user message appears immediately even before stream completes', async ({
 		page,
 	}) => {
+		// Avoid `setTimeout` inside the route handler: delayed `fulfill` can fail to
+		// deliver reliably under Playwright interception. Gate the mock instead.
+		let releaseStream: (() => void) | undefined;
+		const streamHeld = new Promise<void>((resolve) => {
+			releaseStream = resolve;
+		});
+
 		await page.route('**/api/chat/threads/*/stream', async (route) => {
-			await new Promise((r) => setTimeout(r, 2000));
+			await streamHeld;
 			await route.fulfill({
 				status: 200,
 				headers: mockStreamHeaders(),
@@ -118,8 +129,10 @@ test.describe('Chat page – streaming (mocked)', () => {
 			timeout: 3_000,
 		});
 
-		await expect(page.getByText('Delayed response')).toBeVisible({
-			timeout: 10_000,
+		releaseStream!();
+
+		await expect(mainPanel(page).getByText('Delayed response')).toBeVisible({
+			timeout: 15_000,
 		});
 	});
 

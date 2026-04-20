@@ -197,7 +197,10 @@
 			</div>
 		{:else}
 			<!-- Thread header -->
-			<div class="border-border flex items-center justify-between gap-2 border-b px-4 py-3">
+			<div
+				class="border-border flex items-center justify-between gap-2 border-b px-4 py-3"
+				data-testid="chat-main-toolbar"
+			>
 				<div class="flex min-w-0 items-center gap-2">
 					<Button
 						variant="ghost"
@@ -209,6 +212,12 @@
 						<PanelLeftIcon class="size-4" />
 					</Button>
 					<Separator orientation="vertical" class="h-4" />
+					<h2
+						class="text-foreground max-w-[14rem] shrink-0 truncate text-sm font-semibold"
+						data-testid="chat-thread-title"
+					>
+						{model.activeThread.title}
+					</h2>
 					<div class="flex min-w-0 items-center gap-2">
 						{#if model.defaultAgent}
 							<p class="text-muted-foreground truncate text-xs">

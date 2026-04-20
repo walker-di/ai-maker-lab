@@ -3,8 +3,8 @@ import { test, expect } from '@playwright/test';
 test.describe('Platformer editor', () => {
   test('home page exposes a link to the editor route', async ({ page }) => {
     await page.goto('/');
-    const card = page.locator('a[href="/experiments/platformer/editor"]').first();
-    await expect(card).toBeVisible();
+    const card = page.locator('a[href$="/experiments/platformer/editor"]').first();
+    await expect(card).toBeVisible({ timeout: 15_000 });
     await expect(card).toContainText('Platformer Editor');
   });
 

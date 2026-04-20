@@ -3,8 +3,9 @@ import { test, expect } from '@playwright/test';
 test.describe('Platformer experiment', () => {
   test('home page exposes a link to the platformer route', async ({ page }) => {
     await page.goto('/');
-    const card = page.locator('a[href="/experiments/platformer"]').first();
-    await expect(card).toBeVisible();
+    // Paraglide may prefix the locale; match the de-localized path suffix only (not `/editor`).
+    const card = page.locator('a[href$="/experiments/platformer"]').first();
+    await expect(card).toBeVisible({ timeout: 15_000 });
     await expect(card).toContainText('Platformer');
   });
 
