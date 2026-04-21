@@ -28,7 +28,9 @@ If you are editing for a recording, prefer **reading order** below; it is tighte
 | File | Use in edit |
 | --- | --- |
 | [storyboard.excalidraw](storyboard.excalidraw) | **Roadmap / chapter strip** — same information density as a classic sprint-001-style deck: one card per numbered plan, left-to-right. |
+| [storyboard.excalidraw.png](storyboard.excalidraw.png) | **Frozen export** of the storyboard JSON for thumbnails and quick visual review (regenerate with `.codex/skills/excalidraw-diagram/references/render_excalidraw.py` after JSON edits). |
 | [presentation.excalidraw](presentation.excalidraw) | **B-roll / deep diagram** — pi.dev vs Paperclip, org chart, ticket loop, evidence paths on one tall canvas. |
+| [presentation.excalidraw.png](presentation.excalidraw.png) | **Frozen export** of the presentation JSON — same canvas as the `.excalidraw` file, not a separate design source. |
 
 ## Cross-links for B-roll
 
