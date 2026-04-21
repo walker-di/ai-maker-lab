@@ -15,6 +15,18 @@ Generate `.excalidraw` JSON files that **argue visually**, not just display info
 
 To make this skill produce diagrams in your own brand style, edit `color-palette.md`. Everything else in this file is universal design methodology and Excalidraw best practices.
 
+### Sprint / video deck mode vs technical diagram mode
+
+Some repos ship **paired artifacts**: `presentation.excalidraw` (editable JSON) and `presentation.excalidraw.png` (**raster export of the same canvas** for thumbnails, READMEs, and edit bays). The PNG is not interchangeable source: **renaming `.png` to `.excalidraw` does not recover JSON** and will not open as a diagram.
+
+**Technical diagram mode** (default in `references/color-palette.md`): crisp geometry, semantic fills, evidence boxes — often `roughness: 0` and `fontFamily: 3` where readability beats sketch.
+
+**Sprint deck mode** (match legacy sprint `000` / `001` **PNG** exports when that is the reference): treat the **PNG as the visual contract** if no `.excalidraw` JSON exists for that sprint. Prefer **Virgil** (`fontFamily: 1`), **hand-drawn strokes** (`roughness: 1`), **white slide cards** with **near-black borders** (`#1e1e1e` / `#000000`), **Excalidraw default blue** (`#1971c2`) for primary copy, **grey** (`#868e96`) for corner labels / footers, and **discrete rounded-rectangle frames** per slide — not one borderless systems canvas — unless the task explicitly asks for a single poster.
+
+**Mandatory verification for deck work:** after editing any `.excalidraw` that has a checked-in twin `.png`, run `references/render_excalidraw.py` to refresh the PNG and **visually compare** against the reference sprint PNG before claiming style parity.
+
+**Paperclip / issue review hygiene:** when the task thread is the approval surface (for example Paperclip), **do not assume reviewers will open the repo**. After you render, **upload the PNG(s)** with `POST /api/companies/{companyId}/issues/{issueId}/attachments` (multipart `file` field) and **paste them into the issue comment** using markdown image embeds, for example `![](/api/attachments/{attachmentId}/content)`, so humans see the canvas in-line. Keep repo PNGs and thread attachments aligned on every material change.
+
 ---
 
 ## Core Philosophy

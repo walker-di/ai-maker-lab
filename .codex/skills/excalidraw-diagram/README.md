@@ -19,6 +19,12 @@ uv sync
 uv run playwright install chromium
 ```
 
+## PNG export parity
+
+When a folder contains both `*.excalidraw` and `*.excalidraw.png`, the PNG is the **rendered export** of the JSON canvas (same content, different file format). After changing JSON, re-run `render_excalidraw.py` so the PNG stays in sync for READMEs and visual review.
+
+For **Paperclip** (or similar) review threads, **attach those PNGs to the issue and embed them in comments** so approvers are not forced to open the workspace — see `SKILL.md` (“Paperclip / issue review hygiene”).
+
 ## Usage
 
 Ask Codex to use the local skill directly:
