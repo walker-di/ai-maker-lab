@@ -2,6 +2,7 @@
   import { m } from '$lib/paraglide/messages.js';
   import { Button, CategoryCard } from 'ui/source';
   import SettingsIcon from '@lucide/svelte/icons/settings';
+  import MegaphoneIcon from '@lucide/svelte/icons/megaphone';
 
   const todoHref = '/experiments/todo';
   const chatHref = '/experiments/chat';
@@ -9,6 +10,7 @@
   const platformerEditorHref = '/experiments/platformer/editor';
   const rtsHref = '/experiments/rts';
   const agentRegistryHref = '/agents';
+  const marketingHref = '/marketing';
   const settingsHref = '/settings';
 </script>
 
@@ -40,6 +42,10 @@
 
 {#snippet settingsIcon()}
   <SettingsIcon class="h-6 w-6" aria-hidden="true" />
+{/snippet}
+
+{#snippet marketingIcon()}
+  <MegaphoneIcon class="h-6 w-6" aria-hidden="true" />
 {/snippet}
 
 {#snippet platformerIcon()}
@@ -159,6 +165,13 @@
         description={m.lab_experiment_chat_description()}
         ctaLabel={m.lab_open_experiment()}
         icon={chatIcon}
+      />
+      <CategoryCard
+        href={marketingHref}
+        label="Marketing Manager"
+        description="Manage products, personas, campaigns, creatives, and stories."
+        ctaLabel={m.lab_open_experiment()}
+        icon={marketingIcon}
       />
     </div>
   </section>

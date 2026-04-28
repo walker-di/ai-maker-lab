@@ -18,3 +18,4 @@ export {
   SurrealRtsUserMapRepository,
   SurrealRtsMatchResultRepository,
 } from './rts/index.js';
+export * from './marketing/index.js';

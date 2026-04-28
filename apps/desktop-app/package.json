@@ -28,6 +28,7 @@
 		"build-storybook": "storybook build"
 	},
 	"dependencies": {
+		"@ai-sdk/anthropic": "^3.0.71",
 		"@ai-sdk/svelte": "^4.0.161",
 		"@lucide/svelte": "^1.8.0",
 		"@surrealdb/node": "^3.0.3",
@@ -35,6 +36,8 @@
 		"ai": "^6.0.161",
 		"domain": "workspace:*",
 		"electrobun": "^1.16.0",
+		"microsoft-cognitiveservices-speech-sdk": "^1.49.0",
+		"replicate": "^1.4.0",
 		"ui": "workspace:*"
 	},
 	"devDependencies": {

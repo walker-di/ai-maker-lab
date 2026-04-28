@@ -114,3 +114,5 @@ export {
 	SettingsProviderKeyList,
 	SettingsRestartHint,
 } from './settings/index.js';
+export * from './marketing/index.js';
+export * from './storyboard/index.js';

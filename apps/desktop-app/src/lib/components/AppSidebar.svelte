@@ -9,6 +9,7 @@
 	import GamepadIcon from '@lucide/svelte/icons/gamepad-2';
 	import SwordsIcon from '@lucide/svelte/icons/swords';
 	import PencilRulerIcon from '@lucide/svelte/icons/pencil-ruler';
+	import ClapperboardIcon from '@lucide/svelte/icons/clapperboard';
 	import { m } from '$lib/paraglide/messages.js';
 
 	type Props = {
@@ -62,6 +63,12 @@
 			href: '/experiments/rts',
 			icon: SwordsIcon,
 			match: (p) => p.startsWith('/experiments/rts'),
+		},
+		{
+			title: 'AI Storyboard Maker',
+			href: '/experiments/storyboard',
+			icon: ClapperboardIcon,
+			match: (p) => p.startsWith('/experiments/storyboard'),
 		},
 	];
 

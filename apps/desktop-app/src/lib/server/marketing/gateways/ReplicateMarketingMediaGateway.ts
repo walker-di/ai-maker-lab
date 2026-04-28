@@ -1,0 +1,90 @@
+import Replicate from 'replicate';
+import type { Marketing } from 'domain/application';
+
+const DEFAULT_IMAGE_MODEL = 'black-forest-labs/flux-1.1-pro';
+const DEFAULT_MUSICGEN_VERSION = '671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedcfb';
+
+interface ReplicateMarketingMediaGatewayConfig {
+  imageModel?: string;
+  musicGenVersion?: string;
+}
+
+export class ReplicateMarketingMediaGateway
+  implements Marketing.IMarketingImageGenerationGateway, Marketing.IBackgroundMusicGateway
+{
+  private readonly replicate: Replicate;
+  private readonly imageModel: string;
+  private readonly musicGenVersion: string;
+
+  constructor(
+    private readonly apiKey: string,
+    private readonly config: ReplicateMarketingMediaGatewayConfig = {},
+  ) {
+    this.replicate = new Replicate({ auth: apiKey });
+    this.imageModel = config.imageModel ?? DEFAULT_IMAGE_MODEL;
+    this.musicGenVersion = config.musicGenVersion ?? DEFAULT_MUSICGEN_VERSION;
+  }
+
+  async generateImage(prompt: string, style?: string, options?: { aspectRatio?: string }): Promise<{ url: string }> {
+    const fullPrompt = style ? `${prompt}, style: ${style}` : prompt;
+
+    const output = await this.replicate.run(this.imageModel as `${string}/${string}`, {
+      input: {
+        prompt: fullPrompt,
+        output_format: 'jpg',
+        aspect_ratio: options?.aspectRatio ?? '1:1',
+        output_quality: 80,
+        safety_tolerance: 2,
+        prompt_upsampling: true,
+      },
+      wait: { mode: 'block' },
+    });
+
+    const url = this.extractUrl(output);
+    if (!url) throw new Error('Replicate image generation returned no URL.');
+    return { url };
+  }
+
+  async generateSvg(prompt: string): Promise<{ svgContent: string }> {
+    const { generateText } = await import('ai');
+    const { createAnthropic } = await import('@ai-sdk/anthropic');
+    const client = createAnthropic();
+    const { text } = await generateText({
+      model: client('claude-3-5-haiku-20241022'),
+      prompt: `Generate a clean SVG illustration for: ${prompt}
+Return ONLY the raw SVG markup starting with <svg and ending with </svg>. No explanation, no markdown.`,
+    });
+    const svgMatch = text.match(/<svg[\s\S]*<\/svg>/i);
+    return { svgContent: svgMatch ? svgMatch[0] : text.trim() };
+  }
+
+  async generate(prompt: string, durationSecs: number): Promise<{ url: string }> {
+    const output = await this.replicate.run(
+      `meta/musicgen:${this.musicGenVersion}` as `${string}/${string}:${string}`,
+      {
+        input: {
+          prompt,
+          model_version: 'stereo-large',
+          output_format: 'mp3',
+          normalization_strategy: 'peak',
+          duration: durationSecs,
+        },
+        wait: { mode: 'block' },
+      },
+    );
+
+    const url = this.extractUrl(output);
+    if (!url) throw new Error('Replicate music generation returned no URL.');
+    return { url };
+  }
+
+  private extractUrl(output: unknown): string | null {
+    if (typeof output === 'string') return output;
+    if (Array.isArray(output) && typeof output[0] === 'string') return output[0];
+    if (output && typeof output === 'object' && typeof (output as Record<string, unknown>).url === 'function') {
+      const urlObj = (output as { url: () => { href?: string } }).url();
+      if (urlObj?.href) return urlObj.href;
+    }
+    return null;
+  }
+}
