@@ -5,6 +5,10 @@ import { createRecordId, normalizeRecordIdValue } from '../record-id.js';
 
 const TABLE = 'marketing_product';
 
+function isMissingTableError(error: unknown): boolean {
+  return error instanceof Error && error.message.toLowerCase().includes(`table '${TABLE}' does not exist`);
+}
+
 type ProductRecord = {
   id: unknown;
   name: string;
@@ -35,16 +39,26 @@ export class SurrealProductRepository implements IProductRepository {
   constructor(private readonly db: IDbClient) {}
 
   async findAll(): Promise<Product[]> {
-    const [records = []] = await this.db.query<ProductRecord[]>(
-      `SELECT * FROM ${TABLE} ORDER BY createdAt;`,
-    );
-    return records.map(toProduct);
+    try {
+      const [records = []] = await this.db.query<ProductRecord[]>(
+        `SELECT * FROM ${TABLE} ORDER BY createdAt;`,
+      );
+      return records.map(toProduct);
+    } catch (error) {
+      if (isMissingTableError(error)) return [];
+      throw error;
+    }
   }
 
   async findById(id: string): Promise<Product | null> {
-    const records = await this.db.select<ProductRecord>(createRecordId(TABLE, id));
-    const record = records[0];
-    return record ? toProduct(record) : null;
+    try {
+      const records = await this.db.select<ProductRecord>(createRecordId(TABLE, id));
+      const record = records[0];
+      return record ? toProduct(record) : null;
+    } catch (error) {
+      if (isMissingTableError(error)) return null;
+      throw error;
+    }
   }
 
   async create(data: CreateProductDto): Promise<Product> {

@@ -5,6 +5,10 @@ import { createRecordId, normalizeRecordIdValue } from '../record-id.js';
 
 const TABLE = 'marketing_persona';
 
+function isMissingTableError(error: unknown): boolean {
+  return error instanceof Error && error.message.toLowerCase().includes(`table '${TABLE}' does not exist`);
+}
+
 type PersonaRecord = {
   id: unknown;
   productId: string;
@@ -47,24 +51,39 @@ export class SurrealPersonaRepository implements IPersonaRepository {
   constructor(private readonly db: IDbClient) {}
 
   async findAll(): Promise<Persona[]> {
-    const [records = []] = await this.db.query<PersonaRecord[]>(
-      `SELECT * FROM ${TABLE} ORDER BY createdAt;`,
-    );
-    return records.map(toPersona);
+    try {
+      const [records = []] = await this.db.query<PersonaRecord[]>(
+        `SELECT * FROM ${TABLE} ORDER BY createdAt;`,
+      );
+      return records.map(toPersona);
+    } catch (error) {
+      if (isMissingTableError(error)) return [];
+      throw error;
+    }
   }
 
   async findById(id: string): Promise<Persona | null> {
-    const records = await this.db.select<PersonaRecord>(createRecordId(TABLE, id));
-    const record = records[0];
-    return record ? toPersona(record) : null;
+    try {
+      const records = await this.db.select<PersonaRecord>(createRecordId(TABLE, id));
+      const record = records[0];
+      return record ? toPersona(record) : null;
+    } catch (error) {
+      if (isMissingTableError(error)) return null;
+      throw error;
+    }
   }
 
   async findByProductId(productId: string): Promise<Persona[]> {
-    const [records = []] = await this.db.query<PersonaRecord[]>(
-      `SELECT * FROM ${TABLE} WHERE productId = $productId ORDER BY createdAt;`,
-      { productId },
-    );
-    return records.map(toPersona);
+    try {
+      const [records = []] = await this.db.query<PersonaRecord[]>(
+        `SELECT * FROM ${TABLE} WHERE productId = $productId ORDER BY createdAt;`,
+        { productId },
+      );
+      return records.map(toPersona);
+    } catch (error) {
+      if (isMissingTableError(error)) return [];
+      throw error;
+    }
   }
 
   async create(data: CreatePersonaDto): Promise<Persona> {
