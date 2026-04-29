@@ -7,7 +7,7 @@
 		"build:web": "vite build",
 		"start": "bun run build:web && electrobun dev",
 		"dev": "bun run dev:web",
-		"dev:web": "SURREAL_HOST=mem:// SURREAL_NS=app SURREAL_DB=desktop_web_dev vite dev --port 5173",
+		"dev:web": "SURREAL_HOST=mem:// SURREAL_NS=app SURREAL_DB=desktop_web_dev MARKETING_DEFAULT_TEXT_MODEL=anthropic:claude-sonnet-4-20250514 vite dev --port 5173",
 		"dev:browser": "bun run dev:web",
 		"dev:app": "bun run build:web && electrobun dev --watch",
 		"dev:desktop": "bun run dev:app",

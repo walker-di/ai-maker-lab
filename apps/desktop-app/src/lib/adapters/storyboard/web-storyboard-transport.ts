@@ -30,6 +30,7 @@ export class StoryboardTransportError extends Error {
 function classifyError(status: number, serverMessage: string): StoryboardTransportErrorKind {
 	if (status === 404) return 'not-found';
 	if (status === 400) return 'validation';
+	if (status === 502 || status === 503) return 'backend-unavailable';
 	if (status >= 500) {
 		const lower = serverMessage.toLowerCase();
 		if (lower.includes('timed out') || lower.includes('connection') || lower.includes('surreal')) {

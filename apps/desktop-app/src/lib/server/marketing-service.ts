@@ -4,11 +4,31 @@ import { json } from '@sveltejs/kit';
 import { Marketing } from 'domain/application';
 import { getAppDbConfig } from './db-config.js';
 
-function isZodError(error: unknown): error is { issues: Array<{ path: PropertyKey[]; message: string }>; errors?: Array<{ path: PropertyKey[]; message: string }> } {
+function isZodValidationError(error: unknown): error is { issues: Array<{ path: PropertyKey[]; message: string }>; errors?: Array<{ path: PropertyKey[]; message: string }> } {
 	if (typeof error !== 'object' || error === null) return false;
-	if ('issues' in error && Array.isArray((error as { issues: unknown }).issues)) return true;
-	if ('errors' in error && Array.isArray((error as { errors: unknown }).errors)) return true;
-	return false;
+	const items: unknown[] | undefined =
+		('issues' in error && Array.isArray((error as { issues: unknown }).issues))
+			? (error as { issues: unknown[] }).issues
+			: ('errors' in error && Array.isArray((error as { errors: unknown }).errors))
+				? (error as { errors: unknown[] }).errors
+				: undefined;
+	if (!items || items.length === 0) return false;
+	const first = items[0] as { path?: unknown } | undefined;
+	return Array.isArray(first?.path);
+}
+
+function isProviderError(error: unknown): boolean {
+	const msg = error instanceof Error ? error.message.toLowerCase() : '';
+	if (msg.includes('quota') || msg.includes('rate limit') || msg.includes('rate_limit')) return true;
+	if (typeof error !== 'object' || error === null) return false;
+	const issues = 'issues' in error && Array.isArray((error as { issues: unknown }).issues)
+		? (error as { issues: unknown[] }).issues
+		: [];
+	const firstMsg = typeof (issues[0] as { message?: unknown })?.message === 'string'
+		? ((issues[0] as { message: string }).message).toLowerCase()
+		: '';
+	return firstMsg.includes('quota') || firstMsg.includes('rate limit') || firstMsg.includes('rate_limit') ||
+		firstMsg.includes('billing') || firstMsg.includes('api key');
 }
 import {
 	getDb,
@@ -77,7 +97,7 @@ function parseTextModelConfig(): {
 	const apiKeyMap: Record<string, string | undefined> = {
 		anthropic: process.env.ANTHROPIC_API_KEY,
 		openai: process.env.OPENAI_API_KEY,
-		google: process.env.GOOGLE_API_KEY,
+		google: process.env.GOOGLE_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY,
 	};
 	return {
 		provider: providerName,
@@ -252,18 +272,30 @@ export function toMarketingErrorResponse(error: unknown) {
 	if (error instanceof Marketing.StoryboardGenerationError) {
 		return json({ error: error.message }, { status: 502 });
 	}
-	if (isZodError(error)) {
+	if (isProviderError(error)) {
+		const message = error instanceof Error ? error.message : 'AI provider error';
+		return json({ error: message }, { status: 502 });
+	}
+	if (isZodValidationError(error)) {
 		const items = ('issues' in error && Array.isArray(error.issues)) ? error.issues : error.errors!;
-		const issues = items.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ');
+		const issues = items
+			.map((e) => `${(e.path as string[]).join('.')}: ${e.message}`)
+			.join('; ');
 		return json({ error: `Validation failed: ${issues}` }, { status: 400 });
 	}
 	const message = error instanceof Error ? error.message : 'Unknown error';
 	const lower = message.toLowerCase();
 	const isProviderSchemaError =
 		lower.includes('invalid schema for response_format') ||
-		((lower.includes('response_format') || lower.includes('json schema')) &&
-			(lower.includes('missing') || lower.includes('invalid')));
-	const status = isProviderSchemaError
+		((lower.includes('response_format') || lower.includes('json_schema') || lower.includes('json schema')) &&
+			(lower.includes('missing') || lower.includes('invalid') || lower.includes('error')));
+	const isAiGenerationError =
+		lower.includes('no object generated') ||
+		lower.includes('did not match the schema') ||
+		lower.includes('failed to generate') ||
+		lower.includes('quota') ||
+		lower.includes('rate limit');
+	const status = isProviderSchemaError || isAiGenerationError
 		? 502
 		: lower.includes('not found')
 			? 404
