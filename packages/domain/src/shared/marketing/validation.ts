@@ -113,7 +113,7 @@ export type CreateStoryboardDto = z.infer<typeof CreateStoryboardDtoSchema>;
 
 export const GenerateStoryboardFramesDtoSchema = z.object({
   prompt: z.string().trim().min(1),
-  count: z.number().int().min(1).max(20).default(3),
+  count: z.coerce.number().int().min(1).max(20).default(3),
 });
 export type GenerateStoryboardFramesDto = z.infer<typeof GenerateStoryboardFramesDtoSchema>;
 

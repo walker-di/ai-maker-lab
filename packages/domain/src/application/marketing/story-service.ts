@@ -28,6 +28,13 @@ import type {
   StoryboardExportResult,
 } from '../../shared/marketing/index.js';
 import { STORYBOARD_MAKER_CREATIVE_ID } from '../../shared/marketing/index.js';
+
+export class StoryboardGenerationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'StoryboardGenerationError';
+  }
+}
 import type {
   IStoryRepository,
   ISceneRepository,
@@ -230,7 +237,7 @@ export class StoryboardService {
       ? await this.ai.generateStoryboardFrames(dto.prompt, dto.count)
       : this.createFallbackDrafts(dto.prompt, dto.count);
 
-    if (drafts.length === 0) throw new Error('Storyboard generation returned no frames.');
+    if (drafts.length === 0) throw new StoryboardGenerationError('Storyboard generation returned no frames.');
 
     const scenes = await this.scenes.findByStoryId(story.id);
     let nextOrder = scenes.reduce((max, scene) => Math.max(max, scene.orderIndex), -1) + 1;
@@ -493,7 +500,7 @@ export class StoryboardService {
 
   private assertDraft(draft: GeneratedStoryboardFrameDraft): void {
     if (!draft.narration || !draft.mainImagePrompt || !draft.backgroundImagePrompt || !draft.bgmPrompt) {
-      throw new Error('Generated storyboard frame is invalid.');
+      throw new StoryboardGenerationError('AI generation produced an incomplete storyboard frame. Missing required fields.');
     }
   }
 

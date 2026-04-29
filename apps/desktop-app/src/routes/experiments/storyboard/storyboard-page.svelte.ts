@@ -23,11 +23,13 @@ export function createStoryboardPageModel(transport: StoryboardTransport) {
 		try {
 			return await fn();
 		} catch (cause) {
-			operationError = cause instanceof StoryboardTransportError
-				? cause.message
-				: cause instanceof Error
-					? cause.message
-					: 'Unknown storyboard error';
+			if (cause instanceof StoryboardTransportError) {
+				operationError = cause.technicalMessage
+					? `${cause.message} (${cause.technicalMessage})`
+					: cause.message;
+			} else {
+				operationError = cause instanceof Error ? cause.message : 'Unknown storyboard error';
+			}
 		} finally {
 			isLoading = false;
 		}

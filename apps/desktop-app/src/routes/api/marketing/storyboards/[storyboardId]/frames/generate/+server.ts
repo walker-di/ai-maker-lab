@@ -6,12 +6,18 @@ import { getMarketingServices, toMarketingErrorResponse } from '$lib/server/mark
 export const prerender = false;
 
 export const POST: RequestHandler = async ({ params, request }) => {
+	let body: unknown;
 	try {
 		const { storyboardService } = await getMarketingServices();
-		const body = Marketing.GenerateStoryboardFramesDtoSchema.parse(await request.json());
-		return json(await storyboardService.generateFrames(params.storyboardId, body), { status: 201 });
+		body = await request.json();
+		const dto = Marketing.GenerateStoryboardFramesDtoSchema.parse(body);
+		return json(await storyboardService.generateFrames(params.storyboardId, dto), { status: 201 });
 	} catch (error) {
-		console.error('Failed to generate storyboard frames', error);
+		console.error('Failed to generate storyboard frames', {
+			storyboardId: params.storyboardId,
+			body,
+			error,
+		});
 		return toMarketingErrorResponse(error);
 	}
 };

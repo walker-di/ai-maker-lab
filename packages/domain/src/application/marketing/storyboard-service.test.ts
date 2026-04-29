@@ -6,7 +6,7 @@ import { SurrealStoryRepository } from '../../infrastructure/database/marketing/
 import { SurrealSceneRepository } from '../../infrastructure/database/marketing/SurrealSceneRepository.js';
 import { SurrealClipRepository } from '../../infrastructure/database/marketing/SurrealClipRepository.js';
 import type { IMarketingTextGenerationGateway } from './ports.js';
-import { StoryboardService } from './story-service.js';
+import { StoryboardService, StoryboardGenerationError } from './story-service.js';
 
 function createAiGateway(): IMarketingTextGenerationGateway {
   return {
@@ -99,5 +99,47 @@ describe('StoryboardService', () => {
     });
     expect(transitioned.transitionTypeAfter).toBe('fade');
     expect(transitioned.transitionDurationMs).toBe(1500);
+  });
+
+  test('throws StoryboardGenerationError when AI returns incomplete frames', async () => {
+    const badAi = createAiGateway();
+    badAi.generateStoryboardFrames = async () => [
+      { title: 'Bad', narration: '', mainImagePrompt: '', backgroundImagePrompt: '', bgmPrompt: '' },
+    ];
+    const badAdapter = new SurrealDbAdapter(db);
+    const badService = new StoryboardService(
+      new SurrealStoryRepository(badAdapter),
+      new SurrealSceneRepository(badAdapter),
+      new SurrealClipRepository(badAdapter),
+      badAi,
+    );
+    const storyboard = await badService.create({ name: 'Failing' });
+    try {
+      await badService.generateFrames(storyboard.id, { prompt: 'Rocket', count: 1 });
+      expect.unreachable('should have thrown');
+    } catch (error) {
+      expect(error).toBeInstanceOf(StoryboardGenerationError);
+      expect((error as Error).message).toContain('incomplete storyboard frame');
+    }
+  });
+
+  test('throws StoryboardGenerationError when AI returns zero frames', async () => {
+    const emptyAi = createAiGateway();
+    emptyAi.generateStoryboardFrames = async () => [];
+    const emptyAdapter = new SurrealDbAdapter(db);
+    const emptyService = new StoryboardService(
+      new SurrealStoryRepository(emptyAdapter),
+      new SurrealSceneRepository(emptyAdapter),
+      new SurrealClipRepository(emptyAdapter),
+      emptyAi,
+    );
+    const storyboard = await emptyService.create({ name: 'Empty' });
+    try {
+      await emptyService.generateFrames(storyboard.id, { prompt: 'Rocket', count: 1 });
+      expect.unreachable('should have thrown');
+    } catch (error) {
+      expect(error).toBeInstanceOf(StoryboardGenerationError);
+      expect((error as Error).message).toContain('no frames');
+    }
   });
 });

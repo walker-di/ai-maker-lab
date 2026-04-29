@@ -13,7 +13,9 @@
 	async function submit() {
 		error = '';
 		if (!prompt.trim()) { error = 'Prompt is required'; return; }
-		await onGenerate({ prompt: prompt.trim(), count });
+		const n = Number(count);
+		if (!Number.isFinite(n) || n < 1 || n > 20 || !Number.isInteger(n)) { error = 'Frame count must be a whole number between 1 and 20'; return; }
+		await onGenerate({ prompt: prompt.trim(), count: n });
 	}
 </script>
 

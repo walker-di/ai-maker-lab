@@ -4,7 +4,7 @@ import { goToProducts, goToPersonas, mockGeneratePersonas } from './helpers.js';
 const now = new Date().toISOString();
 
 function makeProduct(id: string, name: string) {
-	return { id, name, description: 'A test product', targetAudience: 'Everyone', features: [], benefits: [], imageUrl: '', createdAt: now, updatedAt: now };
+	return { id, name, description: 'Product description', targetAudience: 'Everyone', features: [], benefits: [], imageUrl: '', createdAt: now, updatedAt: now };
 }
 
 function makePersona(id: string, productId: string, name: string) {
@@ -45,7 +45,7 @@ test.describe('Marketing Products & Personas', () => {
 			}
 			if (request.method() === 'DELETE') {
 				products.splice(idx, 1);
-				return route.fulfill({ status: 204, body: '' });
+				return route.fulfill({ status: 200, json: { success: true } });
 			}
 			return route.fulfill({ json: products[idx] ?? null });
 		});
@@ -58,17 +58,17 @@ test.describe('Marketing Products & Personas', () => {
 		await page.getByLabel(/description/i).first().fill('A test product');
 		await page.getByLabel(/target audience/i).fill('Everyone');
 		await page.getByRole('button', { name: /create product/i }).first().click();
-		await expect(page.getByText('Test Product')).toBeVisible();
+		await expect(page.getByText('Test Product', { exact: true })).toBeVisible();
 
 		// Edit
 		await page.getByRole('button', { name: /edit/i }).first().click();
 		await page.getByLabel(/product name/i).fill('Updated Product');
 		await page.getByRole('button', { name: /save changes/i }).click();
-		await expect(page.getByText('Updated Product')).toBeVisible();
+		await expect(page.getByText('Updated Product', { exact: true })).toBeVisible();
 
 		// Delete
 		await page.getByRole('button', { name: /delete/i }).first().click();
-		await expect(page.getByText('Updated Product')).not.toBeVisible();
+		await expect(page.getByText('Updated Product', { exact: true })).not.toBeVisible();
 	});
 
 	test('creates and deletes a persona on the personas page', async ({ page }) => {
@@ -90,7 +90,7 @@ test.describe('Marketing Products & Personas', () => {
 		await page.route('**/api/marketing/personas/per-1', async (route, request) => {
 			if (request.method() === 'DELETE') {
 				personas.splice(0, 1);
-				return route.fulfill({ status: 204, body: '' });
+				return route.fulfill({ status: 200, json: { success: true } });
 			}
 			return route.fulfill({ json: personas[0] ?? null });
 		});
@@ -105,11 +105,11 @@ test.describe('Marketing Products & Personas', () => {
 		await page.getByLabel(/occupation/i).fill('Engineer');
 		await page.getByLabel(/description/i).first().fill('A test persona');
 		await page.getByRole('button', { name: /create persona/i }).first().click();
-		await expect(page.getByText('Test Persona')).toBeVisible();
+		await expect(page.getByText('Test Persona', { exact: true })).toBeVisible();
 
 		// Delete
 		await page.getByRole('button', { name: /delete/i }).first().click();
-		await expect(page.getByText('Test Persona')).not.toBeVisible();
+		await expect(page.getByText('Test Persona', { exact: true })).not.toBeVisible();
 	});
 
 	test('generates personas for a product via mocked generation endpoint', async ({ page }) => {

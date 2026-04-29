@@ -74,9 +74,9 @@
 - [x] Add Persona generation e2e coverage with mocked generation route/provider behavior.
 - [x] Run targeted domain tests for shared, application, and infrastructure marketing code.
 - [x] Run desktop unit tests for marketing adapters/page models.
-- [ ] Run marketing e2e tests.
+- [x] Run marketing e2e tests.
 - [x] Run `bun run check:desktop-app`.
-- [ ] Run `bunx @fission-ai/openspec@latest validate migrate-marketing-products-personas --type change --no-interactive`.
+- [x] Run `bunx @fission-ai/openspec@latest validate migrate-marketing-products-personas --type change --no-interactive`.
 
 ### 9. Documentation and migration hygiene
 
@@ -84,4 +84,4 @@
 - [x] Verify no frontend code imports `domain` package root or server-only modules.
 - [x] Verify no migrated code imports Drizzle/SQLite from the source app.
 - [x] Verify source debug/test routes were not copied as public app routes.
-- [ ] Update `.pi/plans/marketing-migration-implementation-plan.md` only if implementation discoveries materially change the plan.
+- [x] Update `.pi/plans/marketing-migration-implementation-plan.md` only if implementation discoveries materially change the plan.

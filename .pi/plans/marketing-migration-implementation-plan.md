@@ -2,7 +2,7 @@
 
 ## Summary
 - **Goal:** Complete the `migrate-marketing-products-personas` OpenSpec first slice — Products and Product-scoped Personas — end-to-end through domain, infrastructure, API, adapters, UI, i18n, and tests.
-- **OpenSpec change:** `migrate-marketing-products-personas` (0 / 59 tasks complete)
+- **OpenSpec change:** `migrate-marketing-products-personas` (59 / 59 tasks complete)
 - **Key finding:** Substantial marketing backend + UI code already exists in the repo but is (a) broader than the first-slice scope, (b) missing i18n, (c) has application tests that use fake repos instead of real SurrealDB `mem://`, and (d) missing route/adapter/page-model/e2e tests. This plan focuses on closing those gaps.
 - **Assumptions:**
   - Data is local/user-private; no auth/tenant scoping in first slice.

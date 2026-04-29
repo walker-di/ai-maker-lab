@@ -82,4 +82,39 @@ describe('storyboard page model', () => {
 		expect(model.operationError).toBe('temporary write error');
 		transport.createStoryboard = orig;
 	});
+
+	test('operation error includes technicalMessage from transport errors', async () => {
+		const transport = createTransport();
+		const model = createStoryboardPageModel(transport);
+		await model.load();
+		await model.open('story-1');
+
+		transport.generateFrames = async () => {
+			throw new StoryboardTransportError({
+				kind: 'validation',
+				userMessage: 'The request was invalid. Please check your input.',
+				status: 400,
+				technicalMessage: 'Validation failed: count: Expected number, received string',
+			});
+		};
+		await model.generateFrames({ prompt: 'Test', count: 3 });
+		expect(model.operationError).toContain('The request was invalid');
+		expect(model.operationError).toContain('Validation failed: count');
+	});
+
+	test('operation error without technicalMessage shows only user message', async () => {
+		const transport = createTransport();
+		const model = createStoryboardPageModel(transport);
+		await model.load();
+		await model.open('story-1');
+
+		transport.generateFrames = async () => {
+			throw new StoryboardTransportError({
+				kind: 'server',
+				userMessage: 'An unexpected server error occurred.',
+			});
+		};
+		await model.generateFrames({ prompt: 'Test', count: 3 });
+		expect(model.operationError).toBe('An unexpected server error occurred.');
+	});
 });

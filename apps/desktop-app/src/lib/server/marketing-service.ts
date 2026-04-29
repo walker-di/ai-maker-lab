@@ -251,6 +251,9 @@ export function toMarketingErrorResponse(error: unknown) {
 	if (error instanceof MarketingProviderConfigurationError) {
 		return json({ error: error.message }, { status: 503 });
 	}
+	if (error instanceof Marketing.StoryboardGenerationError) {
+		return json({ error: error.message }, { status: 502 });
+	}
 	if (isZodError(error)) {
 		const issues = error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ');
 		return json({ error: `Validation failed: ${issues}` }, { status: 400 });

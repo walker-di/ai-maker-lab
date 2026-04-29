@@ -71,6 +71,6 @@
 - [x] 9.2 Keep live provider tests skipped behind env flags.
 - [x] 9.3 Run `bunx @fission-ai/openspec@latest validate migrate-ai-storyboard-maker --type change --no-interactive`.
 - [x] 9.4 Run `bun run check:desktop-app` from repo root.
-- [ ] 9.5 Run `cd packages/domain && bun test`.
-- [ ] 9.6 Run `cd apps/desktop-app && bun run test:unit`.
+- [x] 9.5 Run `cd packages/domain && bun test`.
+- [x] 9.6 Run `cd apps/desktop-app && bun run test:unit`.
 - [x] 9.7 Run targeted storyboard e2e validation from `apps/desktop-app`.
