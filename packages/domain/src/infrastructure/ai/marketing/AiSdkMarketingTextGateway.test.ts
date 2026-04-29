@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { z } from 'zod';
 
 let generateObjectCalls: unknown[] = [];
 let generateTextCalls: unknown[] = [];
@@ -43,7 +44,37 @@ describe('AiSdkMarketingTextGateway storyboard methods', () => {
 
     expect(frames).toHaveLength(1);
     expect(frames[0].mainImagePrompt).toBe('Hero product image');
-    expect(JSON.stringify(generateObjectCalls[0])).toContain('Launch a product');
+
+    const call = generateObjectCalls[0] as { schema: z.ZodTypeAny; prompt: string };
+    expect(call.prompt).toContain('Launch a product');
+
+    const missingTitle = call.schema.safeParse({
+      frames: [{
+        narration: 'Narration',
+        mainImagePrompt: 'Main prompt',
+        backgroundImagePrompt: 'Background prompt',
+        bgmPrompt: 'BGM prompt',
+        durationMs: 4000,
+      }],
+    });
+    expect(missingTitle.success).toBe(false);
+    if (!missingTitle.success) {
+      expect(missingTitle.error.issues.some((issue) => issue.path.join('.') === 'frames.0.title')).toBe(true);
+    }
+
+    const missingDurationMs = call.schema.safeParse({
+      frames: [{
+        title: 'Frame title',
+        narration: 'Narration',
+        mainImagePrompt: 'Main prompt',
+        backgroundImagePrompt: 'Background prompt',
+        bgmPrompt: 'BGM prompt',
+      }],
+    });
+    expect(missingDurationMs.success).toBe(false);
+    if (!missingDurationMs.success) {
+      expect(missingDurationMs.error.issues.some((issue) => issue.path.join('.') === 'frames.0.durationMs')).toBe(true);
+    }
   });
 
   test('regenerates a prompt with ordered storyboard context', async () => {

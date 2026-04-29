@@ -4,13 +4,11 @@ import { json } from '@sveltejs/kit';
 import { Marketing } from 'domain/application';
 import { getAppDbConfig } from './db-config.js';
 
-function isZodError(error: unknown): error is { errors: Array<{ path: PropertyKey[]; message: string }> } {
-	return (
-		typeof error === 'object' &&
-		error !== null &&
-		'errors' in error &&
-		Array.isArray((error as { errors: unknown }).errors)
-	);
+function isZodError(error: unknown): error is { issues: Array<{ path: PropertyKey[]; message: string }>; errors?: Array<{ path: PropertyKey[]; message: string }> } {
+	if (typeof error !== 'object' || error === null) return false;
+	if ('issues' in error && Array.isArray((error as { issues: unknown }).issues)) return true;
+	if ('errors' in error && Array.isArray((error as { errors: unknown }).errors)) return true;
+	return false;
 }
 import {
 	getDb,
@@ -255,17 +253,24 @@ export function toMarketingErrorResponse(error: unknown) {
 		return json({ error: error.message }, { status: 502 });
 	}
 	if (isZodError(error)) {
-		const issues = error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ');
+		const items = ('issues' in error && Array.isArray(error.issues)) ? error.issues : error.errors!;
+		const issues = items.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ');
 		return json({ error: `Validation failed: ${issues}` }, { status: 400 });
 	}
 	const message = error instanceof Error ? error.message : 'Unknown error';
 	const lower = message.toLowerCase();
-	const status = lower.includes('not found')
-		? 404
-		: lower.includes('cannot delete') || lower.includes('associated')
-			? 409
-			: lower.includes('invalid') || lower.includes('required')
-				? 400
-				: 500;
+	const isProviderSchemaError =
+		lower.includes('invalid schema for response_format') ||
+		((lower.includes('response_format') || lower.includes('json schema')) &&
+			(lower.includes('missing') || lower.includes('invalid')));
+	const status = isProviderSchemaError
+		? 502
+		: lower.includes('not found')
+			? 404
+			: lower.includes('cannot delete') || lower.includes('associated')
+				? 409
+				: lower.includes('invalid') || lower.includes('required')
+					? 400
+					: 500;
 	return json({ error: message }, { status });
 }

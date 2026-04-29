@@ -175,19 +175,19 @@ Include narration text for each clip and estimated durations in milliseconds.`,
       model: this.model,
       schema: z.object({
         frames: z.array(z.object({
-          title: z.string().optional(),
+          title: z.string(),
           narration: z.string(),
           mainImagePrompt: z.string(),
           backgroundImagePrompt: z.string(),
           bgmPrompt: z.string(),
-          durationMs: z.number().optional(),
+          durationMs: z.number(),
         })),
       }),
       prompt: `Generate ${count} storyboard frames for this story prompt.
 
 Prompt: ${prompt}
 
-Return concise but vivid frame data. Each frame must include narration, a main subject image prompt, a background image prompt, and a background music prompt.`,
+Return concise but vivid frame data. Every frame must include title, narration, a main subject image prompt, a background image prompt, a background music prompt, and durationMs in milliseconds.`,
     });
     return object.frames;
   }

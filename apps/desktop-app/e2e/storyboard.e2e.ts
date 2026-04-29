@@ -32,7 +32,7 @@ test.describe('AI Storyboard Maker', () => {
 				frameCount: 1,
 				frames: [{
 					id: 'frame-1', storyboardId: 'story-1', sceneId: 'frame-1', orderIndex: 0,
-					title: 'Opening', narration: 'Open on the product', mainImagePrompt: 'Hero product',
+					title: 'Opening', narration: 'Open on the product', durationMs: 2000, mainImagePrompt: 'Hero product',
 					backgroundImagePrompt: 'Studio background', bgmPrompt: 'Upbeat music',
 					transitionTypeAfter: 'none', transitionDurationMs: 1000, createdAt: now, updatedAt: now,
 				}],
@@ -64,8 +64,14 @@ test.describe('AI Storyboard Maker', () => {
 		await page.getByRole('button', { name: 'Generate frames' }).first().click();
 		await page.getByLabel('Prompt').fill('Launch a new product');
 		await page.getByRole('button', { name: 'Generate', exact: true }).click();
+		await expect(page.getByText('1 frames')).toBeVisible();
 		await expect(page.getByText('Frame 1')).toBeVisible();
+		await expect(page.getByLabel('Title')).toHaveValue('Opening');
 		await expect(page.getByLabel('Narration')).toHaveValue('Open on the product');
+		await expect(page.getByLabel('Main image prompt')).toHaveValue('Hero product');
+		await expect(page.getByText('No frames yet')).toHaveCount(0);
+		await expect(page.getByText(/Missing 'title'/)).toHaveCount(0);
+		await page.screenshot({ path: 'e2e/.tmp/storyboard-generate-frames-success.png', fullPage: true });
 
 		await page.getByRole('button', { name: 'Generate main image' }).click();
 		await expect(page.getByAltText('Main frame')).toBeVisible();
