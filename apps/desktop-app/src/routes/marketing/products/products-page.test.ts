@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import { createProductsPageModel } from './products-page.svelte';
-import type { MarketingTransport, Product } from '$lib/adapters/marketing/MarketingTransport';
-import type { CreateProductDto, UpdateProductDto } from '$lib/adapters/marketing/MarketingTransport';
+import type { MarketingTransport } from '$lib/adapters/marketing/create-marketing-transport';
+import type { Product, CreateProductDto, UpdateProductDto } from '$lib/adapters/marketing/MarketingTransport';
 
 function makeProduct(id: string, name: string): Product {
 	const now = '2026-01-01T00:00:00.000Z';

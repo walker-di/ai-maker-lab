@@ -1,6 +1,7 @@
 import type { IDbClient } from '../../../core/interfaces/IDbClient.js';
 import type { ICanvasTemplateRepository } from '../../../application/marketing/ports.js';
 import type { CanvasTemplate, CanvasAspectRatio, CreateCanvasTemplateDto, UpdateCanvasTemplateDto } from '../../../shared/marketing/index.js';
+import { isMissingTableError } from '../error-helpers.js';
 import { createRecordId, normalizeRecordIdValue } from '../record-id.js';
 
 const TABLE = 'marketing_canvas_template';
@@ -37,23 +38,38 @@ export class SurrealCanvasTemplateRepository implements ICanvasTemplateRepositor
   constructor(private readonly db: IDbClient) {}
 
   async findAll(): Promise<CanvasTemplate[]> {
-    const [records = []] = await this.db.query<CanvasTemplateRecord[]>(
-      `SELECT * FROM ${TABLE} ORDER BY createdAt;`,
-    );
-    return records.map(toCanvasTemplate);
+    try {
+      const [records = []] = await this.db.query<CanvasTemplateRecord[]>(
+        `SELECT * FROM ${TABLE} ORDER BY createdAt;`,
+      );
+      return records.map(toCanvasTemplate);
+    } catch (error) {
+      if (isMissingTableError(error)) return [];
+      throw error;
+    }
   }
 
   async findById(id: string): Promise<CanvasTemplate | null> {
-    const records = await this.db.select<CanvasTemplateRecord>(createRecordId(TABLE, id));
-    const record = records[0];
-    return record ? toCanvasTemplate(record) : null;
+    try {
+      const records = await this.db.select<CanvasTemplateRecord>(createRecordId(TABLE, id));
+      const record = records[0];
+      return record ? toCanvasTemplate(record) : null;
+    } catch (error) {
+      if (isMissingTableError(error)) return null;
+      throw error;
+    }
   }
 
   async findDefaults(): Promise<CanvasTemplate[]> {
-    const [records = []] = await this.db.query<CanvasTemplateRecord[]>(
-      `SELECT * FROM ${TABLE} WHERE isDefault = true ORDER BY createdAt;`,
-    );
-    return records.map(toCanvasTemplate);
+    try {
+      const [records = []] = await this.db.query<CanvasTemplateRecord[]>(
+        `SELECT * FROM ${TABLE} WHERE isDefault = true ORDER BY createdAt;`,
+      );
+      return records.map(toCanvasTemplate);
+    } catch (error) {
+      if (isMissingTableError(error)) return [];
+      throw error;
+    }
   }
 
   async create(data: CreateCanvasTemplateDto): Promise<CanvasTemplate> {

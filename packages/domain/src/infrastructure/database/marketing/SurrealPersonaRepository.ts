@@ -1,13 +1,10 @@
 import type { IDbClient } from '../../../core/interfaces/IDbClient.js';
 import type { IPersonaRepository } from '../../../application/marketing/ports.js';
 import type { Persona, CreatePersonaDto, UpdatePersonaDto, AgeRange, Gender } from '../../../shared/marketing/index.js';
+import { isMissingTableError } from '../error-helpers.js';
 import { createRecordId, normalizeRecordIdValue } from '../record-id.js';
 
 const TABLE = 'marketing_persona';
-
-function isMissingTableError(error: unknown): boolean {
-  return error instanceof Error && error.message.toLowerCase().includes(`table '${TABLE}' does not exist`);
-}
 
 type PersonaRecord = {
   id: unknown;

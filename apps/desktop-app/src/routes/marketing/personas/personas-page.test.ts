@@ -1,8 +1,8 @@
 import { describe, expect, test, vi } from 'vitest';
 import { createPersonasPageModel } from './personas-page.svelte';
+import type { MarketingTransport } from '$lib/adapters/marketing/create-marketing-transport';
 import type {
 	CreatePersonaDto,
-	MarketingTransport,
 	Persona,
 	Product,
 	UpdatePersonaDto,

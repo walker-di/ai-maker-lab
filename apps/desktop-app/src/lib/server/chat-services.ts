@@ -48,6 +48,7 @@ const systemSource: ISystemAgentDefinitionSource = {
 export function getChatServices(): Promise<ChatServices> {
 	if (!chatServicesPromise) {
 		chatServicesPromise = (async () => {
+			try {
 			const surreal = await getDb(getAppDbConfig());
 
 			const adapter = new SurrealDbAdapter(surreal);
@@ -75,6 +76,10 @@ export function getChatServices(): Promise<ChatServices> {
 			);
 
 			return { chatService, catalogService };
+			} catch (error) {
+				chatServicesPromise = undefined;
+				throw error;
+			}
 		})();
 	}
 

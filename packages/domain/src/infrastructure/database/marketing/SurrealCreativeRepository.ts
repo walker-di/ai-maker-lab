@@ -9,6 +9,7 @@ import type {
   CreateCreativeDto,
   UpdateCreativeDto,
 } from '../../../shared/marketing/index.js';
+import { isMissingTableError } from '../error-helpers.js';
 import { createRecordId, normalizeRecordIdValue } from '../record-id.js';
 
 const TABLE = 'marketing_creative';
@@ -108,24 +109,39 @@ export class SurrealCreativeRepository implements ICreativeRepository {
   constructor(private readonly db: IDbClient) {}
 
   async findAll(): Promise<Creative[]> {
-    const [records = []] = await this.db.query<CreativeRecord[]>(
-      `SELECT * FROM ${TABLE} ORDER BY createdAt;`,
-    );
-    return records.map(toCreative);
+    try {
+      const [records = []] = await this.db.query<CreativeRecord[]>(
+        `SELECT * FROM ${TABLE} ORDER BY createdAt;`,
+      );
+      return records.map(toCreative);
+    } catch (error) {
+      if (isMissingTableError(error)) return [];
+      throw error;
+    }
   }
 
   async findById(id: string): Promise<Creative | null> {
-    const records = await this.db.select<CreativeRecord>(createRecordId(TABLE, id));
-    const record = records[0];
-    return record ? toCreative(record) : null;
+    try {
+      const records = await this.db.select<CreativeRecord>(createRecordId(TABLE, id));
+      const record = records[0];
+      return record ? toCreative(record) : null;
+    } catch (error) {
+      if (isMissingTableError(error)) return null;
+      throw error;
+    }
   }
 
   async findByProductId(productId: string): Promise<Creative[]> {
-    const [records = []] = await this.db.query<CreativeRecord[]>(
-      `SELECT * FROM ${TABLE} WHERE productId = $productId ORDER BY createdAt;`,
-      { productId },
-    );
-    return records.map(toCreative);
+    try {
+      const [records = []] = await this.db.query<CreativeRecord[]>(
+        `SELECT * FROM ${TABLE} WHERE productId = $productId ORDER BY createdAt;`,
+        { productId },
+      );
+      return records.map(toCreative);
+    } catch (error) {
+      if (isMissingTableError(error)) return [];
+      throw error;
+    }
   }
 
   async create(data: CreateCreativeDto): Promise<Creative> {

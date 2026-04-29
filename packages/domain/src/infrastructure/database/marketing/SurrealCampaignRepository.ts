@@ -2,6 +2,7 @@ import type { IDbClient } from '../../../core/interfaces/IDbClient.js';
 import type { ICampaignRepository } from '../../../application/marketing/ports.js';
 import type { Campaign, CreateCampaignDto, UpdateCampaignDto } from '../../../shared/marketing/index.js';
 import type { CampaignStatus } from '../../../shared/marketing/index.js';
+import { isMissingTableError } from '../error-helpers.js';
 import { createRecordId, normalizeRecordIdValue } from '../record-id.js';
 
 const TABLE = 'marketing_campaign';
@@ -42,24 +43,39 @@ export class SurrealCampaignRepository implements ICampaignRepository {
   constructor(private readonly db: IDbClient) {}
 
   async findAll(): Promise<Campaign[]> {
-    const [records = []] = await this.db.query<CampaignRecord[]>(
-      `SELECT * FROM ${TABLE} ORDER BY createdAt;`,
-    );
-    return records.map(toCampaign);
+    try {
+      const [records = []] = await this.db.query<CampaignRecord[]>(
+        `SELECT * FROM ${TABLE} ORDER BY createdAt;`,
+      );
+      return records.map(toCampaign);
+    } catch (error) {
+      if (isMissingTableError(error)) return [];
+      throw error;
+    }
   }
 
   async findById(id: string): Promise<Campaign | null> {
-    const records = await this.db.select<CampaignRecord>(createRecordId(TABLE, id));
-    const record = records[0];
-    return record ? toCampaign(record) : null;
+    try {
+      const records = await this.db.select<CampaignRecord>(createRecordId(TABLE, id));
+      const record = records[0];
+      return record ? toCampaign(record) : null;
+    } catch (error) {
+      if (isMissingTableError(error)) return null;
+      throw error;
+    }
   }
 
   async findByProductId(productId: string): Promise<Campaign[]> {
-    const [records = []] = await this.db.query<CampaignRecord[]>(
-      `SELECT * FROM ${TABLE} WHERE productId = $productId ORDER BY createdAt;`,
-      { productId },
-    );
-    return records.map(toCampaign);
+    try {
+      const [records = []] = await this.db.query<CampaignRecord[]>(
+        `SELECT * FROM ${TABLE} WHERE productId = $productId ORDER BY createdAt;`,
+        { productId },
+      );
+      return records.map(toCampaign);
+    } catch (error) {
+      if (isMissingTableError(error)) return [];
+      throw error;
+    }
   }
 
   async create(data: CreateCampaignDto): Promise<Campaign> {

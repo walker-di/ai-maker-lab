@@ -1,6 +1,7 @@
 import type { IDbClient } from '../../../core/interfaces/IDbClient.js';
 import type { IClipRepository } from '../../../application/marketing/ports.js';
 import type { Clip, ClipMediaType, CreateClipDto, UpdateClipDto } from '../../../shared/marketing/index.js';
+import { isMissingTableError } from '../error-helpers.js';
 import { createRecordId, normalizeRecordIdValue } from '../record-id.js';
 
 const TABLE = 'marketing_clip';
@@ -37,10 +38,6 @@ function toClip(record: ClipRecord): Clip {
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
-}
-
-function isMissingTableError(error: unknown): boolean {
-  return error instanceof Error && error.message.toLowerCase().includes("table 'marketing_clip' does not exist");
 }
 
 export class SurrealClipRepository implements IClipRepository {

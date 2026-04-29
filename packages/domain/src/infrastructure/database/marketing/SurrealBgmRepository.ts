@@ -1,6 +1,7 @@
 import type { IDbClient } from '../../../core/interfaces/IDbClient.js';
 import type { IBgmRepository } from '../../../application/marketing/ports.js';
 import type { BgmFile, CreateBgmFileDto, UpdateBgmFileDto } from '../../../shared/marketing/index.js';
+import { isMissingTableError } from '../error-helpers.js';
 import { createRecordId, normalizeRecordIdValue } from '../record-id.js';
 
 const TABLE = 'marketing_bgm_file';
@@ -31,16 +32,26 @@ export class SurrealBgmRepository implements IBgmRepository {
   constructor(private readonly db: IDbClient) {}
 
   async findAll(): Promise<BgmFile[]> {
-    const [records = []] = await this.db.query<BgmRecord[]>(
-      `SELECT * FROM ${TABLE} ORDER BY createdAt;`,
-    );
-    return records.map(toBgm);
+    try {
+      const [records = []] = await this.db.query<BgmRecord[]>(
+        `SELECT * FROM ${TABLE} ORDER BY createdAt;`,
+      );
+      return records.map(toBgm);
+    } catch (error) {
+      if (isMissingTableError(error)) return [];
+      throw error;
+    }
   }
 
   async findById(id: string): Promise<BgmFile | null> {
-    const records = await this.db.select<BgmRecord>(createRecordId(TABLE, id));
-    const record = records[0];
-    return record ? toBgm(record) : null;
+    try {
+      const records = await this.db.select<BgmRecord>(createRecordId(TABLE, id));
+      const record = records[0];
+      return record ? toBgm(record) : null;
+    } catch (error) {
+      if (isMissingTableError(error)) return null;
+      throw error;
+    }
   }
 
   async create(data: CreateBgmFileDto): Promise<BgmFile> {

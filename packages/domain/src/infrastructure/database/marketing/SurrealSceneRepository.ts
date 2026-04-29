@@ -1,6 +1,7 @@
 import type { IDbClient } from '../../../core/interfaces/IDbClient.js';
 import type { ISceneRepository } from '../../../application/marketing/ports.js';
 import type { Scene, CreateSceneDto, UpdateSceneDto, StoryboardTransitionType } from '../../../shared/marketing/index.js';
+import { isMissingTableError } from '../error-helpers.js';
 import { createRecordId, normalizeRecordIdValue } from '../record-id.js';
 
 const TABLE = 'marketing_scene';
@@ -43,10 +44,6 @@ function toScene(record: SceneRecord): Scene {
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
-}
-
-function isMissingTableError(error: unknown): boolean {
-  return error instanceof Error && error.message.toLowerCase().includes("table 'marketing_scene' does not exist");
 }
 
 export class SurrealSceneRepository implements ISceneRepository {

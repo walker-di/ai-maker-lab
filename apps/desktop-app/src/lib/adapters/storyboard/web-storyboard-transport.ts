@@ -63,13 +63,23 @@ async function readResponse<T>(response: Response): Promise<T> {
 }
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-	return readResponse<T>(await fetch(url, {
-		...init,
-		headers: {
-			'content-type': 'application/json',
-			...(init?.headers ?? {}),
-		},
-	}));
+	let response: Response;
+	try {
+		response = await fetch(url, {
+			...init,
+			headers: {
+				'content-type': 'application/json',
+				...(init?.headers ?? {}),
+			},
+		});
+	} catch {
+		throw new StoryboardTransportError({
+			kind: 'network',
+			userMessage: 'A network error occurred. Please check your connection.',
+			technicalMessage: `fetch ${init?.method ?? 'GET'} ${url} failed`,
+		});
+	}
+	return readResponse<T>(response);
 }
 
 export class WebStoryboardTransport implements StoryboardTransport {

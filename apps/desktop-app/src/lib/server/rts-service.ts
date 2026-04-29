@@ -21,13 +21,18 @@ let bundlePromise: Promise<RtsServiceBundle> | undefined;
 export function getRtsServices(): Promise<RtsServiceBundle> {
 	if (!bundlePromise) {
 		bundlePromise = (async () => {
-			const surreal = await getDb(getAppDbConfig());
-			const adapter = new SurrealDbAdapter(surreal);
-			const userMaps = new SurrealRtsUserMapRepository(adapter);
-			const matchResults = new SurrealRtsMatchResultRepository(adapter);
-			const catalog = new Rts.MapCatalogService(new BuiltInRtsMapSource(), userMaps);
-			const generator = new Rts.MapGenerator();
-			return { catalog, userMaps, matchResults, generator };
+			try {
+				const surreal = await getDb(getAppDbConfig());
+				const adapter = new SurrealDbAdapter(surreal);
+				const userMaps = new SurrealRtsUserMapRepository(adapter);
+				const matchResults = new SurrealRtsMatchResultRepository(adapter);
+				const catalog = new Rts.MapCatalogService(new BuiltInRtsMapSource(), userMaps);
+				const generator = new Rts.MapGenerator();
+				return { catalog, userMaps, matchResults, generator };
+			} catch (error) {
+				bundlePromise = undefined;
+				throw error;
+			}
 		})();
 	}
 	return bundlePromise;

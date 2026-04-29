@@ -9,9 +9,14 @@ let mapCatalogServicePromise: Promise<Platformer.MapCatalogService> | undefined;
 export function getMapCatalogService(): Promise<Platformer.MapCatalogService> {
 	if (!mapCatalogServicePromise) {
 		mapCatalogServicePromise = (async () => {
-			const surreal = await getDb(getAppDbConfig());
-			const adapter = new SurrealDbAdapter(surreal);
-			return createMapCatalogService(adapter);
+			try {
+				const surreal = await getDb(getAppDbConfig());
+				const adapter = new SurrealDbAdapter(surreal);
+				return createMapCatalogService(adapter);
+			} catch (error) {
+				mapCatalogServicePromise = undefined;
+				throw error;
+			}
 		})();
 	}
 	return mapCatalogServicePromise;

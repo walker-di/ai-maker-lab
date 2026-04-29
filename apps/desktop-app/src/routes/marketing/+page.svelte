@@ -5,30 +5,31 @@
 	import UsersIcon from '@lucide/svelte/icons/users';
 	import MegaphoneIcon from '@lucide/svelte/icons/megaphone';
 	import PaletteIcon from '@lucide/svelte/icons/palette';
+	import { m } from '$lib/paraglide/messages.js';
 
 	function navigate(path: string) {
 		void goto(`/marketing${path}`);
 	}
 
 	const cards = [
-		{ label: 'Products', description: 'Create products and manage product-scoped personas.', path: '/products', icon: PackageIcon },
-		{ label: 'Personas', description: 'Browse generated and manually-created personas.', path: '/personas', icon: UsersIcon },
-		{ label: 'Campaigns', description: 'Plan campaigns for marketing products.', path: '/campaigns', icon: MegaphoneIcon },
-		{ label: 'Creatives', description: 'Compose creative assets and storyboards.', path: '/creatives', icon: PaletteIcon },
+		{ label: () => m.marketing_nav_products(), description: () => m.marketing_card_products_description(), path: '/products', icon: PackageIcon },
+		{ label: () => m.marketing_nav_personas(), description: () => m.marketing_card_personas_description(), path: '/personas', icon: UsersIcon },
+		{ label: () => m.marketing_nav_campaigns(), description: () => m.marketing_card_campaigns_description(), path: '/campaigns', icon: MegaphoneIcon },
+		{ label: () => m.marketing_nav_creatives(), description: () => m.marketing_card_creatives_description(), path: '/creatives', icon: PaletteIcon },
 	];
 </script>
 
 <svelte:head>
-	<title>Marketing Manager</title>
+	<title>{m.marketing_dashboard_title()}</title>
 </svelte:head>
 
 <MarketingShell activePath="/dashboard" onNavigate={navigate}>
 	<div class="mx-auto flex w-full max-w-6xl flex-col gap-8 p-6">
 		<header class="space-y-3">
-			<p class="text-muted-foreground text-sm font-medium">AI Maker Lab</p>
-			<h1 class="text-foreground text-3xl font-semibold tracking-tight">Marketing Manager</h1>
+			<p class="text-muted-foreground text-sm font-medium">{m.marketing_dashboard_app_title()}</p>
+			<h1 class="text-foreground text-3xl font-semibold tracking-tight">{m.marketing_dashboard_title()}</h1>
 			<p class="text-muted-foreground max-w-3xl text-sm leading-6">
-				Migrate and operate the marketing workflow: products, personas, campaigns, creatives, stories, assets, and exports.
+				{m.marketing_dashboard_intro()}
 			</p>
 		</header>
 
@@ -40,14 +41,14 @@
 					onclick={() => navigate(card.path)}
 				>
 					<card.icon class="mb-4 h-6 w-6 text-muted-foreground transition group-hover:text-primary" />
-					<h2 class="text-base font-semibold">{card.label}</h2>
-					<p class="text-muted-foreground mt-2 text-sm leading-6">{card.description}</p>
+					<h2 class="text-base font-semibold">{card.label()}</h2>
+					<p class="text-muted-foreground mt-2 text-sm leading-6">{card.description()}</p>
 				</button>
 			{/each}
 		</section>
 
 		<div>
-			<Button type="button" onclick={() => navigate('/products')}>Open products</Button>
+			<Button type="button" onclick={() => navigate('/products')}>{m.marketing_home_open_products()}</Button>
 		</div>
 	</div>
 </MarketingShell>

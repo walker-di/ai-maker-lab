@@ -1,6 +1,7 @@
 import type { IDbClient } from '../../../core/interfaces/IDbClient.js';
 import type { IStoryRepository } from '../../../application/marketing/ports.js';
 import type { Story, CreateStoryDto, UpdateStoryDto, AudioSettings } from '../../../shared/marketing/index.js';
+import { isMissingTableError } from '../error-helpers.js';
 import { createRecordId, normalizeRecordIdValue } from '../record-id.js';
 
 const TABLE = 'marketing_story';
@@ -27,10 +28,6 @@ function toStory(record: StoryRecord): Story {
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
-}
-
-function isMissingTableError(error: unknown): boolean {
-  return error instanceof Error && error.message.toLowerCase().includes("table 'marketing_story' does not exist");
 }
 
 export class SurrealStoryRepository implements IStoryRepository {

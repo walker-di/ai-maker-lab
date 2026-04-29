@@ -1,6 +1,7 @@
 import type { IDbClient } from '../../../core/interfaces/IDbClient.js';
 import type { ISceneTransitionRepository } from '../../../application/marketing/ports.js';
 import type { SceneTransition } from '../../../shared/marketing/index.js';
+import { isMissingTableError } from '../error-helpers.js';
 import { createRecordId, normalizeRecordIdValue } from '../record-id.js';
 
 const TABLE = 'marketing_scene_transition';
@@ -33,16 +34,26 @@ export class SurrealSceneTransitionRepository implements ISceneTransitionReposit
   constructor(private readonly db: IDbClient) {}
 
   async findAll(): Promise<SceneTransition[]> {
-    const [records = []] = await this.db.query<SceneTransitionRecord[]>(
-      `SELECT * FROM ${TABLE} ORDER BY createdAt;`,
-    );
-    return records.map(toSceneTransition);
+    try {
+      const [records = []] = await this.db.query<SceneTransitionRecord[]>(
+        `SELECT * FROM ${TABLE} ORDER BY createdAt;`,
+      );
+      return records.map(toSceneTransition);
+    } catch (error) {
+      if (isMissingTableError(error)) return [];
+      throw error;
+    }
   }
 
   async findById(id: string): Promise<SceneTransition | null> {
-    const records = await this.db.select<SceneTransitionRecord>(createRecordId(TABLE, id));
-    const record = records[0];
-    return record ? toSceneTransition(record) : null;
+    try {
+      const records = await this.db.select<SceneTransitionRecord>(createRecordId(TABLE, id));
+      const record = records[0];
+      return record ? toSceneTransition(record) : null;
+    } catch (error) {
+      if (isMissingTableError(error)) return null;
+      throw error;
+    }
   }
 
   async create(data: Omit<SceneTransition, 'id' | 'createdAt' | 'updatedAt'>): Promise<SceneTransition> {

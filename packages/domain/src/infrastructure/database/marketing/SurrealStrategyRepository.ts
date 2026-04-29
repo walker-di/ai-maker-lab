@@ -1,6 +1,7 @@
 import type { IDbClient } from '../../../core/interfaces/IDbClient.js';
 import type { IStrategyRepository } from '../../../application/marketing/ports.js';
 import type { Strategy, CreateStrategyDto, UpdateStrategyDto } from '../../../shared/marketing/index.js';
+import { isMissingTableError } from '../error-helpers.js';
 import { createRecordId, normalizeRecordIdValue } from '../record-id.js';
 
 const TABLE = 'marketing_strategy';
@@ -31,24 +32,39 @@ export class SurrealStrategyRepository implements IStrategyRepository {
   constructor(private readonly db: IDbClient) {}
 
   async findAll(): Promise<Strategy[]> {
-    const [records = []] = await this.db.query<StrategyRecord[]>(
-      `SELECT * FROM ${TABLE} ORDER BY createdAt;`,
-    );
-    return records.map(toStrategy);
+    try {
+      const [records = []] = await this.db.query<StrategyRecord[]>(
+        `SELECT * FROM ${TABLE} ORDER BY createdAt;`,
+      );
+      return records.map(toStrategy);
+    } catch (error) {
+      if (isMissingTableError(error)) return [];
+      throw error;
+    }
   }
 
   async findById(id: string): Promise<Strategy | null> {
-    const records = await this.db.select<StrategyRecord>(createRecordId(TABLE, id));
-    const record = records[0];
-    return record ? toStrategy(record) : null;
+    try {
+      const records = await this.db.select<StrategyRecord>(createRecordId(TABLE, id));
+      const record = records[0];
+      return record ? toStrategy(record) : null;
+    } catch (error) {
+      if (isMissingTableError(error)) return null;
+      throw error;
+    }
   }
 
   async findByProductId(productId: string): Promise<Strategy[]> {
-    const [records = []] = await this.db.query<StrategyRecord[]>(
-      `SELECT * FROM ${TABLE} WHERE productId = $productId ORDER BY createdAt;`,
-      { productId },
-    );
-    return records.map(toStrategy);
+    try {
+      const [records = []] = await this.db.query<StrategyRecord[]>(
+        `SELECT * FROM ${TABLE} WHERE productId = $productId ORDER BY createdAt;`,
+        { productId },
+      );
+      return records.map(toStrategy);
+    } catch (error) {
+      if (isMissingTableError(error)) return [];
+      throw error;
+    }
   }
 
   async create(data: CreateStrategyDto): Promise<Strategy> {
