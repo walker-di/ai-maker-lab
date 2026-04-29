@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { createStoryboardPageModel } from './storyboard-page.svelte';
 import type { StoryboardDetail, StoryboardTransport } from '$lib/adapters/storyboard/StoryboardTransport';
+import { StoryboardTransportError } from '$lib/adapters/storyboard/web-storyboard-transport';
 
 function createTransport(): StoryboardTransport {
 	let detail: StoryboardDetail = {
@@ -45,5 +46,40 @@ describe('storyboard page model', () => {
 		await model.exportVideo();
 		expect(model.exportStatus).toBe('done');
 		expect(model.exportUrl).toBe('/x.mp4');
+	});
+
+	test('initial load failure sets initialLoadStatus to error and isBackendUnavailable', async () => {
+		const failingTransport: StoryboardTransport = {
+			...createTransport(),
+			async listStoryboards() {
+				throw new StoryboardTransportError({
+					kind: 'backend-unavailable',
+					userMessage: 'The storyboard service is temporarily unavailable.',
+					status: 500,
+					technicalMessage: '[DB] connect timed out after 30000ms',
+				});
+			},
+		};
+		const model = createStoryboardPageModel(failingTransport);
+		await model.load();
+		expect(model.initialLoadStatus).toBe('error');
+		expect(model.isBackendUnavailable).toBe(true);
+		expect(model.initialLoadError?.kind).toBe('backend-unavailable');
+		expect(model.storyboards).toHaveLength(0);
+	});
+
+	test('operation error after load does not affect initialLoadStatus', async () => {
+		const transport = createTransport();
+		const model = createStoryboardPageModel(transport);
+		await model.load();
+		expect(model.initialLoadStatus).toBe('ready');
+
+		// Force an operation error
+		const orig = transport.createStoryboard.bind(transport);
+		transport.createStoryboard = async () => { throw new Error('temporary write error'); };
+		await model.create({ name: 'fail' });
+		expect(model.initialLoadStatus).toBe('ready');
+		expect(model.operationError).toBe('temporary write error');
+		transport.createStoryboard = orig;
 	});
 });

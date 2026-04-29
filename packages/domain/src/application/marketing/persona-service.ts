@@ -1,4 +1,5 @@
 import type { Persona, Product, CreatePersonaDto, UpdatePersonaDto } from '../../shared/marketing/index.js';
+import { GeneratePersonasForProductDtoSchema } from '../../shared/marketing/validation.js';
 import type { IPersonaRepository, IProductRepository, IMarketingTextGenerationGateway } from './ports.js';
 
 export class PersonaService {
@@ -31,7 +32,12 @@ export class PersonaService {
   }
 
   async generateForProduct(product: Product, count = 3): Promise<Persona[]> {
-    const partials = await this.ai.generatePersonas(product, count);
+    const countValidation = GeneratePersonasForProductDtoSchema.safeParse({ count });
+    if (!countValidation.success) {
+      throw new Error('Persona generation count must be an integer between 1 and 20');
+    }
+
+    const partials = await this.ai.generatePersonas(product, countValidation.data.count);
     const dtos = partials.map((partial) => ({
       productId: product.id,
       name: partial.name ?? 'Generated Persona',
@@ -45,13 +51,13 @@ export class PersonaService {
       description: partial.description,
       avatarUrl: partial.avatarUrl,
     }));
-    // Persist all or none: collect created records and roll back on failure.
     const created: Persona[] = [];
     try {
       for (const dto of dtos) {
         created.push(await this.personas.create(dto));
       }
     } catch (err) {
+      // Saves happen one-by-one. Without DB transactions, rollback is best-effort and could still leave partial records if cleanup fails.
       await Promise.allSettled(created.map((p) => this.personas.delete(p.id)));
       throw new Error(
         `Persona generation failed after creating ${created.length}/${dtos.length} personas. All partial records rolled back. Cause: ${

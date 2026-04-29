@@ -1,6 +1,3 @@
-import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { json } from '@sveltejs/kit';
 import { Rts } from 'domain/application';
 import {
@@ -10,6 +7,7 @@ import {
 	SurrealRtsMatchResultRepository,
 	SurrealRtsUserMapRepository
 } from 'domain/infrastructure';
+import { getAppDbConfig } from './db-config.js';
 
 interface RtsServiceBundle {
 	catalog: Rts.MapCatalogService;
@@ -20,25 +18,10 @@ interface RtsServiceBundle {
 
 let bundlePromise: Promise<RtsServiceBundle> | undefined;
 
-function getDefaultEmbeddedHost(): string {
-	const dbPath = fileURLToPath(
-		new URL('../../../../../data/surrealdb/desktop-web.db', import.meta.url)
-	);
-	mkdirSync(dirname(dbPath), { recursive: true });
-	return `surrealkv://${dbPath}`;
-}
-
 export function getRtsServices(): Promise<RtsServiceBundle> {
 	if (!bundlePromise) {
 		bundlePromise = (async () => {
-			const surreal = await getDb({
-				host: process.env.SURREAL_HOST ?? getDefaultEmbeddedHost(),
-				namespace: process.env.SURREAL_NS ?? 'app',
-				database: process.env.SURREAL_DB ?? 'desktop',
-				username: process.env.SURREAL_USER,
-				password: process.env.SURREAL_PASS,
-				token: process.env.SURREAL_TOKEN
-			});
+			const surreal = await getDb(getAppDbConfig());
 			const adapter = new SurrealDbAdapter(surreal);
 			const userMaps = new SurrealRtsUserMapRepository(adapter);
 			const matchResults = new SurrealRtsMatchResultRepository(adapter);

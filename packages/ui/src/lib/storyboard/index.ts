@@ -15,3 +15,4 @@ export { default as AssetSelectionDialog } from './AssetSelectionDialog.svelte';
 export { default as PromptRegenerationDialog } from './PromptRegenerationDialog.svelte';
 export { default as TransitionDialog } from './TransitionDialog.svelte';
 export { default as ExportProgressPanel } from './ExportProgressPanel.svelte';
+export { default as StoryboardErrorState } from './StoryboardErrorState.svelte';

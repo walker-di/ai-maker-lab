@@ -1,8 +1,17 @@
 import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { json } from '@sveltejs/kit';
 import { Marketing } from 'domain/application';
+import { getAppDbConfig } from './db-config.js';
+
+function isZodError(error: unknown): error is { errors: Array<{ path: PropertyKey[]; message: string }> } {
+	return (
+		typeof error === 'object' &&
+		error !== null &&
+		'errors' in error &&
+		Array.isArray((error as { errors: unknown }).errors)
+	);
+}
 import {
 	getDb,
 	SurrealDbAdapter,
@@ -49,12 +58,9 @@ export interface MarketingServices {
 
 let marketingServicesPromise: Promise<MarketingServices> | undefined;
 
-function getDefaultEmbeddedHost(): string {
-	const dbPath = fileURLToPath(
-		new URL('../../../../../data/surrealdb/desktop-web.db', import.meta.url),
-	);
-	mkdirSync(dirname(dbPath), { recursive: true });
-	return `surrealkv://${dbPath}`;
+/** For use in tests only — resets the service singleton so a new DB config can take effect. */
+export function resetMarketingServicesForTest(): void {
+	marketingServicesPromise = undefined;
 }
 
 function parseTextModelConfig(): {
@@ -84,14 +90,7 @@ function parseTextModelConfig(): {
 export function getMarketingServices(): Promise<MarketingServices> {
 	if (!marketingServicesPromise) {
 		marketingServicesPromise = (async () => {
-			const surreal = await getDb({
-				host: process.env.SURREAL_HOST ?? getDefaultEmbeddedHost(),
-				namespace: process.env.SURREAL_NS ?? 'app',
-				database: process.env.SURREAL_DB ?? 'desktop',
-				username: process.env.SURREAL_USER,
-				password: process.env.SURREAL_PASS,
-				token: process.env.SURREAL_TOKEN,
-			});
+			const surreal = await getDb(getAppDbConfig());
 
 			const adapter = new SurrealDbAdapter(surreal);
 
@@ -107,7 +106,10 @@ export function getMarketingServices(): Promise<MarketingServices> {
 			const strategyRepo = new SurrealStrategyRepository(adapter);
 			const transitionRepo = new SurrealSceneTransitionRepository(adapter);
 
-			const aiGateway = new AiSdkMarketingTextGateway(parseTextModelConfig());
+			const textModelConfig = parseTextModelConfig();
+			const aiGateway: Marketing.IMarketingTextGenerationGateway = textModelConfig.apiKey
+				? new AiSdkMarketingTextGateway(textModelConfig)
+				: new UnconfiguredMarketingTextGateway(textModelConfig.provider);
 
 			const assetRoot =
 				process.env.MARKETING_ASSET_ROOT ??
@@ -200,7 +202,46 @@ export function getMarketingServices(): Promise<MarketingServices> {
 	return marketingServicesPromise;
 }
 
+class UnconfiguredMarketingTextGateway implements Marketing.IMarketingTextGenerationGateway {
+	constructor(private readonly provider: string) {}
+
+	private fail(): never {
+		throw new MarketingProviderConfigurationError(
+			`AI provider not configured. Set ${providerEnvKey(this.provider)} to enable AI features.`,
+		);
+	}
+
+	generateProductDescription() { return Promise.resolve(this.fail()); }
+	generatePersonas() { return Promise.resolve(this.fail()); }
+	generateCreativeText() { return Promise.resolve(this.fail()); }
+	generateMarketingStrategy() { return Promise.resolve(this.fail()); }
+	generateStoryboard() { return Promise.resolve(this.fail()); }
+}
+
+export class MarketingProviderConfigurationError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = 'MarketingProviderConfigurationError';
+	}
+}
+
+function providerEnvKey(provider: string): string {
+	const keys: Record<string, string> = {
+		anthropic: 'ANTHROPIC_API_KEY',
+		openai: 'OPENAI_API_KEY',
+		google: 'GOOGLE_API_KEY',
+	};
+	return keys[provider] ?? 'the provider API key';
+}
+
 export function toMarketingErrorResponse(error: unknown) {
+	if (error instanceof MarketingProviderConfigurationError) {
+		return json({ error: error.message }, { status: 503 });
+	}
+	if (isZodError(error)) {
+		const issues = error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ');
+		return json({ error: `Validation failed: ${issues}` }, { status: 400 });
+	}
 	const message = error instanceof Error ? error.message : 'Unknown error';
 	const lower = message.toLowerCase();
 	const status = lower.includes('not found')

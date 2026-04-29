@@ -1,125 +1,187 @@
-import { describe, expect, test, beforeEach } from 'bun:test';
-import type { Product, Persona, CreateProductDto, CreatePersonaDto, UpdatePersonaDto } from '../../shared/marketing/index.js';
-import type { IProductRepository, IPersonaRepository, IMarketingTextGenerationGateway } from './ports.js';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import type { Surreal } from 'surrealdb';
+import type { Product } from '../../shared/marketing/index.js';
+import type { IMarketingTextGenerationGateway } from './ports.js';
+import { createDbConnection } from '../../infrastructure/database/client.js';
+import { SurrealDbAdapter } from '../../infrastructure/database/SurrealDbAdapter.js';
+import { SurrealPersonaRepository } from '../../infrastructure/database/marketing/SurrealPersonaRepository.js';
+import { SurrealProductRepository } from '../../infrastructure/database/marketing/SurrealProductRepository.js';
 import { PersonaService } from './persona-service.js';
 
-class FakeProductRepo implements IProductRepository {
-  constructor(private items: Product[] = []) {}
-  async findAll() { return [...this.items]; }
-  async findById(id: string) { return this.items.find((p) => p.id === id) ?? null; }
-  async create(dto: CreateProductDto): Promise<Product> { throw new Error('not needed'); }
-  async update(): Promise<Product> { throw new Error('not needed'); }
-  async delete() {}
+function createFakeAi(overrides: Partial<IMarketingTextGenerationGateway> = {}): IMarketingTextGenerationGateway {
+  return {
+    generateProductDescription: async () => '',
+    generatePersonas: async (_product, count = 1) =>
+      Array.from({ length: count }, (_, i) => ({
+        name: `Gen Persona ${i + 1}`,
+        ageRange: '25-34' as const,
+        gender: 'all' as const,
+        interests: [],
+        painPoints: [],
+        motivations: [],
+      })),
+    generateCreativeText: async () => '',
+    generateMarketingStrategy: async () => '',
+    generateStoryboard: async () => ({ scenes: [], clips: [] }),
+    generateStoryboardFrames: async () => [],
+    regenerateStoryboardPrompt: async () => '',
+    ...overrides,
+  };
 }
-
-class FakePersonaRepo implements IPersonaRepository {
-  items: Persona[] = [];
-  private seq = 0;
-  async findAll() { return [...this.items]; }
-  async findById(id: string) { return this.items.find((p) => p.id === id) ?? null; }
-  async findByProductId(productId: string) { return this.items.filter((p) => p.productId === productId); }
-  async create(dto: CreatePersonaDto): Promise<Persona> {
-    const now = new Date().toISOString();
-    const p: Persona = { id: `per-${++this.seq}`, ...dto, interests: dto.interests ?? [], painPoints: dto.painPoints ?? [], motivations: dto.motivations ?? [], createdAt: now, updatedAt: now };
-    this.items.push(p);
-    return p;
-  }
-  async update(id: string, dto: UpdatePersonaDto): Promise<Persona> {
-    const idx = this.items.findIndex((p) => p.id === id);
-    if (idx === -1) throw new Error(`Persona not found: ${id}`);
-    this.items[idx] = { ...this.items[idx]!, ...dto, updatedAt: new Date().toISOString() };
-    return this.items[idx]!;
-  }
-  async delete(id: string) { this.items = this.items.filter((p) => p.id !== id); }
-}
-
-function makeProduct(id = 'prod-1'): Product {
-  const now = new Date().toISOString();
-  return { id, name: 'Widget', features: [], benefits: [], createdAt: now, updatedAt: now };
-}
-
-const fakeAi: IMarketingTextGenerationGateway = {
-  generateProductDescription: async () => '',
-  generatePersonas: async (product, count = 1) =>
-    Array.from({ length: count }, (_, i) => ({
-      name: `Gen Persona ${i + 1}`,
-      ageRange: '25-34' as const,
-      gender: 'all' as const,
-      interests: [],
-      painPoints: [],
-      motivations: [],
-    })),
-  generateCreativeText: async () => '',
-  generateMarketingStrategy: async () => '',
-  generateStoryboard: async () => ({ scenes: [], clips: [] }),
-  generateStoryboardFrames: async () => [],
-  regenerateStoryboardPrompt: async () => '',
-};
 
 describe('PersonaService', () => {
-  let productRepo: FakeProductRepo;
-  let personaRepo: FakePersonaRepo;
+  let db: Surreal;
+  let productRepo: SurrealProductRepository;
+  let personaRepo: SurrealPersonaRepository;
   let service: PersonaService;
-  const product = makeProduct();
 
-  beforeEach(() => {
-    productRepo = new FakeProductRepo([product]);
-    personaRepo = new FakePersonaRepo();
-    service = new PersonaService(personaRepo, productRepo, fakeAi);
+  async function createProduct(idSuffix = '1'): Promise<Product> {
+    return productRepo.create({
+      name: `Widget ${idSuffix}`,
+      features: [],
+      benefits: [],
+    });
+  }
+
+  beforeEach(async () => {
+    db = await createDbConnection({
+      host: 'mem://',
+      namespace: `test_ns_${crypto.randomUUID()}`,
+      database: `test_db_${crypto.randomUUID()}`,
+    });
+
+    const adapter = new SurrealDbAdapter(db);
+    productRepo = new SurrealProductRepository(adapter);
+    personaRepo = new SurrealPersonaRepository(adapter);
+    service = new PersonaService(personaRepo, productRepo, createFakeAi());
+  });
+
+  afterEach(async () => {
+    await db.close();
   });
 
   test('create persists persona for known product', async () => {
-    const p = await service.create({ productId: 'prod-1', name: 'Alice', ageRange: '25-34', gender: 'female' });
-    expect(p.productId).toBe('prod-1');
+    const product = await createProduct();
+    const p = await service.create({ productId: product.id, name: 'Alice', ageRange: '25-34', gender: 'female' });
+    expect(p.productId).toBe(product.id);
     expect(p.name).toBe('Alice');
   });
 
   test('create rejects unknown product', async () => {
     await expect(
-      service.create({ productId: 'unknown', name: 'Bob', ageRange: '25-34', gender: 'male' })
-    ).rejects.toThrow('Product not found');
+      service.create({ productId: 'unknown', name: 'Bob', ageRange: '25-34', gender: 'male' }),
+    ).rejects.toThrow('Product not found: unknown');
   });
 
   test('listByProduct returns only personas for that product', async () => {
-    const product2 = makeProduct('prod-2');
-    const productRepo2 = new FakeProductRepo([product, product2]);
-    const svc2 = new PersonaService(personaRepo, productRepo2, fakeAi);
-    await svc2.create({ productId: 'prod-1', name: 'Alice', ageRange: '25-34', gender: 'female' });
-    await svc2.create({ productId: 'prod-2', name: 'Bob', ageRange: '35-44', gender: 'male' });
-    const list = await svc2.listByProduct('prod-1');
+    const product1 = await createProduct('1');
+    const product2 = await createProduct('2');
+
+    await service.create({ productId: product1.id, name: 'Alice', ageRange: '25-34', gender: 'female' });
+    await service.create({ productId: product2.id, name: 'Bob', ageRange: '35-44', gender: 'male' });
+
+    const list = await service.listByProduct(product1.id);
     expect(list.length).toBe(1);
     expect(list[0]?.name).toBe('Alice');
   });
 
   test('update changes persona name', async () => {
-    const p = await service.create({ productId: 'prod-1', name: 'Alice', ageRange: '25-34', gender: 'female' });
+    const product = await createProduct();
+    const p = await service.create({ productId: product.id, name: 'Alice', ageRange: '25-34', gender: 'female' });
     const updated = await service.update(p.id, { name: 'Alicia' });
     expect(updated.name).toBe('Alicia');
   });
 
   test('delete removes persona', async () => {
-    const p = await service.create({ productId: 'prod-1', name: 'Alice', ageRange: '25-34', gender: 'female' });
+    const product = await createProduct();
+    const p = await service.create({ productId: product.id, name: 'Alice', ageRange: '25-34', gender: 'female' });
     await service.delete(p.id);
     expect(await service.get(p.id)).toBeNull();
   });
 
   test('generateForProduct creates personas via AI', async () => {
+    const product = await createProduct();
     const personas = await service.generateForProduct(product, 2);
     expect(personas.length).toBe(2);
-    expect(personas[0]?.productId).toBe('prod-1');
+    expect(personas[0]?.productId).toBe(product.id);
     expect(personas[0]?.name).toBe('Gen Persona 1');
   });
 
+  test('generateForProduct with count=0 or count=21 throws validation error', async () => {
+    const product = await createProduct();
+
+    await expect(service.generateForProduct(product, 0)).rejects.toThrow('between 1 and 20');
+    await expect(service.generateForProduct(product, 21)).rejects.toThrow('between 1 and 20');
+  });
+
+  test('generateForProduct mocked AI returns 3 personas and persists with correct productId', async () => {
+    const product = await createProduct();
+    const ai = createFakeAi({
+      generatePersonas: async () => [
+        { name: 'P1', ageRange: '18-24', gender: 'all' },
+        { name: 'P2', ageRange: '25-34', gender: 'female' },
+        { name: 'P3', ageRange: '35-44', gender: 'male' },
+      ],
+    });
+    const localService = new PersonaService(personaRepo, productRepo, ai);
+
+    const generated = await localService.generateForProduct(product, 3);
+    expect(generated).toHaveLength(3);
+    expect(generated.every((persona) => persona.productId === product.id)).toBe(true);
+
+    const persisted = await localService.listByProduct(product.id);
+    expect(persisted).toHaveLength(3);
+    expect(persisted.every((persona) => persona.productId === product.id)).toBe(true);
+  });
+
   test('generateForProduct rolls back on mid-loop failure', async () => {
+    const product = await createProduct();
+
     let calls = 0;
-    const failingRepo: FakePersonaRepo = new FakePersonaRepo();
-    const origCreate = failingRepo.create.bind(failingRepo);
-    failingRepo.create = async (dto) => {
+    const originalCreate = personaRepo.create.bind(personaRepo);
+    personaRepo.create = async (dto) => {
       if (++calls > 1) throw new Error('DB failure');
-      return origCreate(dto);
+      return originalCreate(dto);
     };
-    const svc = new PersonaService(failingRepo, productRepo, fakeAi);
-    await expect(svc.generateForProduct(product, 3)).rejects.toThrow('generation failed');
-    expect(failingRepo.items.length).toBe(0);
+
+    await expect(service.generateForProduct(product, 3)).rejects.toThrow('generation failed');
+
+    const persisted = await personaRepo.findByProductId(product.id);
+    expect(persisted.length).toBe(0);
+  });
+
+  test('generateForProduct surfaces a friendly error when AI provider is not configured', async () => {
+    const product = await createProduct();
+
+    const unconfiguredAi = createFakeAi({
+      generatePersonas: async () => {
+        throw new Error('AI provider not configured. Set ANTHROPIC_API_KEY to enable AI features.');
+      },
+    });
+    const svc = new PersonaService(personaRepo, productRepo, unconfiguredAi);
+
+    await expect(svc.generateForProduct(product, 2)).rejects.toThrow('AI provider not configured');
+    expect((await personaRepo.findByProductId(product.id)).length).toBe(0);
+  });
+
+  test('generateForProduct error does not leak raw model or provider names', async () => {
+    const product = await createProduct();
+
+    const rawSdkErrorAi = createFakeAi({
+      generatePersonas: async () => {
+        throw new Error('model: claude-3-5-haiku-20241022');
+      },
+    });
+    const svc = new PersonaService(personaRepo, productRepo, rawSdkErrorAi);
+
+    let caught: Error | undefined;
+    try {
+      await svc.generateForProduct(product, 1);
+    } catch (e) {
+      caught = e as Error;
+    }
+
+    expect(caught).toBeDefined();
+    expect((await personaRepo.findByProductId(product.id)).length).toBe(0);
   });
 });

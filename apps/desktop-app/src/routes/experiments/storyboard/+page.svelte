@@ -4,30 +4,64 @@
 		CreateStoryboardDialog,
 		ExportProgressPanel,
 		StoryboardEditor,
+		StoryboardErrorState,
 		StoryboardList,
 		StoryboardShell,
-	} from 'ui/source';
+	} from 'ui/source/storyboard';
+	import { m } from '$lib/paraglide/messages.js';
 	import { createStoryboardPageComposition } from './storyboard-page.composition';
 
 	const model = createStoryboardPageComposition();
 	$effect(() => { void model.load(); });
+
+	function errorCopy(model: ReturnType<typeof createStoryboardPageComposition>) {
+		if (model.initialLoadError?.kind === 'backend-unavailable') {
+			return {
+				title: m.storyboard_error_backend_unavailable_title(),
+				description: m.storyboard_error_backend_unavailable_description(),
+				retryLabel: m.storyboard_error_backend_unavailable_retry(),
+			};
+		}
+		if (model.initialLoadError?.kind === 'network') {
+			return {
+				title: m.storyboard_error_network_title(),
+				description: m.storyboard_error_network_description(),
+				retryLabel: m.storyboard_error_network_retry(),
+			};
+		}
+		return {
+			title: m.storyboard_error_server_title(),
+			description: m.storyboard_error_server_description(),
+			retryLabel: m.storyboard_error_server_retry(),
+		};
+	}
 </script>
 
 <StoryboardShell>
-	{#if model.error}
+	{#if model.operationError}
 		<div class="rounded-lg border border-destructive bg-destructive/10 px-4 py-3 text-sm text-destructive">
-			{model.error}
+			{model.operationError}
 		</div>
 	{/if}
 
 	<ExportProgressPanel
 		status={model.exportStatus}
 		downloadUrl={model.exportUrl}
-		error={model.error ?? undefined}
+		error={model.operationError ?? undefined}
 		onClose={() => (model.exportStatus = 'idle')}
 	/>
 
-	{#if model.selected}
+	{#if model.initialLoadStatus === 'error' && model.initialLoadError}
+		{@const copy = errorCopy(model)}
+		<StoryboardErrorState
+			title={copy.title}
+			description={copy.description}
+			technicalDetails={model.initialLoadError.technicalMessage}
+			retryLabel={copy.retryLabel}
+			onRetry={model.load}
+			isRetrying={model.isLoading}
+		/>
+	{:else if model.selected}
 		<StoryboardEditor
 			storyboard={model.selected}
 			isLoading={model.isLoading}
@@ -45,16 +79,16 @@
 	{:else}
 		<div class="flex flex-wrap items-start justify-between gap-4">
 			<div>
-				<h1 class="text-3xl font-bold tracking-tight">AI Storyboard Maker</h1>
+				<h1 class="text-3xl font-bold tracking-tight">{m.storyboard_page_title()}</h1>
 				<p class="text-muted-foreground text-sm">
-					Create prompt-driven storyboards with generated frames, assets, transitions, and export.
+					{m.storyboard_page_description()}
 				</p>
 			</div>
 		</div>
 		<StoryboardList
 			storyboards={model.storyboards}
 			onOpen={model.open}
-			onCreate={() => (model.createDialogOpen = true)}
+			onCreate={() => { if (!model.isBackendUnavailable) model.createDialogOpen = true; }}
 		/>
 	{/if}
 

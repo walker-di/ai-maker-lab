@@ -73,8 +73,11 @@ export class SurrealProductRepository implements IProductRepository {
   }
 
   async update(id: string, data: UpdateProductDto): Promise<Product> {
+    const existing = await this.findById(id);
+    if (!existing) throw new Error(`Product not found: ${id}`);
+
     const now = new Date().toISOString();
-    const records = await this.db.update<ProductRecord, Record<string, unknown>>(
+    const records = await this.db.merge<ProductRecord, Record<string, unknown>>(
       createRecordId(TABLE, id),
       { ...data, updatedAt: now },
     );

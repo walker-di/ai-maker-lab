@@ -98,6 +98,9 @@ export class SurrealPersonaRepository implements IPersonaRepository {
   }
 
   async update(id: string, data: UpdatePersonaDto): Promise<Persona> {
+    const existing = await this.findById(id);
+    if (!existing) throw new Error(`Persona not found: ${id}`);
+
     const now = new Date().toISOString();
     const records = await this.db.update<PersonaRecord, Record<string, unknown>>(
       createRecordId(TABLE, id),

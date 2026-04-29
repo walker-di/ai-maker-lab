@@ -1,45 +1,11 @@
-import { describe, expect, test, beforeEach } from 'bun:test';
-import type { Product, Persona, CreateProductDto, UpdateProductDto, CreatePersonaDto } from '../../shared/marketing/index.js';
-import type { IProductRepository, IPersonaRepository, IMarketingTextGenerationGateway } from './ports.js';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import type { Surreal } from 'surrealdb';
+import type { IMarketingTextGenerationGateway } from './ports.js';
+import { createDbConnection } from '../../infrastructure/database/client.js';
+import { SurrealDbAdapter } from '../../infrastructure/database/SurrealDbAdapter.js';
+import { SurrealPersonaRepository } from '../../infrastructure/database/marketing/SurrealPersonaRepository.js';
+import { SurrealProductRepository } from '../../infrastructure/database/marketing/SurrealProductRepository.js';
 import { ProductService } from './product-service.js';
-
-class FakeProductRepo implements IProductRepository {
-  private items: Product[] = [];
-  private seq = 0;
-
-  async findAll() { return [...this.items]; }
-  async findById(id: string) { return this.items.find((p) => p.id === id) ?? null; }
-  async create(dto: CreateProductDto): Promise<Product> {
-    const now = new Date().toISOString();
-    const p: Product = { id: `prod-${++this.seq}`, ...dto, features: dto.features ?? [], benefits: dto.benefits ?? [], createdAt: now, updatedAt: now };
-    this.items.push(p);
-    return p;
-  }
-  async update(id: string, dto: UpdateProductDto): Promise<Product> {
-    const idx = this.items.findIndex((p) => p.id === id);
-    if (idx === -1) throw new Error(`Product not found: ${id}`);
-    this.items[idx] = { ...this.items[idx]!, ...dto, updatedAt: new Date().toISOString() };
-    return this.items[idx]!;
-  }
-  async delete(id: string) {
-    this.items = this.items.filter((p) => p.id !== id);
-  }
-}
-
-class FakePersonaRepo implements IPersonaRepository {
-  constructor(private items: Persona[] = []) {}
-  async findAll() { return [...this.items]; }
-  async findById(id: string) { return this.items.find((p) => p.id === id) ?? null; }
-  async findByProductId(productId: string) { return this.items.filter((p) => p.productId === productId); }
-  async create(dto: CreatePersonaDto): Promise<Persona> {
-    const now = new Date().toISOString();
-    const p: Persona = { id: `per-${this.items.length + 1}`, ...dto, interests: [], painPoints: [], motivations: [], createdAt: now, updatedAt: now };
-    this.items.push(p);
-    return p;
-  }
-  async update(id: string, dto: any): Promise<Persona> { throw new Error('not needed'); }
-  async delete(id: string) { this.items = this.items.filter((p) => p.id !== id); }
-}
 
 const fakeAi: IMarketingTextGenerationGateway = {
   generateProductDescription: async () => 'AI description',
@@ -52,19 +18,31 @@ const fakeAi: IMarketingTextGenerationGateway = {
 };
 
 describe('ProductService', () => {
-  let productRepo: FakeProductRepo;
-  let personaRepo: FakePersonaRepo;
+  let db: Surreal;
+  let productRepo: SurrealProductRepository;
+  let personaRepo: SurrealPersonaRepository;
   let service: ProductService;
 
-  beforeEach(() => {
-    productRepo = new FakeProductRepo();
-    personaRepo = new FakePersonaRepo();
+  beforeEach(async () => {
+    db = await createDbConnection({
+      host: 'mem://',
+      namespace: `test_ns_${crypto.randomUUID()}`,
+      database: `test_db_${crypto.randomUUID()}`,
+    });
+
+    const adapter = new SurrealDbAdapter(db);
+    productRepo = new SurrealProductRepository(adapter);
+    personaRepo = new SurrealPersonaRepository(adapter);
     service = new ProductService(productRepo, personaRepo, fakeAi);
+  });
+
+  afterEach(async () => {
+    await db.close();
   });
 
   test('create returns a persisted product', async () => {
     const p = await service.create({ name: 'Widget', features: [], benefits: [] });
-    expect(p.id).toBe('prod-1');
+    expect(p.id).toBeString();
     expect(p.name).toBe('Widget');
   });
 
@@ -92,9 +70,14 @@ describe('ProductService', () => {
 
   test('delete rejects when personas exist', async () => {
     const p = await service.create({ name: 'X', features: [], benefits: [] });
-    const now = new Date().toISOString();
-    (personaRepo as any).items.push({ id: 'per-1', productId: p.id, name: 'Alice', ageRange: '25-34', gender: 'female', interests: [], painPoints: [], motivations: [], createdAt: now, updatedAt: now });
-    await expect(service.delete(p.id)).rejects.toThrow('Cannot delete Product');
+    await personaRepo.create({
+      productId: p.id,
+      name: 'Alice',
+      ageRange: '25-34',
+      gender: 'female',
+    });
+
+    await expect(service.delete(p.id)).rejects.toThrow(/persona/i);
   });
 
   test('generateFromName uses AI to set description', async () => {

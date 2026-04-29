@@ -1,4 +1,3 @@
-import { v4 as uuidv4 } from 'uuid';
 import type { Product, CreateProductDto, UpdateProductDto } from '../../shared/marketing/index.js';
 import type { IProductRepository, IPersonaRepository, IMarketingTextGenerationGateway } from './ports.js';
 
@@ -28,9 +27,7 @@ export class ProductService {
   async delete(id: string): Promise<void> {
     const children = await this.personas.findByProductId(id);
     if (children.length > 0) {
-      throw new Error(
-        `Cannot delete Product with ${children.length} associated Persona(s). Delete all Personas first.`,
-      );
+      throw new Error('Cannot delete product with existing personas');
     }
     return this.products.delete(id);
   }

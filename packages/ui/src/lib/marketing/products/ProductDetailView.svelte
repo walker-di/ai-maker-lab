@@ -28,8 +28,14 @@
 		onViewCreatives,
 	}: Props = $props();
 
-	const createdDate = $derived(new Date(product.createdAt).toLocaleDateString());
-	const updatedDate = $derived(new Date(product.updatedAt).toLocaleDateString());
+	function formatDate(value: string | undefined): string {
+		if (!value) return '';
+		const d = new Date(value);
+		return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString();
+	}
+
+	const createdDate = $derived(formatDate(product.createdAt));
+	const updatedDate = $derived(formatDate(product.updatedAt));
 </script>
 
 <div class="space-y-6">
@@ -45,7 +51,9 @@
 			{/if}
 			<div>
 				<h1 class="text-2xl font-bold">{product.name}</h1>
-				<p class="text-muted-foreground text-sm">Created {createdDate}</p>
+				{#if createdDate}
+					<p class="text-muted-foreground text-sm">Created {createdDate}</p>
+				{/if}
 			</div>
 		</div>
 		{#if onEdit}
@@ -147,5 +155,7 @@
 
 	<Separator />
 
-	<p class="text-muted-foreground text-xs">Last updated {updatedDate}</p>
+	{#if updatedDate}
+		<p class="text-muted-foreground text-xs">Last updated {updatedDate}</p>
+	{/if}
 </div>

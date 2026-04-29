@@ -4,6 +4,7 @@ import {
   UpdateProductDtoSchema,
   CreatePersonaDtoSchema,
   UpdatePersonaDtoSchema,
+  GeneratePersonasForProductDtoSchema,
 } from './validation.js';
 
 describe('CreateProductDtoSchema', () => {
@@ -19,6 +20,11 @@ describe('CreateProductDtoSchema', () => {
 
   test('rejects empty name', () => {
     const result = CreateProductDtoSchema.safeParse({ name: '' });
+    expect(result.success).toBe(false);
+  });
+
+  test('rejects whitespace-only name', () => {
+    const result = CreateProductDtoSchema.safeParse({ name: '  ' });
     expect(result.success).toBe(false);
   });
 
@@ -99,5 +105,19 @@ describe('CreatePersonaDtoSchema', () => {
 describe('UpdatePersonaDtoSchema', () => {
   test('accepts empty object (all fields optional)', () => {
     expect(UpdatePersonaDtoSchema.safeParse({}).success).toBe(true);
+  });
+});
+
+describe('GeneratePersonasForProductDtoSchema', () => {
+  test('rejects count=0', () => {
+    expect(GeneratePersonasForProductDtoSchema.safeParse({ count: 0 }).success).toBe(false);
+  });
+
+  test('accepts count=20', () => {
+    expect(GeneratePersonasForProductDtoSchema.safeParse({ count: 20 }).success).toBe(true);
+  });
+
+  test('rejects count=21', () => {
+    expect(GeneratePersonasForProductDtoSchema.safeParse({ count: 21 }).success).toBe(false);
   });
 });

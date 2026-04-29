@@ -45,7 +45,22 @@
 			"svelte": "./src/lib/chat/headless.ts",
 			"default": "./src/lib/chat/headless.ts"
 		},
-		"./styles/*": "./src/lib/styles/*"
+		"./styles/*": "./src/lib/styles/*",
+		"./source/storyboard": {
+			"types": "./src/lib/storyboard/index.ts",
+			"svelte": "./src/lib/storyboard/index.ts",
+			"default": "./src/lib/storyboard/index.ts"
+		},
+		"./source/marketing": {
+			"types": "./src/lib/marketing/index.ts",
+			"svelte": "./src/lib/marketing/index.ts",
+			"default": "./src/lib/marketing/index.ts"
+		},
+		"./source/agent-registry": {
+			"types": "./src/lib/agent-registry/index.ts",
+			"svelte": "./src/lib/agent-registry/index.ts",
+			"default": "./src/lib/agent-registry/index.ts"
+		}
 	},
 	"peerDependencies": {
 		"svelte": "^5.0.0"

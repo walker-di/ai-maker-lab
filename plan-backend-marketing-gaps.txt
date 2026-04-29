@@ -1,0 +1,123 @@
+# Backend Marketing Gaps Plan
+
+## 1. Backend problem framing
+
+The marketing Products/Personas backend is mostly wired through the intended clean-architecture seams: SvelteKit API routes call app-local server composition, which instantiates application services, SurrealDB repositories, and AI/provider gateways. The current gaps are two backend correctness issues:
+
+1. Product update persistence uses SurrealDB replace semantics and can drop immutable fields such as `createdAt`, which then surfaces as invalid/missing dates in API/UI flows.
+2. Persona generation defaults to an Anthropic-backed AI SDK gateway even when no provider API key is configured. The missing provider key is allowed to fail at runtime and is mapped as a generic 500 with provider/model details, violating the controlled error contract.
+
+The fixes should preserve the layering:
+- Repository layer owns SurrealDB update semantics.
+- App/server composition owns provider availability/configuration checks.
+- Application services keep use-case orchestration and should not know about environment variables.
+- API routes remain thin adapters that call services and map errors to JSON responses.
+
+## 2. Relevant backend files
+
+- `packages/domain/src/infrastructure/database/marketing/SurrealProductRepository.ts` lines 75-83: `update()` currently calls `db.update(...)` with only changed fields plus `updatedAt`, causing SurrealDB replace behavior to strip fields not included in the update payload.
+- `packages/domain/src/core/interfaces/IDbClient.ts` lines 47-50: database client already exposes `merge(...)`, so the repository can use patch semantics without widening the port.
+- `packages/domain/src/infrastructure/database/SurrealDbAdapter.ts` lines 75-85: `merge(...)` delegates to SurrealDB update-builder `.merge(...)` and normalizes the result.
+- `packages/domain/src/infrastructure/database/marketing/product-persona-repository.test.ts` lines 50-54: existing product update test only checks changed fields; it should be extended to assert `createdAt` survives update and `updatedAt` advances/changes.
+- `apps/desktop-app/src/lib/server/marketing-service.ts` lines 60-81: `parseTextModelConfig()` chooses the provider/model and reads provider-specific API keys.
+- `apps/desktop-app/src/lib/server/marketing-service.ts` line 110: composition eagerly creates `new AiSdkMarketingTextGateway(parseTextModelConfig())` without checking `apiKey`.
+- `apps/desktop-app/src/lib/server/marketing-service.ts` lines 140-141: `ProductService` and `PersonaService` both receive the AI text gateway; persona generation depends on this gateway.
+- `apps/desktop-app/src/lib/server/marketing-service.ts` lines 203-214: `toMarketingErrorResponse()` maps not-found/constraint/validation errors but all provider configuration failures currently fall through to 500.
+- `apps/desktop-app/src/routes/api/marketing/products/[productId]/personas/generate/+server.ts` lines 7-16: generate route loads services, gets product, calls `personaService.generateForProduct(...)`, and delegates all errors to `toMarketingErrorResponse()`.
+- `packages/domain/src/infrastructure/ai/marketing/AiSdkMarketingTextGateway.ts` lines 23-50: gateway config has optional `apiKey`, and the language model is built with that optional key.
+- `packages/domain/src/infrastructure/ai/marketing/AiSdkMarketingTextGateway.ts` lines 67-88: `generatePersonas()` calls AI SDK `generateObject(...)`; this is where missing provider credentials surface today if not caught earlier.
+- `packages/domain/src/application/marketing/persona-service.ts` lines 33-63: `generateForProduct()` invokes `ai.generatePersonas(...)`, maps partials, persists all generated personas, and rolls back partial persistence failures.
+
+## 3. Fix plan per issue with specific file paths and method names
+
+### Issue 1: Product update strips `createdAt`
+
+File: `packages/domain/src/infrastructure/database/marketing/SurrealProductRepository.ts`
+Method: `SurrealProductRepository.update(id, data)`
+
+Plan:
+1. Replace the current `this.db.update<ProductRecord, Record<string, unknown>>(...)` call in `update()` with `this.db.merge<ProductRecord, Record<string, unknown>>(...)` using the same payload `{ ...data, updatedAt: now }`.
+2. Keep the existing `createRecordId(TABLE, id)`, missing-result guard, and `toProduct(updated)` mapping.
+3. Do not fetch/spread the entire record unless `merge()` proves unsuitable; `IDbClient.merge` already exists and other marketing repositories use it.
+
+Test plan:
+- Extend `packages/domain/src/infrastructure/database/marketing/product-persona-repository.test.ts`, existing `SurrealProductRepository` update test around lines 50-54.
+- Assert:
+  - `updated.name` reflects the new value.
+  - `updated.createdAt === created.createdAt`.
+  - `updated.updatedAt` is present and ideally differs from `created.updatedAt` if timing is reliable; if not, assert it is a valid ISO string and not older than `created.updatedAt`.
+- This must use the existing real SurrealDB `mem://` setup in that test file.
+
+### Issue 2: Missing AI provider config causes persona generation 500
+
+File: `apps/desktop-app/src/lib/server/marketing-service.ts`
+Functions: `parseTextModelConfig()`, `getMarketingServices()`, `toMarketingErrorResponse(error)`
+
+Plan:
+1. Keep environment-variable lookup in `parseTextModelConfig()` because composition is the runtime boundary.
+2. Add a small app-server-only error type or predicate in `marketing-service.ts`, e.g. `MarketingProviderConfigurationError`, with a stable user-readable message:
+   `AI provider not configured. Set ANTHROPIC_API_KEY to enable persona generation.`
+3. Before instantiating `AiSdkMarketingTextGateway` at line 110, inspect `const textModelConfig = parseTextModelConfig()` and check `textModelConfig.apiKey`.
+4. If missing, do not instantiate `AiSdkMarketingTextGateway` blindly. Prefer one of these two implementation approaches:
+   - Minimal route-specific approach: instantiate the gateway only when configured, otherwise use an `IMarketingTextGenerationGateway` implementation whose generation methods throw `MarketingProviderConfigurationError` with the friendly message. This lets the rest of marketing services still compose and non-AI CRUD routes keep working.
+   - Stricter approach: throw `MarketingProviderConfigurationError` during service composition. This directly satisfies the requested check-before-instantiation but risks breaking all marketing routes that call `getMarketingServices()`, including CRUD routes, when no key is configured.
+5. Recommended approach: use the throwing gateway/fallback so CRUD is not gated by AI credentials. It still checks key presence before creating `AiSdkMarketingTextGateway`, avoids provider SDK/client construction without credentials, and confines the failure to AI operations.
+6. If supporting configurable providers via `MARKETING_DEFAULT_TEXT_MODEL`, make the message provider-specific:
+   - anthropic -> `Set ANTHROPIC_API_KEY ...`
+   - openai -> `Set OPENAI_API_KEY ...`
+   - google -> `Set GOOGLE_API_KEY ...` or verify if this code should use `GEMINI_API_KEY` instead; current `marketing-service.ts` reads `GOOGLE_API_KEY`.
+   For this gap, the required default Anthropic message is enough.
+
+Test plan:
+- Add/extend server composition or route tests if a test harness exists; otherwise add a focused unit test around exported helper/predicate only if the helper is exported.
+- Verify missing API key does not produce a raw AI SDK/model error.
+- Verify non-AI Product CRUD services still compose if the throwing-gateway approach is used.
+
+### Issue 3: Generate route should return friendly 503
+
+File: `apps/desktop-app/src/routes/api/marketing/products/[productId]/personas/generate/+server.ts`
+Handler: `POST`
+
+Plan:
+1. Keep route thin: parse product id/body, fetch product, call `personaService.generateForProduct(product, count)`.
+2. Continue to use central error mapping via `toMarketingErrorResponse(error)` for consistency.
+3. Optionally add a route-local explicit catch only for provider config errors if the central mapper cannot reliably classify it. Preferred: centralize in `toMarketingErrorResponse()` and let the route remain unchanged except for imports if a typed predicate is needed.
+4. Ensure response shape is `{ error: 'AI provider not configured. Set ANTHROPIC_API_KEY to enable persona generation.' }` and status `503` for missing provider configuration.
+
+## 4. Error handling plan
+
+Centralize mapping in `apps/desktop-app/src/lib/server/marketing-service.ts`:
+
+- Add stable detection for provider configuration errors. Best option: an `instanceof MarketingProviderConfigurationError` check. Acceptable fallback: message includes `AI provider not configured`.
+- Map missing AI provider configuration to `503 Service Unavailable` because the request is valid but the runtime dependency is unavailable. A `400` would be acceptable only if the team wants to classify it as operator configuration/user-visible request failure; the route-specific request asked for friendly `503`, so prefer 503.
+- Return the friendly message, not provider SDK raw text and not model ids.
+- Keep existing mappings:
+  - `not found` -> 404
+  - `cannot delete` / `associated` -> 409
+  - `invalid` / `required` -> 400
+  - unknown/unclassified -> 500
+- Do not catch and rewrite all AI generation failures to the config message. Only missing configuration should get the explicit provider-not-configured message. Other AI provider failures should still be sanitized in a later hardening pass if needed, but that is beyond this requested scope.
+- Avoid throwing provider-config errors from `getMarketingServices()` if that would make Product/Persona CRUD routes return 503 when generation is not being used. Prefer a fallback gateway that throws only when AI methods are invoked.
+
+## 5. Risks and assumptions
+
+- `SurrealDbAdapter.merge()` is already implemented and used by other marketing repositories, so switching Product update to `merge()` is low risk.
+- If service composition throws on missing AI key, every route importing `getMarketingServices()` can become unavailable. This conflicts with the goal of fixing persona generation without regressing CRUD. The fallback throwing-gateway approach is safer.
+- `AiSdkMarketingTextGatewayConfig` is currently not exported from `AiSdkMarketingTextGateway.ts`; this does not block checking config in `marketing-service.ts` because `parseTextModelConfig()` already returns a local typed object.
+- The current `parseTextModelConfig()` reads `GOOGLE_API_KEY`, while another provider registry file reads `GEMINI_API_KEY` for Google. Do not change this unless included in the implementation scope; note it as a potential follow-up consistency issue.
+- Existing application tests in `packages/domain/src/application/marketing/persona-service.test.ts` use in-memory fakes for application-layer ports. Repo rules forbid hand-rolled in-memory fakes for database-backed repository tests, but provider ports may be mocked. For this specific plan, repository regression coverage should stay in the Surreal `mem://` integration test.
+- The gap report also mentions UI/i18n/persona edit/delete issues, but this backend plan is limited to the three requested fixes.
+
+## 6. Backend checklist items with file paths
+
+- [ ] `packages/domain/src/infrastructure/database/marketing/SurrealProductRepository.ts`: change `SurrealProductRepository.update()` to use `this.db.merge(...)` instead of `this.db.update(...)`.
+- [ ] `packages/domain/src/infrastructure/database/marketing/product-persona-repository.test.ts`: extend product update test to prove `createdAt` survives update.
+- [ ] `apps/desktop-app/src/lib/server/marketing-service.ts`: add provider configuration error type/predicate and friendly Anthropic missing-key message.
+- [ ] `apps/desktop-app/src/lib/server/marketing-service.ts`: check `parseTextModelConfig().apiKey` before instantiating `AiSdkMarketingTextGateway`.
+- [ ] `apps/desktop-app/src/lib/server/marketing-service.ts`: prefer a fallback throwing `IMarketingTextGenerationGateway` when key is missing so CRUD services still compose.
+- [ ] `apps/desktop-app/src/lib/server/marketing-service.ts`: update `toMarketingErrorResponse()` to map provider config errors to 503 with sanitized JSON.
+- [ ] `apps/desktop-app/src/routes/api/marketing/products/[productId]/personas/generate/+server.ts`: keep route thin; verify it returns central mapped 503 for missing provider config.
+- [ ] Add/adjust backend tests for missing provider config response if practical in existing test structure.
+- [ ] Run targeted validation after implementation: `bun test packages/domain/src/infrastructure/database/marketing/product-persona-repository.test.ts`.
+- [ ] Run desktop/backend validation after implementation: `bun run check:desktop-app` from the repository root if available, or the repo-standard equivalent.
+- [ ] Validate OpenSpec change after implementation: `bunx @fission-ai/openspec@latest validate migrate-marketing-products-personas --type change --no-interactive`.

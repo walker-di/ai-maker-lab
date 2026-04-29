@@ -9,6 +9,7 @@
 	} from 'ui/source';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import PackageIcon from '@lucide/svelte/icons/package';
+	import { m } from '$lib/paraglide/messages.js';
 	import { createProductsPage } from './products-page.composition.js';
 
 	const model = createProductsPage();
@@ -19,22 +20,22 @@
 </script>
 
 <svelte:head>
-	<title>Marketing Products</title>
+	<title>{m.marketing_products_page_title()}</title>
 </svelte:head>
 
 <MarketingShell activePath="/products" onNavigate={navigate}>
 	<div class="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6">
 		<header class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
 			<div class="space-y-2">
-				<p class="text-muted-foreground text-sm font-medium">Marketing Manager</p>
-				<h1 class="text-foreground text-3xl font-semibold tracking-tight">Products</h1>
+				<p class="text-muted-foreground text-sm font-medium">{m.marketing_manager_title()}</p>
+				<h1 class="text-foreground text-3xl font-semibold tracking-tight">{m.marketing_products_heading()}</h1>
 				<p class="text-muted-foreground max-w-2xl text-sm leading-6">
-					Manage marketing products before generating personas, campaigns, creatives, and stories.
+					{m.marketing_products_intro()}
 				</p>
 			</div>
 			<Button type="button" class="gap-2" onclick={() => model.openCreateForm()}>
 				<PlusIcon class="h-4 w-4" />
-				New product
+				{m.marketing_product_new()}
 			</Button>
 		</header>
 
@@ -45,10 +46,9 @@
 		{/if}
 
 		{#if model.isFormOpen}
-			<section class="rounded-xl border bg-card p-5 shadow-sm" aria-label={model.selectedProduct ? 'Edit product' : 'Create product'}>
+			<section class="rounded-xl border bg-card p-5 shadow-sm" aria-label={model.selectedProduct ? m.marketing_product_edit_heading() : m.marketing_product_create_heading()}>
 				<div class="mb-4 space-y-1">
-					<h2 class="text-lg font-semibold">{model.selectedProduct ? 'Edit product' : 'Create product'}</h2>
-					<p class="text-muted-foreground text-sm">Product data is saved through the marketing transport adapter.</p>
+					<h2 class="text-lg font-semibold">{model.selectedProduct ? m.marketing_product_edit_heading() : m.marketing_product_create_heading()}</h2>
 				</div>
 				<ProductForm
 					product={model.selectedProduct}
@@ -60,10 +60,11 @@
 		{/if}
 
 		{#if model.hasProducts}
-			<section class="grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-label="Products">
+			<section class="grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-label={m.marketing_products_heading()}>
 				{#each model.products as product (product.id)}
 					<ProductCard
 						{product}
+						detailHref="/marketing/products/{product.id}"
 						onEdit={() => model.openEditForm(product)}
 						onDelete={() => void model.deleteProduct(product.id)}
 						onViewPersonas={() => void goto(`/marketing/products/${product.id}`)}
@@ -72,9 +73,9 @@
 			</section>
 		{:else if !model.isLoading && model.hasLoaded}
 			<MarketingEmptyState
-				title="No products yet"
-				description="Create a product to start building product-scoped personas and campaigns."
-				actionLabel="Create product"
+				title={m.marketing_products_empty_title()}
+				description={m.marketing_products_empty_description()}
+				actionLabel={m.marketing_product_create_action()}
 				onAction={() => model.openCreateForm()}
 			>
 				{#snippet icon()}
@@ -82,7 +83,7 @@
 				{/snippet}
 			</MarketingEmptyState>
 		{:else}
-			<p class="text-muted-foreground rounded-xl border border-dashed p-8 text-center text-sm">Loading products…</p>
+			<p class="text-muted-foreground rounded-xl border border-dashed p-8 text-center text-sm">{m.marketing_products_loading()}</p>
 		{/if}
 	</div>
 </MarketingShell>

@@ -7,7 +7,7 @@ const StoryboardAssetTypeSchema = z.enum(['mainImage', 'backgroundImage', 'narra
 
 // Product DTOs
 export const CreateProductDtoSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().trim().min(1),
   description: z.string().optional(),
   targetAudience: z.string().optional(),
   features: z.array(z.string()).default([]),
@@ -21,7 +21,7 @@ export type UpdateProductDto = z.infer<typeof UpdateProductDtoSchema>;
 
 // Campaign DTOs
 export const CreateCampaignDtoSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().trim().min(1),
   description: z.string().optional(),
   productId: z.string().optional(),
   status: z.enum([CampaignStatus.draft, CampaignStatus.active, CampaignStatus.paused, CampaignStatus.completed]).default(CampaignStatus.draft),
@@ -38,8 +38,8 @@ export type UpdateCampaignDto = z.infer<typeof UpdateCampaignDtoSchema>;
 
 // Persona DTOs
 export const CreatePersonaDtoSchema = z.object({
-  productId: z.string().min(1),
-  name: z.string().min(1),
+  productId: z.string().trim().min(1),
+  name: z.string().trim().min(1),
   age: z.number().int().positive().optional(),
   ageRange: z.enum(['18-24', '25-34', '35-44', '45-54', '55-64', '65+'] as [AgeRange, ...AgeRange[]]),
   gender: z.enum([Gender.male, Gender.female, Gender.non_binary, Gender.all]),
@@ -56,13 +56,18 @@ export type CreatePersonaDto = z.infer<typeof CreatePersonaDtoSchema>;
 export const UpdatePersonaDtoSchema = CreatePersonaDtoSchema.partial();
 export type UpdatePersonaDto = z.infer<typeof UpdatePersonaDtoSchema>;
 
+export const GeneratePersonasForProductDtoSchema = z.object({
+  count: z.number().int().min(1).max(20),
+});
+export type GeneratePersonasForProductDto = z.infer<typeof GeneratePersonasForProductDtoSchema>;
+
 // Creative DTOs
 export const CreateCreativeDtoSchema = z.object({
-  productId: z.string().min(1),
+  productId: z.string().trim().min(1),
   personaId: z.string().optional(),
   campaignId: z.string().optional(),
   type: z.enum([CreativeType.text, CreativeType.image, CreativeType.video, CreativeType.landing_page]),
-  name: z.string().min(1),
+  name: z.string().trim().min(1),
   status: z.string().default('draft'),
   tags: z.array(z.string()).default([]),
 });
@@ -73,8 +78,8 @@ export type UpdateCreativeDto = z.infer<typeof UpdateCreativeDtoSchema>;
 
 // Story DTOs
 export const CreateStoryDtoSchema = z.object({
-  creativeId: z.string().min(1),
-  title: z.string().min(1),
+  creativeId: z.string().trim().min(1),
+  title: z.string().trim().min(1),
   description: z.string().optional(),
   audioSettings: z.object({
     narrationVoice: z.string().optional(),
@@ -92,22 +97,22 @@ export type UpdateStoryDto = z.infer<typeof UpdateStoryDtoSchema>;
 // Storyboard Maker DTOs
 export const GeneratedStoryboardFrameDraftSchema = z.object({
   title: z.string().optional(),
-  narration: z.string().min(1),
-  mainImagePrompt: z.string().min(1),
-  backgroundImagePrompt: z.string().min(1),
-  bgmPrompt: z.string().min(1),
+  narration: z.string().trim().min(1),
+  mainImagePrompt: z.string().trim().min(1),
+  backgroundImagePrompt: z.string().trim().min(1),
+  bgmPrompt: z.string().trim().min(1),
   durationMs: z.number().int().positive().optional(),
 });
 export type GeneratedStoryboardFrameDraftDto = z.infer<typeof GeneratedStoryboardFrameDraftSchema>;
 
 export const CreateStoryboardDtoSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().trim().min(1),
   description: z.string().optional(),
 });
 export type CreateStoryboardDto = z.infer<typeof CreateStoryboardDtoSchema>;
 
 export const GenerateStoryboardFramesDtoSchema = z.object({
-  prompt: z.string().min(1),
+  prompt: z.string().trim().min(1),
   count: z.number().int().min(1).max(20).default(3),
 });
 export type GenerateStoryboardFramesDto = z.infer<typeof GenerateStoryboardFramesDtoSchema>;
@@ -128,7 +133,7 @@ export const UpdateStoryboardFrameTextDtoSchema = z.object({
 export type UpdateStoryboardFrameTextDto = z.infer<typeof UpdateStoryboardFrameTextDtoSchema>;
 
 export const RegenerateStoryboardPromptDtoSchema = z.object({
-  frameId: z.string().min(1),
+  frameId: z.string().trim().min(1),
   promptType: StoryboardPromptTypeSchema,
 });
 export type RegenerateStoryboardPromptDto = z.infer<typeof RegenerateStoryboardPromptDtoSchema>;
@@ -140,7 +145,7 @@ export type GenerateStoryboardFrameAssetDto = z.infer<typeof GenerateStoryboardF
 
 export const AttachStoryboardFrameAssetDtoSchema = z.object({
   assetType: StoryboardAssetTypeSchema,
-  url: z.string().min(1),
+  url: z.string().trim().min(1),
 });
 export type AttachStoryboardFrameAssetDto = z.infer<typeof AttachStoryboardFrameAssetDtoSchema>;
 
@@ -162,7 +167,7 @@ export type ExportStoryboardDto = z.infer<typeof ExportStoryboardDtoSchema>;
 
 // Scene DTOs
 export const CreateSceneDtoSchema = z.object({
-  storyId: z.string().min(1),
+  storyId: z.string().trim().min(1),
   orderIndex: z.number().int().nonnegative(),
   description: z.string().optional(),
   durationMs: z.number().nonnegative().optional(),
@@ -183,7 +188,7 @@ export type UpdateSceneDto = z.infer<typeof UpdateSceneDtoSchema>;
 
 // Clip DTOs
 export const CreateClipDtoSchema = z.object({
-  sceneId: z.string().min(1),
+  sceneId: z.string().trim().min(1),
   orderIndex: z.number().int().nonnegative(),
   type: z.enum(['image', 'video', 'text'] as const),
   content: z.string().optional(),
@@ -201,8 +206,8 @@ export type UpdateClipDto = z.infer<typeof UpdateClipDtoSchema>;
 
 // BgmFile DTOs
 export const CreateBgmFileDtoSchema = z.object({
-  name: z.string().min(1),
-  fileUrl: z.string().min(1),
+  name: z.string().trim().min(1),
+  fileUrl: z.string().trim().min(1),
   duration: z.number().nonnegative().optional(),
   tags: z.array(z.string()).default([]),
 });
@@ -213,10 +218,10 @@ export type UpdateBgmFileDto = z.infer<typeof UpdateBgmFileDtoSchema>;
 
 // CanvasTemplate DTOs
 export const CreateCanvasTemplateDtoSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().trim().min(1),
   description: z.string().optional(),
   aspectRatio: z.enum([CanvasAspectRatio['16:9'], CanvasAspectRatio['9:16'], CanvasAspectRatio['1:1'], CanvasAspectRatio['4:5'], CanvasAspectRatio.custom]),
-  canvasData: z.string().min(1),
+  canvasData: z.string().trim().min(1),
   previewUrl: z.string().optional(),
   tags: z.array(z.string()).default([]),
   isDefault: z.boolean().optional(),
@@ -228,9 +233,9 @@ export type UpdateCanvasTemplateDto = z.infer<typeof UpdateCanvasTemplateDtoSche
 
 // Strategy DTOs
 export const CreateStrategyDtoSchema = z.object({
-  productId: z.string().min(1),
+  productId: z.string().trim().min(1),
   campaignId: z.string().optional(),
-  content: z.string().min(1),
+  content: z.string().trim().min(1),
   generatedBy: z.string().optional(),
 });
 export type CreateStrategyDto = z.infer<typeof CreateStrategyDtoSchema>;

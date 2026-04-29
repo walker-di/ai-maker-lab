@@ -11,6 +11,7 @@
 	interface Props {
 		product: Product;
 		personaCount?: number;
+		detailHref?: string;
 		onEdit?: () => void;
 		onDelete?: () => void;
 		onViewPersonas?: () => void;
@@ -20,6 +21,7 @@
 	let {
 		product,
 		personaCount,
+		detailHref,
 		onEdit,
 		onDelete,
 		onViewPersonas,
@@ -46,7 +48,13 @@
 
 	<CardHeader class="pb-2">
 		<div class="flex items-start justify-between gap-2">
-			<CardTitle class="text-base leading-snug">{product.name}</CardTitle>
+			{#if detailHref}
+				<a href={detailHref} class="min-w-0 flex-1 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+					<CardTitle class="text-base leading-snug">{product.name}</CardTitle>
+				</a>
+			{:else}
+				<CardTitle class="text-base leading-snug">{product.name}</CardTitle>
+			{/if}
 			<div class="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
 				{#if onEdit}
 					<Button

@@ -1,0 +1,140 @@
+1. Test problem framing
+
+OpenSpec change `migrate-marketing-products-personas` requires products/personas to work through shared domain/application/infrastructure seams, with SurrealDB repository tests using real `mem://`, provider calls mockable, and UI reusable/localized. The gap report `.pi/gaps/migrate-marketing-products-personas-implementation-gap.md` narrows this test plan to four fixes:
+
+- `SurrealProductRepository.update()` must use merge semantics so `createdAt` survives updates.
+- `ProductDetailView.svelte` must render valid created dates instead of `Invalid Date`.
+- persona generation must return a friendly/configuration-safe error when the AI provider is not configured, without leaking raw provider/model internals.
+- `ProductCard` must expose a navigable product name/link to the product detail route.
+
+Primary regression risk: prior Surreal update semantics likely replaced the full record, dropping fields such as `createdAt`; downstream UI then received missing/invalid dates. Persona generation currently calls the AI gateway before the persistence rollback `try` block, so provider/config errors can escape directly. Product cards currently render the name as plain title text with only persona navigation as a button.
+
+2. Existing test files and patterns
+
+Files retrieved / relevant line ranges:
+
+1. `packages/domain/src/infrastructure/database/marketing/product-persona-repository.test.ts` (lines 1-64, 67-133) - Bun test repository integration tests; opens a real SurrealDB `mem://` connection per test with unique namespace/database and closes it in `afterEach`. Extend here for `createdAt` preservation after product update.
+2. `packages/domain/src/application/marketing/persona-service.test.ts` (lines 1-69, 106-124) - Bun test service tests using fake product/persona repositories and a mocked `IMarketingTextGenerationGateway`. Extend here for friendly AI configuration error and no persisted personas.
+3. `packages/domain/src/application/marketing/product-service.test.ts` (lines 1-63, 81-104) - Bun test service tests using fake repositories/gateway. Add a service-level createdAt preservation guard only if desired, but repository test is the important regression.
+4. `packages/domain/src/infrastructure/database/marketing/SurrealProductRepository.ts` (lines 64-84) - create sets timestamps; update currently is the behavior under test and must preserve `createdAt` while changing `updatedAt`.
+5. `packages/domain/src/application/marketing/persona-service.ts` (lines 33-63) - `generateForProduct` calls `ai.generatePersonas` before the persistence try/catch; config/provider error mapping should be tested around this path.
+6. `apps/desktop-app/src/lib/server/marketing-service.ts` (lines 60-81, 110, 140-141, 177-190) - server composition parses AI provider config from env, instantiates `AiSdkMarketingTextGateway`, and exposes `toMarketingErrorResponse` later in the file. Integration/API tests may need to validate controlled error mapping here if implementation touches API behavior.
+7. `packages/ui/src/lib/marketing/products/ProductDetailView.svelte` (lines 31-48) - formats and renders `Created {createdDate}` from `product.createdAt`; needs browser/component coverage for valid ISO strings and missing/invalid defensive behavior.
+8. `packages/ui/src/lib/marketing/products/ProductCard.svelte` (lines 36-50, 95-107) - product name is currently `CardTitle` text, not a link; persona navigation is a button. Needs component/browser coverage for accessible link to detail route.
+9. `apps/desktop-app/src/routes/marketing/products/+page.svelte` (lines 62-70) - list route passes `ProductCard` callbacks; after fix, route likely passes href or navigates through link. Useful for app/page review.
+10. `apps/desktop-app/src/routes/marketing/marketing-page-mappers.ts` (lines 4-15) - maps domain product timestamps into UI product timestamps; useful if date bug is a mapper/type issue.
+11. `apps/desktop-app/package.json` (lines 20-26) and `apps/desktop-app/vite.config.ts` (lines 25-58) - desktop app uses `vitest run --project unit` for `src/**/*.test.ts` and Playwright for e2e.
+12. `packages/ui/vite.config.ts` (lines 40-79) - UI package browser tests use Vitest browser project and include `src/**/*.browser.test.{ts,js}`.
+
+Test runner/conventions:
+
+- Domain package tests use `bun:test` imports (`describe`, `test`, `expect`, `beforeEach`, `afterEach`) and are run directly with `bun test <path>`.
+- DB-backed tests must use real SurrealDB `mem://`, unique namespace/database per `beforeEach`, and close the connection in `afterEach`; do not add in-memory repository fakes for database-backed ports.
+- Application service tests currently use fake repositories and mock only the external AI gateway boundary; this is allowed for provider/config error tests.
+- Desktop app unit tests use Vitest (`bun run --filter desktop-app test:unit` or targeted `cd apps/desktop-app && bunx vitest run --project unit <file>`).
+- UI component/browser tests use Vitest browser + `vitest-browser-svelte` in files named `*.browser.test.ts` (`bun run --filter ui test:browser`). No marketing UI browser tests currently exist, so ProductCard/ProductDetailView likely need a new test fixture/file unless implementation relies on e2e only.
+
+3. Proposed tests per layer with file paths and test descriptions
+
+Repository/infrastructure layer
+
+- Extend `packages/domain/src/infrastructure/database/marketing/product-persona-repository.test.ts` in `describe('SurrealProductRepository')` near the existing `update changes fields` test.
+  - Test name: `update preserves createdAt and changes updatedAt`.
+  - Arrange: create a product with `name`, `description`, `targetAudience`, `features`, and `benefits`. Capture `created.createdAt` and `created.updatedAt`.
+  - Act: call `productRepo.update(created.id, { name: 'Updated', description: 'Updated description' })`.
+  - Assert:
+    - `updated.name` and `updated.description` changed.
+    - `updated.createdAt === created.createdAt`.
+    - `updated.updatedAt !== created.updatedAt` (or parse dates and assert updated is >= created; exact inequality can be flaky if same millisecond, so safest is use a tiny delay or assert returned `updatedAt` is a valid ISO string and not undefined; implementation can add `await Bun.sleep(1)` if needed).
+    - `updated.features` and `updated.benefits` still equal original arrays to prove merge semantics preserve untouched fields.
+    - `await productRepo.findById(created.id)` also has the preserved `createdAt`.
+  - Negative guard: do not only assert `createdAt` is defined; compare to the original value so this catches accidental reset-on-update.
+
+Application service layer: persona generation config error
+
+- Extend `packages/domain/src/application/marketing/persona-service.test.ts`.
+  - Test name: `generateForProduct maps AI provider configuration failures to a friendly error`.
+  - Arrange: create a `failingAi` implementing `IMarketingTextGenerationGateway` where `generatePersonas` throws a configuration-style error. Prefer a domain-specific/config error if implementation adds one; otherwise throw `new Error('model: claude-3-5-haiku-20241022')` to lock in that raw model/provider detail is not surfaced.
+  - Act/assert: `await expect(svc.generateForProduct(product, 2)).rejects.toThrow(<friendly message>)`.
+  - Additional assertions:
+    - `expect(personaRepo.items).toHaveLength(0)` so no partial persona is persisted when the gateway fails before generation.
+    - If checking the thrown message manually, assert it does not include `model:`, `claude`, `anthropic`, or API key/env var names.
+  - Expected friendly wording should be stabilized by implementation/spec owner. Suggested contract: message contains `Persona generation is unavailable` and `configure` (case-insensitive), not raw provider details.
+
+- Keep existing `generateForProduct rolls back on mid-loop failure` test (lines 113-124). If implementation broadens error mapping, ensure this test still verifies persistence rollback and either still throws `generation failed` or is updated to the new friendly persistence failure wording.
+
+Application service layer: product update timestamp guard
+
+- Optional but useful extension to `packages/domain/src/application/marketing/product-service.test.ts` near `update changes product fields`.
+  - Test name: `update preserves product createdAt from repository result`.
+  - Arrange: create a product, capture `createdAt`, update name.
+  - Assert `updated.createdAt === created.createdAt` and `updated.name === 'New'`.
+  - Caveat: current fake repository already preserves `createdAt` by object spread, so this test mainly documents service contract; it will not catch the Surreal replace-vs-merge regression. The repository test above is mandatory.
+
+UI component/browser layer: ProductDetailView date
+
+- Add a new UI browser test file (no existing marketing UI test file was found): `packages/ui/src/lib/marketing/products/ProductDetailView.browser.test.ts` plus a small fixture component if needed.
+  - Test name: `renders createdAt as a valid localized date for ISO timestamps`.
+  - Render `ProductDetailView` with a product fixture whose `createdAt` is a known ISO string such as `2026-04-28T13:34:03.170Z` and `updatedAt` another valid ISO string.
+  - Assert the rendered text includes `Created` and does not include `Invalid Date`.
+  - For deterministic output, avoid asserting a locale-specific exact date unless the implementation uses a deterministic formatter. Prefer `not.toContain('Invalid Date')` plus existence of the product name and Created label.
+  - If implementation adds a formatting helper, add a pure unit test for that helper as well (invalid/missing input returns a safe fallback such as `Unknown date`).
+
+UI component/browser layer: ProductCard navigable link
+
+- Add a new UI browser test file or combine with a product component browser test: `packages/ui/src/lib/marketing/products/ProductCard.browser.test.ts`.
+  - Test name: `renders product name as a link to the product detail route`.
+  - Render `ProductCard` with `product.id = 'marketing_product:abc123'` or a plain app id and whatever new prop implementation uses (`href`, `detailHref`, or similar).
+  - Assert `getByRole('link', { name: /Widget/ })` is visible and has expected `href` ending in `/marketing/products/<encoded-or-normalized-id>` depending on app route contract.
+  - Assert edit/delete buttons remain buttons and do not trigger the link accidentally; stop-propagation behavior should remain for icon buttons if card-level link wrapping is used.
+  - If the implementation keeps routing composition in the app route instead of UI package, add/extend a desktop-app page/model/component test instead; however, a pure UI browser test is preferred because `ProductCard` lives in `packages/ui`.
+
+Adapter/API layer (optional if implementation touches HTTP mapping)
+
+- If the friendly AI config error is implemented in `apps/desktop-app/src/lib/server/marketing-service.ts`/API mapping rather than `PersonaService`, add a desktop unit test around `toMarketingErrorResponse` or the route handler. Existing desktop unit convention is Vitest under `apps/desktop-app/src/**/*.test.ts`.
+  - Test a config error maps to JSON `{ error: <friendly message> }` and a non-500/controlled status if specified (likely 503 or 400 depending on chosen contract).
+  - Do not require live Anthropic/OpenAI/Google credentials.
+
+4. Required validation commands
+
+Run from repository root unless noted:
+
+- Targeted repository test:
+  - `bun test packages/domain/src/infrastructure/database/marketing/product-persona-repository.test.ts`
+- Targeted application service tests:
+  - `bun test packages/domain/src/application/marketing/persona-service.test.ts packages/domain/src/application/marketing/product-service.test.ts`
+- All domain tests as a broader guard:
+  - `bun test packages/domain/src`
+- UI browser tests if ProductCard/ProductDetailView browser tests are added:
+  - `bun run --filter ui test:browser`
+- Desktop unit tests if API/page/adapter tests are added:
+  - `bun run --filter desktop-app test:unit`
+- Type/check gate:
+  - `bun run check:desktop-app`
+- OpenSpec validation:
+  - `bunx @fission-ai/openspec@latest validate migrate-marketing-products-personas --type change --no-interactive`
+
+Optional browser/e2e follow-up for the product-card navigation gap:
+
+- If a marketing e2e file exists after implementation, run it directly from `apps/desktop-app` with Playwright. Otherwise run all desktop e2e only if the change adds e2e coverage and the environment is ready:
+  - `cd apps/desktop-app && bun run test:e2e`
+
+5. Risks and fixtures needed
+
+- SurrealDB timestamp comparison can be same-millisecond; if asserting `updatedAt` changes, insert a tiny delay before update or assert it is valid and not missing. The must-have assertion is exact preservation of `createdAt`.
+- Use real SurrealDB `mem://` in repository tests; do not introduce an in-memory fake for `SurrealProductRepository` coverage.
+- Application service tests may use fake repositories because the boundary under test is the AI gateway error mapping, not DB persistence.
+- Friendly AI error wording needs a stable contract. Tests should verify no leakage of raw `model: claude-3-5-haiku-20241022`, provider names, API key names, or stack details.
+- ProductDetailView date tests should not rely on a specific locale rendering unless the implementation makes formatting deterministic.
+- ProductCard link tests need the final prop/route design. If `ProductCard` becomes reusable with a `href` prop, test the UI component directly. If routing stays app-local, test route composition instead.
+- Svelte/browser tests may need small fixture components in `packages/ui/src/lib/marketing/products/__tests__` or adjacent to the component, following existing `vitest-browser-svelte` patterns.
+
+6. Tests checklist items with file paths
+
+- [ ] `packages/domain/src/infrastructure/database/marketing/product-persona-repository.test.ts` — add `SurrealProductRepository.update preserves createdAt and untouched fields` using real SurrealDB `mem://`.
+- [ ] `packages/domain/src/application/marketing/persona-service.test.ts` — add `generateForProduct maps AI provider configuration failures to a friendly error` and asserts zero personas persisted.
+- [ ] `packages/domain/src/application/marketing/product-service.test.ts` — optionally add service-level `update preserves product createdAt` contract test.
+- [ ] `packages/ui/src/lib/marketing/products/ProductDetailView.browser.test.ts` — add browser test that valid ISO `createdAt` renders without `Invalid Date`.
+- [ ] `packages/ui/src/lib/marketing/products/ProductCard.browser.test.ts` — add browser test that product name is an accessible navigable link to product detail, while edit/delete remain buttons.
+- [ ] Optional `apps/desktop-app/src/lib/server/marketing-service.test.ts` or route-level test — only if friendly config errors are mapped at API/composition layer instead of application service.
+- [ ] Run validation commands listed in section 4.

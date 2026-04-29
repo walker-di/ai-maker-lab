@@ -1,10 +1,63 @@
 import type { Marketing } from 'domain/shared';
 import type { StoryboardAssetType, StoryboardPromptType, StoryboardTransport } from './StoryboardTransport';
 
+export type StoryboardTransportErrorKind =
+	| 'backend-unavailable'
+	| 'not-found'
+	| 'validation'
+	| 'network'
+	| 'server';
+
+export class StoryboardTransportError extends Error {
+	readonly kind: StoryboardTransportErrorKind;
+	readonly status: number | undefined;
+	readonly technicalMessage: string | undefined;
+
+	constructor(options: {
+		kind: StoryboardTransportErrorKind;
+		userMessage: string;
+		status?: number;
+		technicalMessage?: string;
+	}) {
+		super(options.userMessage);
+		this.name = 'StoryboardTransportError';
+		this.kind = options.kind;
+		this.status = options.status;
+		this.technicalMessage = options.technicalMessage;
+	}
+}
+
+function classifyError(status: number, serverMessage: string): StoryboardTransportErrorKind {
+	if (status === 404) return 'not-found';
+	if (status === 400) return 'validation';
+	if (status >= 500) {
+		const lower = serverMessage.toLowerCase();
+		if (lower.includes('timed out') || lower.includes('connection') || lower.includes('surreal')) {
+			return 'backend-unavailable';
+		}
+		return 'server';
+	}
+	return 'server';
+}
+
 async function readResponse<T>(response: Response): Promise<T> {
 	if (!response.ok) {
 		const body = await response.json().catch(() => ({}));
-		throw new Error(typeof body.error === 'string' ? body.error : `Request failed (${response.status})`);
+		const serverMessage = typeof body.error === 'string' ? body.error : `Request failed (${response.status})`;
+		const kind = classifyError(response.status, serverMessage);
+		const userMessages: Record<StoryboardTransportErrorKind, string> = {
+			'backend-unavailable': 'The storyboard service is temporarily unavailable. Please try again shortly.',
+			'not-found': 'The requested storyboard could not be found.',
+			'validation': 'The request was invalid. Please check your input.',
+			'network': 'A network error occurred. Please check your connection.',
+			'server': 'An unexpected server error occurred. Please try again.',
+		};
+		throw new StoryboardTransportError({
+			kind,
+			userMessage: userMessages[kind],
+			status: response.status,
+			technicalMessage: serverMessage,
+		});
 	}
 	return await response.json() as T;
 }

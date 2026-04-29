@@ -1,29 +1,57 @@
 import type { StoryboardTransport } from '$lib/adapters/storyboard/StoryboardTransport';
+import { StoryboardTransportError } from '$lib/adapters/storyboard/web-storyboard-transport';
 
 export function createStoryboardPageModel(transport: StoryboardTransport) {
 	let storyboards = $state<Awaited<ReturnType<StoryboardTransport['listStoryboards']>>>([]);
 	let selected = $state<Awaited<ReturnType<StoryboardTransport['getStoryboard']>> | null>(null);
 	let isLoading = $state(false);
-	let error = $state<string | null>(null);
+	let initialLoadStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
+	let initialLoadError = $state<StoryboardTransportError | null>(null);
+	let operationError = $state<string | null>(null);
 	let createDialogOpen = $state(false);
 	let addFramesDialogOpen = $state(false);
 	let exportStatus = $state<'idle' | 'exporting' | 'done' | 'error'>('idle');
 	let exportUrl = $state<string | undefined>();
 
+	const isBackendUnavailable = $derived(
+		initialLoadError?.kind === 'backend-unavailable',
+	);
+
 	async function run<T>(fn: () => Promise<T>): Promise<T | undefined> {
 		isLoading = true;
-		error = null;
+		operationError = null;
 		try {
 			return await fn();
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : 'Unknown storyboard error';
+			operationError = cause instanceof StoryboardTransportError
+				? cause.message
+				: cause instanceof Error
+					? cause.message
+					: 'Unknown storyboard error';
 		} finally {
 			isLoading = false;
 		}
 	}
 
 	async function load() {
-		await run(async () => { storyboards = await transport.listStoryboards(); });
+		initialLoadStatus = 'loading';
+		initialLoadError = null;
+		isLoading = true;
+		try {
+			storyboards = await transport.listStoryboards();
+			initialLoadStatus = 'ready';
+		} catch (cause) {
+			initialLoadStatus = 'error';
+			initialLoadError = cause instanceof StoryboardTransportError
+				? cause
+				: new StoryboardTransportError({
+					kind: 'server',
+					userMessage: cause instanceof Error ? cause.message : 'Unknown storyboard error',
+					technicalMessage: cause instanceof Error ? cause.message : undefined,
+				});
+		} finally {
+			isLoading = false;
+		}
 	}
 
 	async function create(input: { name: string; description?: string }) {
@@ -105,7 +133,10 @@ export function createStoryboardPageModel(transport: StoryboardTransport) {
 		get storyboards() { return storyboards; },
 		get selected() { return selected; },
 		get isLoading() { return isLoading; },
-		get error() { return error; },
+		get initialLoadStatus() { return initialLoadStatus; },
+		get initialLoadError() { return initialLoadError; },
+		get operationError() { return operationError; },
+		get isBackendUnavailable() { return isBackendUnavailable; },
 		get createDialogOpen() { return createDialogOpen; },
 		set createDialogOpen(v) { createDialogOpen = v; },
 		get addFramesDialogOpen() { return addFramesDialogOpen; },
