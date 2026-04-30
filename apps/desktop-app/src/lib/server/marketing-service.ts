@@ -52,6 +52,42 @@ import { OpenAIMarketingMediaGateway } from './marketing/gateways/OpenAIMarketin
 import { ReplicateMarketingMediaGateway } from './marketing/gateways/ReplicateMarketingMediaGateway.js';
 import { FfmpegMarketingVideoExporter } from './marketing/gateways/FfmpegMarketingVideoExporter.js';
 
+class CompositeMarketingMediaGateway
+	implements Marketing.IMarketingImageGenerationGateway, Marketing.IBackgroundMusicGateway
+{
+	constructor(
+		private readonly openai: OpenAIMarketingMediaGateway | null,
+		private readonly replicate: ReplicateMarketingMediaGateway | null,
+	) {}
+
+	private resolveImageGateway(model?: string): Marketing.IMarketingImageGenerationGateway {
+		if (model && model.includes('/')) {
+			if (!this.replicate) throw new Error('Replicate API key not configured. Set REPLICATE_API_KEY to use Replicate models.');
+			return this.replicate;
+		}
+		if (model && (model.startsWith('gpt-') || model.startsWith('dall-'))) {
+			if (!this.openai) throw new Error('OpenAI API key not configured. Set OPENAI_API_KEY to use OpenAI image models.');
+			return this.openai;
+		}
+		return this.openai ?? this.replicate!;
+	}
+
+	async generateImage(prompt: string, style?: string, options?: { aspectRatio?: string; model?: string }): Promise<{ url: string }> {
+		const gateway = this.resolveImageGateway(options?.model);
+		return gateway.generateImage(prompt, style, options);
+	}
+
+	async generateSvg(prompt: string): Promise<{ svgContent: string }> {
+		const gateway = this.openai ?? this.replicate!;
+		return gateway.generateSvg(prompt);
+	}
+
+	async generate(prompt: string, durationSecs: number): Promise<{ url: string }> {
+		if (!this.replicate) throw new Error('Replicate API key not configured. BGM generation requires Replicate.');
+		return this.replicate.generate(prompt, durationSecs);
+	}
+}
+
 export interface MarketingServices {
 	productService: Marketing.ProductService;
 	personaService: Marketing.PersonaService;
@@ -143,14 +179,19 @@ export function getMarketingServices(): Promise<MarketingServices> {
 				const openaiApiKey = process.env.OPENAI_API_KEY ?? '';
 				const replicateApiKey = process.env.REPLICATE_API_KEY ?? '';
 
+				const openaiImageGateway = openaiApiKey
+					? new OpenAIMarketingMediaGateway(openaiApiKey, {
+							imageModel: process.env.MARKETING_DEFAULT_IMAGE_MODEL,
+						})
+					: null;
+				const replicateGateway = replicateApiKey
+					? new ReplicateMarketingMediaGateway(replicateApiKey, {
+							imageModel: process.env.MARKETING_DEFAULT_IMAGE_MODEL,
+						})
+					: null;
+
 				const imageGen: Marketing.IMarketingImageGenerationGateway & Marketing.IBackgroundMusicGateway =
-					openaiApiKey
-						? new OpenAIMarketingMediaGateway(openaiApiKey, {
-								imageModel: process.env.MARKETING_DEFAULT_IMAGE_MODEL,
-							})
-						: new ReplicateMarketingMediaGateway(replicateApiKey, {
-								imageModel: process.env.MARKETING_DEFAULT_IMAGE_MODEL,
-							});
+					new CompositeMarketingMediaGateway(openaiImageGateway, replicateGateway);
 
 				const narrationGateway = new AzureSpeechNarrationGateway({
 					apiKey: process.env.AZURE_SPEECH_KEY ?? '',

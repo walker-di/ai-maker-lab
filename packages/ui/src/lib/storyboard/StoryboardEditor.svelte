@@ -1,11 +1,20 @@
 <script lang="ts">
 	import { Button } from '$ui/components/ui/button/index.js';
 	import StoryboardFrameCard from './StoryboardFrameCard.svelte';
+	import StoryboardModelConfig from './StoryboardModelConfig.svelte';
 	import type { StoryboardAssetType, StoryboardDetail, StoryboardPromptType } from './types.js';
+
+	export interface StoryboardModelConfigState {
+		textProvider: string;
+		textModel: string;
+		imageProvider: string;
+		imageModel: string;
+	}
 
 	interface Props {
 		storyboard: StoryboardDetail;
 		isLoading?: boolean;
+		modelConfig?: StoryboardModelConfigState;
 		onBack: () => void;
 		onAddFrames: () => void;
 		onInsertBlankFrame: (afterFrameId?: string) => void | Promise<void>;
@@ -16,8 +25,11 @@
 		onGenerateAsset: (frameId: string, assetType: StoryboardAssetType) => void | Promise<void>;
 		onUpdateTransition: (frameId: string, input: { transitionTypeAfter: 'none' | 'fade' | 'slide' | 'wipe' | 'zoom'; transitionDurationMs: number }) => void | Promise<void>;
 		onExport: () => void | Promise<void>;
+		onModelConfigChange?: (config: StoryboardModelConfigState) => void;
 	}
 	let props: Props = $props();
+
+	let showConfig = $state(false);
 </script>
 
 <div class="space-y-6">
@@ -28,11 +40,28 @@
 			<p class="text-muted-foreground text-sm">{props.storyboard.frameCount} frames</p>
 		</div>
 		<div class="flex flex-wrap gap-2">
+			<Button type="button" variant="outline" onclick={() => (showConfig = !showConfig)} disabled={props.isLoading}>
+				{showConfig ? 'Hide AI config' : 'AI config'}
+			</Button>
 			<Button type="button" variant="outline" onclick={props.onAddFrames} disabled={props.isLoading}>Generate frames</Button>
 			<Button type="button" variant="outline" onclick={() => props.onInsertBlankFrame()} disabled={props.isLoading}>Insert blank</Button>
 			<Button type="button" onclick={props.onExport} disabled={props.isLoading || props.storyboard.frames.length === 0}>Export video</Button>
 		</div>
 	</div>
+
+	{#if showConfig && props.modelConfig}
+		<StoryboardModelConfig
+			textProvider={props.modelConfig.textProvider}
+			textModel={props.modelConfig.textModel}
+			imageProvider={props.modelConfig.imageProvider}
+			imageModel={props.modelConfig.imageModel}
+			onTextProviderChange={(v) => props.onModelConfigChange?.({ ...props.modelConfig!, textProvider: v, textModel: '' })}
+			onTextModelChange={(v) => props.onModelConfigChange?.({ ...props.modelConfig!, textModel: v })}
+			onImageProviderChange={(v) => props.onModelConfigChange?.({ ...props.modelConfig!, imageProvider: v, imageModel: '' })}
+			onImageModelChange={(v) => props.onModelConfigChange?.({ ...props.modelConfig!, imageModel: v })}
+			disabled={props.isLoading}
+		/>
+	{/if}
 
 	{#if props.storyboard.frames.length === 0}
 		<div class="rounded-xl border border-dashed p-10 text-center">

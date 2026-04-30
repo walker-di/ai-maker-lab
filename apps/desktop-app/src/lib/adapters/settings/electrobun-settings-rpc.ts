@@ -7,9 +7,9 @@
  * masked previews and metadata, never raw values.
  */
 
-export type ProviderId = 'openai' | 'anthropic' | 'gemini';
+export type ProviderId = 'openai' | 'anthropic' | 'gemini' | 'replicate';
 
-export const PROVIDER_IDS: readonly ProviderId[] = ['openai', 'anthropic', 'gemini'];
+export const PROVIDER_IDS: readonly ProviderId[] = ['openai', 'anthropic', 'gemini', 'replicate'];
 
 export type ProviderKeySource = 'shell' | 'file' | 'unset';
 

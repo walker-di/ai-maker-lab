@@ -1,5 +1,13 @@
 import type { StoryboardTransport } from '$lib/adapters/storyboard/StoryboardTransport';
+import type { Marketing } from 'domain/shared';
 import { StoryboardTransportError } from '$lib/adapters/storyboard/web-storyboard-transport';
+
+export interface StoryboardModelConfigState {
+	textProvider: string;
+	textModel: string;
+	imageProvider: string;
+	imageModel: string;
+}
 
 export function createStoryboardPageModel(transport: StoryboardTransport) {
 	let storyboards = $state<Awaited<ReturnType<StoryboardTransport['listStoryboards']>>>([]);
@@ -12,6 +20,16 @@ export function createStoryboardPageModel(transport: StoryboardTransport) {
 	let addFramesDialogOpen = $state(false);
 	let exportStatus = $state<'idle' | 'exporting' | 'done' | 'error'>('idle');
 	let exportUrl = $state<string | undefined>();
+	let viewMode = $state<'timeline' | 'grid' | 'preview'>('timeline');
+	let selectedFrameIndex = $state(0);
+	let isPlaying = $state(false);
+	let playbackTimer = $state<ReturnType<typeof setInterval> | null>(null);
+	let modelConfig = $state<StoryboardModelConfigState>({
+		textProvider: 'openai',
+		textModel: 'gpt-4o-mini',
+		imageProvider: 'openai',
+		imageModel: 'gpt-image-1',
+	});
 
 	const isBackendUnavailable = $derived(
 		initialLoadError?.kind === 'backend-unavailable',
@@ -77,7 +95,16 @@ export function createStoryboardPageModel(transport: StoryboardTransport) {
 
 	async function generateFrames(input: { prompt: string; count: number }) {
 		if (!selected) return;
-		await run(async () => { selected = await transport.generateFrames(selected!.id, input); });
+		const mc: Marketing.StoryboardModelConfig | undefined =
+			modelConfig.textProvider && modelConfig.textModel
+				? {
+						textProvider: modelConfig.textProvider as Marketing.StoryboardTextModelProvider,
+						textModel: modelConfig.textModel as Marketing.StoryboardTextModel,
+						imageProvider: modelConfig.imageProvider as Marketing.StoryboardImageModelProvider,
+						imageModel: modelConfig.imageModel as Marketing.StoryboardImageModel,
+					}
+				: undefined;
+		await run(async () => { selected = await transport.generateFrames(selected!.id, { ...input, modelConfig: mc }); });
 		addFramesDialogOpen = false;
 		await load();
 	}
@@ -111,7 +138,16 @@ export function createStoryboardPageModel(transport: StoryboardTransport) {
 
 	async function generateAsset(frameId: string, assetType: 'mainImage' | 'backgroundImage' | 'narrationAudio' | 'bgm') {
 		if (!selected) return;
-		await run(async () => { await transport.generateFrameAsset(selected!.id, frameId, assetType); await refreshSelected(); });
+		const mc: Marketing.StoryboardModelConfig | undefined =
+			modelConfig.imageProvider && modelConfig.imageModel
+				? {
+						imageProvider: modelConfig.imageProvider as Marketing.StoryboardImageModelProvider,
+						imageModel: modelConfig.imageModel as Marketing.StoryboardImageModel,
+						textProvider: modelConfig.textProvider as Marketing.StoryboardTextModelProvider,
+						textModel: modelConfig.textModel as Marketing.StoryboardTextModel,
+					}
+				: undefined;
+		await run(async () => { await transport.generateFrameAsset(selected!.id, frameId, assetType, mc); await refreshSelected(); });
 	}
 
 	async function updateTransition(frameId: string, input: { transitionTypeAfter: 'none' | 'fade' | 'slide' | 'wipe' | 'zoom'; transitionDurationMs: number }) {
@@ -131,6 +167,70 @@ export function createStoryboardPageModel(transport: StoryboardTransport) {
 		}
 	}
 
+	const selectedFrame = $derived(selected?.frames[selectedFrameIndex] ?? null);
+
+	function selectFrame(index: number) {
+		if (selected && index >= 0 && index < selected.frames.length) {
+			selectedFrameIndex = index;
+		}
+	}
+
+	function navigateFrame(direction: 'prev' | 'next') {
+		if (!selected) return;
+		const next = direction === 'prev' ? selectedFrameIndex - 1 : selectedFrameIndex + 1;
+		if (next >= 0 && next < selected.frames.length) {
+			selectedFrameIndex = next;
+		}
+	}
+
+	function togglePlayback() {
+		if (isPlaying) {
+			if (playbackTimer) clearInterval(playbackTimer);
+			playbackTimer = null;
+			isPlaying = false;
+		} else {
+			if (!selected || selected.frames.length === 0) return;
+			isPlaying = true;
+			playbackTimer = setInterval(() => {
+				if (!selected) { togglePlayback(); return; }
+				const next = selectedFrameIndex + 1;
+				if (next >= selected.frames.length) {
+					selectedFrameIndex = 0;
+					togglePlayback();
+				} else {
+					selectedFrameIndex = next;
+				}
+			}, selected.frames[selectedFrameIndex]?.durationMs ?? 3000);
+		}
+	}
+
+	async function batchGenerateAssets() {
+		if (!selected) return;
+		await run(async () => { selected = await transport.batchGenerateAssets(selected!.id); });
+	}
+
+	async function batchRegeneratePrompts() {
+		if (!selected) return;
+		await run(async () => { selected = await transport.batchRegeneratePrompts(selected!.id); });
+	}
+
+	async function autoAssignTransitions(strategy: 'uniform' | 'alternating' = 'uniform', transitionType?: string, durationMs?: number) {
+		if (!selected) return;
+		await run(async () => {
+			selected = await transport.autoAssignTransitions(selected!.id, {
+				strategy,
+				transitionType: transitionType as 'none' | 'fade' | 'slide' | 'wipe' | 'zoom' | undefined,
+				durationMs: durationMs ?? 500,
+			});
+		});
+	}
+
+	async function duplicateFrame(frameId: string) {
+		if (!selected) return;
+		await run(async () => { selected = await transport.duplicateFrame(selected!.id, frameId); });
+		await load();
+	}
+
 	return {
 		get storyboards() { return storyboards; },
 		get selected() { return selected; },
@@ -146,6 +246,13 @@ export function createStoryboardPageModel(transport: StoryboardTransport) {
 		get exportStatus() { return exportStatus; },
 		set exportStatus(v) { exportStatus = v; },
 		get exportUrl() { return exportUrl; },
+		get modelConfig() { return modelConfig; },
+		set modelConfig(v) { modelConfig = v; },
+		get viewMode() { return viewMode; },
+		set viewMode(v) { viewMode = v; },
+		get selectedFrameIndex() { return selectedFrameIndex; },
+		get selectedFrame() { return selectedFrame; },
+		get isPlaying() { return isPlaying; },
 		load,
 		create,
 		open,
@@ -159,5 +266,12 @@ export function createStoryboardPageModel(transport: StoryboardTransport) {
 		generateAsset,
 		updateTransition,
 		exportVideo,
+		selectFrame,
+		navigateFrame,
+		togglePlayback,
+		batchGenerateAssets,
+		batchRegeneratePrompts,
+		autoAssignTransitions,
+		duplicateFrame,
 	};
 }

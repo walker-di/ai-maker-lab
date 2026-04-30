@@ -138,10 +138,12 @@ export class WebStoryboardTransport implements StoryboardTransport {
 		});
 	}
 
-	async generateFrameAsset(storyboardId: string, frameId: string, assetType: StoryboardAssetType) {
+	async generateFrameAsset(storyboardId: string, frameId: string, assetType: StoryboardAssetType, modelConfig?: Marketing.StoryboardModelConfig) {
+		const body: Record<string, unknown> = { assetType };
+		if (modelConfig) body.modelConfig = modelConfig;
 		return requestJson<Marketing.StoryboardFrame>(`${this.frameUrl(storyboardId, frameId)}/generate-asset`, {
 			method: 'POST',
-			body: JSON.stringify({ assetType }),
+			body: JSON.stringify(body),
 		});
 	}
 
@@ -161,6 +163,34 @@ export class WebStoryboardTransport implements StoryboardTransport {
 
 	async exportUnifiedVideo(storyboardId: string) {
 		return requestJson<Marketing.StoryboardExportResult>(`${this.storyboardUrl(storyboardId)}/export-video`, { method: 'POST' });
+	}
+
+	async batchGenerateAssets(storyboardId: string, input?: Marketing.BatchGenerateAssetsDto) {
+		return requestJson<Marketing.StoryboardDetail>(`${this.storyboardUrl(storyboardId)}/frames/batch-generate-assets`, {
+			method: 'POST',
+			body: JSON.stringify(input ?? {}),
+		});
+	}
+
+	async batchRegeneratePrompts(storyboardId: string, input?: Marketing.BatchRegeneratePromptsDto) {
+		return requestJson<Marketing.StoryboardDetail>(`${this.storyboardUrl(storyboardId)}/frames/batch-regenerate-prompts`, {
+			method: 'POST',
+			body: JSON.stringify(input ?? {}),
+		});
+	}
+
+	async duplicateFrame(storyboardId: string, frameId: string, input?: Marketing.DuplicateFrameDto) {
+		return requestJson<Marketing.StoryboardDetail>(`${this.frameUrl(storyboardId, frameId)}/duplicate`, {
+			method: 'POST',
+			body: JSON.stringify(input ?? {}),
+		});
+	}
+
+	async autoAssignTransitions(storyboardId: string, input: Marketing.AutoAssignTransitionsDto) {
+		return requestJson<Marketing.StoryboardDetail>(`${this.storyboardUrl(storyboardId)}/transitions/auto-assign`, {
+			method: 'POST',
+			body: JSON.stringify(input),
+		});
 	}
 
 	private storyboardUrl(storyboardId: string) {

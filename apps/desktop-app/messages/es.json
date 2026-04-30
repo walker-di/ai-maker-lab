@@ -59,6 +59,8 @@
 	"settings_provider_anthropic_description": "Usado por los modelos Claude 3.5/4.",
 	"settings_provider_gemini_label": "Google Gemini",
 	"settings_provider_gemini_description": "Usado por modelos de la familia Gemini 2.5 / 3.1.",
+	"settings_provider_replicate_label": "Replicate",
+	"settings_provider_replicate_description": "Usado para generación de imágenes (Flux, SDXL, Recraft) y música de fondo.",
 	"settings_input_placeholder": "Pega la clave de API",
 	"settings_show": "Mostrar valor",
 	"settings_hide": "Ocultar valor",

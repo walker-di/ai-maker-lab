@@ -142,16 +142,17 @@ export interface IMarketingTextGenerationGateway {
     product: Product,
     creative: Creative,
   ): Promise<{ scenes: Partial<Scene>[]; clips: Partial<Clip>[][] }>;
-  generateStoryboardFrames?(prompt: string, count: number): Promise<GeneratedStoryboardFrameDraft[]>;
+  generateStoryboardFrames?(prompt: string, count: number, modelOverride?: { provider: string; model: string }): Promise<GeneratedStoryboardFrameDraft[]>;
   regenerateStoryboardPrompt?(params: {
     promptType: StoryboardPromptType;
     frame: StoryboardFrame;
     storyboard: StoryboardDetail;
+    modelOverride?: { provider: string; model: string };
   }): Promise<string>;
 }
 
 export interface IMarketingImageGenerationGateway {
-  generateImage(prompt: string, style?: string, options?: { aspectRatio?: string }): Promise<{ url: string }>;
+  generateImage(prompt: string, style?: string, options?: { aspectRatio?: string; model?: string }): Promise<{ url: string }>;
   generateSvg(prompt: string): Promise<{ svgContent: string }>;
 }
 

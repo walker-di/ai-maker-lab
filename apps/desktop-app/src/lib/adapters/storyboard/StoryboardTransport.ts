@@ -17,8 +17,12 @@ export interface StoryboardTransport {
 	deleteFrame(storyboardId: string, frameId: string): Promise<StoryboardDetail>;
 	reorderFrame(storyboardId: string, frameId: string, input: Marketing.ReorderStoryboardFrameDto): Promise<StoryboardDetail>;
 	regeneratePrompt(storyboardId: string, frameId: string, promptType: StoryboardPromptType): Promise<{ prompt: string; frame: StoryboardFrame }>;
-	generateFrameAsset(storyboardId: string, frameId: string, assetType: StoryboardAssetType): Promise<StoryboardFrame>;
+	generateFrameAsset(storyboardId: string, frameId: string, assetType: StoryboardAssetType, modelConfig?: Marketing.StoryboardModelConfig): Promise<StoryboardFrame>;
 	attachFrameAsset(storyboardId: string, frameId: string, input: Marketing.AttachStoryboardFrameAssetDto): Promise<StoryboardFrame>;
 	updateTransition(storyboardId: string, frameId: string, input: Marketing.UpdateStoryboardTransitionDto): Promise<StoryboardFrame>;
 	exportUnifiedVideo(storyboardId: string): Promise<Marketing.StoryboardExportResult>;
+	batchGenerateAssets(storyboardId: string, input?: Marketing.BatchGenerateAssetsDto): Promise<StoryboardDetail>;
+	batchRegeneratePrompts(storyboardId: string, input?: Marketing.BatchRegeneratePromptsDto): Promise<StoryboardDetail>;
+	duplicateFrame(storyboardId: string, frameId: string, input?: Marketing.DuplicateFrameDto): Promise<StoryboardDetail>;
+	autoAssignTransitions(storyboardId: string, input: Marketing.AutoAssignTransitionsDto): Promise<StoryboardDetail>;
 }

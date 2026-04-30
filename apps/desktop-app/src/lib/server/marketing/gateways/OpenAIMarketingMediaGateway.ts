@@ -23,18 +23,19 @@ export class OpenAIMarketingMediaGateway
 	async generateImage(
 		prompt: string,
 		style?: string,
-		options?: { aspectRatio?: string },
+		options?: { aspectRatio?: string; model?: string },
 	): Promise<{ url: string }> {
 		const { generateImage } = await import('ai');
 		const { createOpenAI } = await import('@ai-sdk/openai');
 
 		const openai = createOpenAI({ apiKey: this.apiKey });
+		const modelId = options?.model ?? this.imageModel;
 
 		const size = this.aspectRatioToSize(options?.aspectRatio);
 		const fullPrompt = style ? `${prompt}, style: ${style}` : prompt;
 
 		const result = await generateImage({
-			model: openai.image(this.imageModel),
+			model: openai.image(modelId),
 			prompt: fullPrompt,
 			size,
 			n: 1,

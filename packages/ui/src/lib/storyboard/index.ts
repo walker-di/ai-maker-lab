@@ -16,3 +16,14 @@ export { default as PromptRegenerationDialog } from './PromptRegenerationDialog.
 export { default as TransitionDialog } from './TransitionDialog.svelte';
 export { default as ExportProgressPanel } from './ExportProgressPanel.svelte';
 export { default as StoryboardErrorState } from './StoryboardErrorState.svelte';
+export { default as StoryboardModelConfig } from './StoryboardModelConfig.svelte';
+export { default as ViewModeToggle } from './ViewModeToggle.svelte';
+export { default as TransitionSelector } from './TransitionSelector.svelte';
+export { default as DurationSlider } from './DurationSlider.svelte';
+export { default as AssetStatusDots } from './AssetStatusDots.svelte';
+export { default as BatchActionsBar } from './BatchActionsBar.svelte';
+export { default as Filmstrip } from './Filmstrip.svelte';
+export { default as FrameDetailPanel } from './FrameDetailPanel.svelte';
+export { default as TimelineView } from './TimelineView.svelte';
+export { default as GridView } from './GridView.svelte';
+export { default as PreviewMode } from './PreviewMode.svelte';

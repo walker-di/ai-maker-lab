@@ -1,6 +1,7 @@
 export type StoryboardPromptType = 'narration' | 'mainImage' | 'backgroundImage' | 'bgm';
 export type StoryboardAssetType = 'mainImage' | 'backgroundImage' | 'narrationAudio' | 'bgm';
 export type StoryboardTransitionType = 'none' | 'fade' | 'slide' | 'wipe' | 'zoom';
+export type StoryboardViewMode = 'timeline' | 'grid' | 'preview';
 
 export interface StoryboardSummary {
 	id: string;

@@ -43,6 +43,25 @@ function buildLanguageModel(config: AiSdkMarketingTextGatewayConfig) {
   }
 }
 
+function buildOverrideModel(override: { provider: string; model: string }) {
+  switch (override.provider) {
+    case 'anthropic': {
+      const client = createAnthropic();
+      return client(override.model);
+    }
+    case 'openai': {
+      const client = createOpenAI();
+      return client(override.model);
+    }
+    case 'google': {
+      const client = createGoogleGenerativeAI();
+      return client(override.model);
+    }
+    default:
+      return null;
+  }
+}
+
 export class AiSdkMarketingTextGateway implements IMarketingTextGenerationGateway {
   private readonly model: ReturnType<typeof buildLanguageModel>;
 
@@ -170,9 +189,10 @@ Include narration text for each clip and estimated durations in milliseconds.`,
     return object;
   }
 
-  async generateStoryboardFrames(prompt: string, count: number): Promise<GeneratedStoryboardFrameDraft[]> {
+  async generateStoryboardFrames(prompt: string, count: number, modelOverride?: { provider: string; model: string }): Promise<GeneratedStoryboardFrameDraft[]> {
+    const activeModel = (modelOverride && buildOverrideModel(modelOverride)) ?? this.model;
     const { object } = await generateObject({
-      model: this.model,
+      model: activeModel,
       schema: z.object({
         frames: z.array(z.object({
           title: z.string(),
@@ -196,7 +216,9 @@ Return concise but vivid frame data. Every frame must include title, narration, 
     promptType: StoryboardPromptType;
     frame: StoryboardFrame;
     storyboard: StoryboardDetail;
+    modelOverride?: { provider: string; model: string };
   }): Promise<string> {
+    const activeModel = (params.modelOverride && buildOverrideModel(params.modelOverride)) ?? this.model;
     const frameContext = params.storyboard.frames
       .map((frame) => `${frame.orderIndex + 1}. ${frame.title ?? 'Untitled'} — ${frame.narration}`)
       .join('\n');
@@ -207,7 +229,7 @@ Return concise but vivid frame data. Every frame must include title, narration, 
       bgm: 'background music prompt',
     };
     const { text } = await generateText({
-      model: this.model,
+      model: activeModel,
       prompt: `Regenerate the ${promptKind[params.promptType]} for one storyboard frame.
 
 Storyboard: ${params.storyboard.name}

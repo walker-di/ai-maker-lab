@@ -5,6 +5,27 @@ const StoryboardTransitionTypeSchema = z.enum(['none', 'fade', 'slide', 'wipe', 
 const StoryboardPromptTypeSchema = z.enum(['narration', 'mainImage', 'backgroundImage', 'bgm']);
 const StoryboardAssetTypeSchema = z.enum(['mainImage', 'backgroundImage', 'narrationAudio', 'bgm']);
 
+const StoryboardTextModelProviderSchema = z.enum(['openai', 'anthropic', 'google']);
+const StoryboardTextModelSchema = z.enum([
+  'gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-4.1-mini',
+  'claude-sonnet-4-20250514', 'claude-3-5-haiku-20241022',
+  'gemini-2.5-pro', 'gemini-2.5-flash',
+]);
+const StoryboardImageModelProviderSchema = z.enum(['openai', 'replicate']);
+const StoryboardImageModelSchema = z.enum([
+  'gpt-image-1', 'dall-e-3',
+  'black-forest-labs/flux-1.1-pro', 'black-forest-labs/flux-schnell', 'black-forest-labs/flux-dev',
+  'stability-ai/sdxl', 'recraft-ai/recraft-v3',
+]);
+
+export const StoryboardModelConfigSchema = z.object({
+  textProvider: StoryboardTextModelProviderSchema.optional(),
+  textModel: StoryboardTextModelSchema.optional(),
+  imageProvider: StoryboardImageModelProviderSchema.optional(),
+  imageModel: StoryboardImageModelSchema.optional(),
+});
+export type StoryboardModelConfigDto = z.infer<typeof StoryboardModelConfigSchema>;
+
 // Product DTOs
 export const CreateProductDtoSchema = z.object({
   name: z.string().trim().min(1),
@@ -114,6 +135,7 @@ export type CreateStoryboardDto = z.infer<typeof CreateStoryboardDtoSchema>;
 export const GenerateStoryboardFramesDtoSchema = z.object({
   prompt: z.string().trim().min(1),
   count: z.coerce.number().int().min(1).max(20).default(3),
+  modelConfig: StoryboardModelConfigSchema.optional(),
 });
 export type GenerateStoryboardFramesDto = z.infer<typeof GenerateStoryboardFramesDtoSchema>;
 
@@ -140,6 +162,7 @@ export type RegenerateStoryboardPromptDto = z.infer<typeof RegenerateStoryboardP
 
 export const GenerateStoryboardFrameAssetDtoSchema = z.object({
   assetType: StoryboardAssetTypeSchema,
+  modelConfig: StoryboardModelConfigSchema.optional(),
 });
 export type GenerateStoryboardFrameAssetDto = z.infer<typeof GenerateStoryboardFrameAssetDtoSchema>;
 
@@ -164,6 +187,33 @@ export const ExportStoryboardDtoSchema = z.object({
   mode: z.enum(['unified']).default('unified'),
 });
 export type ExportStoryboardDto = z.infer<typeof ExportStoryboardDtoSchema>;
+
+export const BatchGenerateAssetsDtoSchema = z.object({
+  frameIds: z.array(z.string().trim().min(1)).optional(),
+  force: z.boolean().default(false),
+  modelConfig: StoryboardModelConfigSchema.optional(),
+});
+export type BatchGenerateAssetsDto = z.infer<typeof BatchGenerateAssetsDtoSchema>;
+
+export const BatchRegeneratePromptsDtoSchema = z.object({
+  frameIds: z.array(z.string().trim().min(1)).optional(),
+  promptTypes: z.array(StoryboardPromptTypeSchema).optional(),
+});
+export type BatchRegeneratePromptsDto = z.infer<typeof BatchRegeneratePromptsDtoSchema>;
+
+export const DuplicateFrameDtoSchema = z.object({
+  insertAfter: z.boolean().default(true),
+  includeAssets: z.boolean().default(false),
+});
+export type DuplicateFrameDto = z.infer<typeof DuplicateFrameDtoSchema>;
+
+export const AutoAssignTransitionsDtoSchema = z.object({
+  strategy: z.enum(['uniform', 'alternating']),
+  transitionType: StoryboardTransitionTypeSchema.optional(),
+  transitionTypes: z.array(StoryboardTransitionTypeSchema).optional(),
+  durationMs: z.number().int().min(100).max(3000).default(500),
+});
+export type AutoAssignTransitionsDto = z.infer<typeof AutoAssignTransitionsDtoSchema>;
 
 // Scene DTOs
 export const CreateSceneDtoSchema = z.object({

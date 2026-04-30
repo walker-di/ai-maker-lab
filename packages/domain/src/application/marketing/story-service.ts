@@ -26,6 +26,12 @@ import type {
   StoryboardAssetType,
   StoryboardPromptType,
   StoryboardExportResult,
+  StoryboardModelConfig,
+  StoryboardTransitionType,
+  BatchGenerateAssetsDto,
+  BatchRegeneratePromptsDto,
+  DuplicateFrameDto,
+  AutoAssignTransitionsDto,
 } from '../../shared/marketing/index.js';
 import { STORYBOARD_MAKER_CREATIVE_ID } from '../../shared/marketing/index.js';
 
@@ -233,8 +239,11 @@ export class StoryboardService {
 
   async generateFrames(storyboardId: string, dto: GenerateStoryboardFramesDto): Promise<StoryboardDetail> {
     const story = await this.requireStoryboard(storyboardId);
+    const textOverride = dto.modelConfig?.textProvider && dto.modelConfig?.textModel
+      ? { provider: dto.modelConfig.textProvider, model: dto.modelConfig.textModel }
+      : undefined;
     const drafts = this.ai.generateStoryboardFrames
-      ? await this.ai.generateStoryboardFrames(dto.prompt, dto.count)
+      ? await this.ai.generateStoryboardFrames(dto.prompt, dto.count, textOverride)
       : this.createFallbackDrafts(dto.prompt, dto.count);
 
     if (drafts.length === 0) throw new StoryboardGenerationError('Storyboard generation returned no frames.');
@@ -311,7 +320,7 @@ export class StoryboardService {
 
   async generateFrameAsset(storyboardId: string, frameId: string, dto: GenerateStoryboardFrameAssetDto): Promise<StoryboardFrame> {
     const frame = await this.requireFrame(storyboardId, frameId);
-    const url = await this.generateAssetUrl(frame, dto.assetType);
+    const url = await this.generateAssetUrl(frame, dto.assetType, dto.modelConfig);
     return this.attachFrameAsset(storyboardId, frameId, { assetType: dto.assetType, url });
   }
 
@@ -387,6 +396,102 @@ export class StoryboardService {
       outputPath,
     });
     return exported;
+  }
+
+  async batchGenerateAssets(storyboardId: string, dto: BatchGenerateAssetsDto): Promise<StoryboardDetail> {
+    const story = await this.requireStoryboard(storyboardId);
+    const detail = await this.getDetailForStory(story);
+    const targetFrames = dto.frameIds?.length
+      ? detail.frames.filter((f) => dto.frameIds!.includes(f.id))
+      : detail.frames;
+
+    const assetTypes: StoryboardAssetType[] = ['mainImage', 'backgroundImage', 'narrationAudio', 'bgm'];
+    for (const frame of targetFrames) {
+      for (const assetType of assetTypes) {
+        const hasAsset =
+          (assetType === 'mainImage' && frame.mainImageUrl) ||
+          (assetType === 'backgroundImage' && frame.backgroundImageUrl) ||
+          (assetType === 'narrationAudio' && frame.narrationAudioUrl) ||
+          (assetType === 'bgm' && frame.bgmUrl);
+        if (!hasAsset || dto.force) {
+          try {
+            await this.generateFrameAsset(storyboardId, frame.id, { assetType, modelConfig: dto.modelConfig });
+          } catch (error) {
+            console.error(`Batch asset generation failed for frame ${frame.id}, type ${assetType}`, error);
+          }
+        }
+      }
+    }
+    return this.getDetailForStory(story);
+  }
+
+  async batchRegeneratePrompts(storyboardId: string, dto: BatchRegeneratePromptsDto): Promise<StoryboardDetail> {
+    const story = await this.requireStoryboard(storyboardId);
+    const detail = await this.getDetailForStory(story);
+    const targetFrames = dto.frameIds?.length
+      ? detail.frames.filter((f) => dto.frameIds!.includes(f.id))
+      : detail.frames;
+    const promptTypes: StoryboardPromptType[] = dto.promptTypes ?? ['narration', 'mainImage', 'backgroundImage', 'bgm'];
+
+    for (const frame of targetFrames) {
+      for (const promptType of promptTypes) {
+        try {
+          await this.regeneratePrompt(storyboardId, frame.id, promptType);
+        } catch (error) {
+          console.error(`Batch prompt regeneration failed for frame ${frame.id}, type ${promptType}`, error);
+        }
+      }
+    }
+    return this.getDetailForStory(story);
+  }
+
+  async duplicateFrame(storyboardId: string, frameId: string, dto: DuplicateFrameDto): Promise<StoryboardDetail> {
+    const story = await this.requireStoryboard(storyboardId);
+    const frame = await this.requireFrame(storyboardId, frameId);
+    const frames = await this.listFrames(story.id);
+    const insertIndex = dto.insertAfter ? frame.orderIndex + 1 : frame.orderIndex;
+
+    for (const f of frames.filter((f) => f.orderIndex >= insertIndex).sort((a, b) => b.orderIndex - a.orderIndex)) {
+      await this.scenes.update(f.sceneId, { orderIndex: f.orderIndex + 1 });
+    }
+
+    const draft: GeneratedStoryboardFrameDraft = {
+      title: frame.title ? `${frame.title} (copy)` : 'Untitled (copy)',
+      narration: frame.narration,
+      mainImagePrompt: frame.mainImagePrompt,
+      backgroundImagePrompt: frame.backgroundImagePrompt,
+      bgmPrompt: frame.bgmPrompt,
+      durationMs: frame.durationMs ?? 5000,
+    };
+    const newFrame = await this.createFrameFromDraft(story.id, insertIndex, draft);
+
+    if (dto.includeAssets) {
+      if (frame.mainImageUrl) await this.attachFrameAsset(storyboardId, newFrame.id, { assetType: 'mainImage', url: frame.mainImageUrl });
+      if (frame.backgroundImageUrl) await this.attachFrameAsset(storyboardId, newFrame.id, { assetType: 'backgroundImage', url: frame.backgroundImageUrl });
+      if (frame.narrationAudioUrl) await this.attachFrameAsset(storyboardId, newFrame.id, { assetType: 'narrationAudio', url: frame.narrationAudioUrl });
+      if (frame.bgmUrl) await this.attachFrameAsset(storyboardId, newFrame.id, { assetType: 'bgm', url: frame.bgmUrl });
+    }
+    return this.getDetailForStory(story);
+  }
+
+  async autoAssignTransitions(storyboardId: string, dto: AutoAssignTransitionsDto): Promise<StoryboardDetail> {
+    const story = await this.requireStoryboard(storyboardId);
+    const frames = await this.listFrames(story.id);
+
+    for (let i = 0; i < frames.length; i++) {
+      let transitionType: StoryboardTransitionType;
+      if (dto.strategy === 'uniform') {
+        transitionType = dto.transitionType ?? 'fade';
+      } else {
+        const types = dto.transitionTypes ?? ['fade', 'slide'];
+        transitionType = types[i % types.length];
+      }
+      await this.scenes.update(frames[i].sceneId, {
+        transitionTypeAfter: transitionType,
+        transitionDurationMs: dto.durationMs,
+      });
+    }
+    return this.getDetailForStory(story);
   }
 
   private toSummary(story: Story, frameCount: number): StoryboardSummary {
@@ -504,14 +609,16 @@ export class StoryboardService {
     }
   }
 
-  private async generateAssetUrl(frame: StoryboardFrame, assetType: StoryboardAssetType): Promise<string> {
+  private async generateAssetUrl(frame: StoryboardFrame, assetType: StoryboardAssetType, modelConfig?: StoryboardModelConfig): Promise<string> {
     if (assetType === 'mainImage') {
       if (!this.imageGen) throw new Error('Image generation is not configured.');
-      return (await this.imageGen.generateImage(frame.mainImagePrompt, undefined, { aspectRatio: '1:1' })).url;
+      const imageModelId = modelConfig?.imageModel;
+      return (await this.imageGen.generateImage(frame.mainImagePrompt, undefined, { aspectRatio: '1:1', model: imageModelId })).url;
     }
     if (assetType === 'backgroundImage') {
       if (!this.imageGen) throw new Error('Image generation is not configured.');
-      return (await this.imageGen.generateImage(frame.backgroundImagePrompt, undefined, { aspectRatio: '16:9' })).url;
+      const imageModelId = modelConfig?.imageModel;
+      return (await this.imageGen.generateImage(frame.backgroundImagePrompt, undefined, { aspectRatio: '16:9', model: imageModelId })).url;
     }
     if (assetType === 'narrationAudio') {
       if (!this.narration) throw new Error('Narration generation is not configured.');

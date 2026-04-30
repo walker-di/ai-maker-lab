@@ -26,12 +26,13 @@ function makeTransport(overrides: Partial<SettingsTransport> = {}): SettingsTran
 				makeStatus({ provider: 'openai' }),
 				makeStatus({ provider: 'anthropic' }),
 				makeStatus({ provider: 'gemini' }),
+				makeStatus({ provider: 'replicate' }),
 			]),
 		setProviderKeys: vi
 			.fn<(params: SetProviderKeysParams) => Promise<SetProviderKeysResponse>>()
 			.mockResolvedValue({
 				statuses: [],
-				validations: { openai: { status: 'ok' }, anthropic: { status: 'skipped' }, gemini: { status: 'skipped' } },
+				validations: { openai: { status: 'ok' }, anthropic: { status: 'skipped' }, gemini: { status: 'skipped' }, replicate: { status: 'skipped' } },
 			}),
 		...overrides,
 	};
@@ -47,7 +48,7 @@ describe('createSettingsPageModel', () => {
 
 		expect(ok).toBe(true);
 		expect(model.hasLoaded).toBe(true);
-		expect(model.statuses.map((s) => s.provider)).toEqual(['openai', 'anthropic', 'gemini']);
+		expect(model.statuses.map((s) => s.provider)).toEqual(['openai', 'anthropic', 'gemini', 'replicate']);
 		expect(transport.getProviderKeyStatus).toHaveBeenCalledTimes(1);
 	});
 
@@ -69,11 +70,13 @@ describe('createSettingsPageModel', () => {
 						makeStatus({ provider: 'openai', isSet: true, source: 'file', preview: 'sk-...abcd' }),
 						makeStatus({ provider: 'anthropic' }),
 						makeStatus({ provider: 'gemini' }),
+						makeStatus({ provider: 'replicate' }),
 					],
 					validations: {
 						openai: { status: 'ok' },
 						anthropic: { status: 'skipped' },
 						gemini: { status: 'skipped' },
+						replicate: { status: 'skipped' },
 					},
 				}),
 		});
@@ -105,11 +108,13 @@ describe('createSettingsPageModel', () => {
 						makeStatus({ provider: 'openai', isSet: true, source: 'file', preview: 'sk-...badd' }),
 						makeStatus({ provider: 'anthropic', isSet: true, source: 'file', preview: 'sk-...okok' }),
 						makeStatus({ provider: 'gemini' }),
+						makeStatus({ provider: 'replicate' }),
 					],
 					validations: {
 						openai: { status: 'invalid', message: '401' },
 						anthropic: { status: 'ok' },
 						gemini: { status: 'skipped' },
+						replicate: { status: 'skipped' },
 					},
 				}),
 		});
@@ -138,11 +143,13 @@ describe('createSettingsPageModel', () => {
 						makeStatus({ provider: 'openai', isSet: true, source: 'file', preview: 'sk-...abcd' }),
 						makeStatus({ provider: 'anthropic' }),
 						makeStatus({ provider: 'gemini' }),
+						makeStatus({ provider: 'replicate' }),
 					],
 					validations: {
 						openai: { status: 'network_error', message: 'offline' },
 						anthropic: { status: 'skipped' },
 						gemini: { status: 'skipped' },
+						replicate: { status: 'skipped' },
 					},
 				}),
 		});

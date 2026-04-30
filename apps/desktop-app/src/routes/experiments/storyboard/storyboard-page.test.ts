@@ -26,6 +26,10 @@ function createTransport(): StoryboardTransport {
 		async attachFrameAsset() { return detail.frames[0]; },
 		async updateTransition() { return detail.frames[0]; },
 		async exportUnifiedVideo() { return { videoPath: '/x.mp4', durationMs: 1000 }; },
+		async batchGenerateAssets() { return detail; },
+		async batchRegeneratePrompts() { return detail; },
+		async duplicateFrame() { detail = { ...detail, frameCount: detail.frameCount + 1, frames: [...detail.frames, { ...detail.frames[0], id: 'frame-dup', orderIndex: detail.frames.length }] }; return detail; },
+		async autoAssignTransitions() { detail = { ...detail, frames: detail.frames.map((f) => ({ ...f, transitionTypeAfter: 'fade' as const, transitionDurationMs: 500 })) }; return detail; },
 	};
 }
 
@@ -116,5 +120,36 @@ describe('storyboard page model', () => {
 		};
 		await model.generateFrames({ prompt: 'Test', count: 3 });
 		expect(model.operationError).toBe('An unexpected server error occurred.');
+	});
+
+	test('viewMode defaults to timeline', async () => {
+		const model = createStoryboardPageModel(createTransport());
+		expect(model.viewMode).toBe('timeline');
+	});
+
+	test('selectFrame and navigateFrame update selectedFrameIndex', async () => {
+		const model = createStoryboardPageModel(createTransport());
+		await model.open('story-1');
+		await model.generateFrames({ prompt: 'Rocket', count: 1 });
+		expect(model.selectedFrameIndex).toBe(0);
+		model.selectFrame(0);
+		expect(model.selectedFrameIndex).toBe(0);
+	});
+
+	test('duplicateFrame calls transport and updates detail', async () => {
+		const model = createStoryboardPageModel(createTransport());
+		await model.open('story-1');
+		await model.generateFrames({ prompt: 'Rocket', count: 1 });
+		await model.duplicateFrame('frame-1');
+		expect(model.selected?.frames.length).toBe(2);
+	});
+
+	test('autoAssignTransitions updates all frames', async () => {
+		const model = createStoryboardPageModel(createTransport());
+		await model.open('story-1');
+		await model.generateFrames({ prompt: 'Rocket', count: 1 });
+		await model.autoAssignTransitions('uniform', 'fade', 500);
+		expect(model.selected?.frames[0].transitionTypeAfter).toBe('fade');
+		expect(model.selected?.frames[0].transitionDurationMs).toBe(500);
 	});
 });

@@ -25,10 +25,11 @@ export class ReplicateMarketingMediaGateway
     this.musicGenVersion = config.musicGenVersion ?? DEFAULT_MUSICGEN_VERSION;
   }
 
-  async generateImage(prompt: string, style?: string, options?: { aspectRatio?: string }): Promise<{ url: string }> {
+  async generateImage(prompt: string, style?: string, options?: { aspectRatio?: string; model?: string }): Promise<{ url: string }> {
     const fullPrompt = style ? `${prompt}, style: ${style}` : prompt;
+    const modelId = options?.model ?? this.imageModel;
 
-    const output = await this.replicate.run(this.imageModel as `${string}/${string}`, {
+    const output = await this.replicate.run(modelId as `${string}/${string}`, {
       input: {
         prompt: fullPrompt,
         output_format: 'jpg',
@@ -80,10 +81,20 @@ Return ONLY the raw SVG markup starting with <svg and ending with </svg>. No exp
 
   private extractUrl(output: unknown): string | null {
     if (typeof output === 'string') return output;
-    if (Array.isArray(output) && typeof output[0] === 'string') return output[0];
-    if (output && typeof output === 'object' && typeof (output as Record<string, unknown>).url === 'function') {
-      const urlObj = (output as { url: () => { href?: string } }).url();
-      if (urlObj?.href) return urlObj.href;
+    if (output && typeof output === 'object') {
+      // FileOutput has .url() returning a URL object and .toString() returning the URL string
+      if (typeof (output as Record<string, unknown>).url === 'function') {
+        const urlResult = (output as { url: () => unknown }).url();
+        if (urlResult && typeof urlResult === 'object' && 'href' in urlResult) return (urlResult as URL).href;
+        if (typeof urlResult === 'string') return urlResult;
+      }
+      if (typeof (output as Record<string, unknown>).toString === 'function') {
+        const str = String(output);
+        if (str.startsWith('http')) return str;
+      }
+    }
+    if (Array.isArray(output) && output.length > 0) {
+      return this.extractUrl(output[0]);
     }
     return null;
   }

@@ -1,6 +1,6 @@
-export type SettingsProviderId = 'openai' | 'anthropic' | 'gemini';
+export type SettingsProviderId = 'openai' | 'anthropic' | 'gemini' | 'replicate';
 
-export const SETTINGS_PROVIDER_IDS: readonly SettingsProviderId[] = ['openai', 'anthropic', 'gemini'];
+export const SETTINGS_PROVIDER_IDS: readonly SettingsProviderId[] = ['openai', 'anthropic', 'gemini', 'replicate'];
 
 export type SettingsKeySource = 'shell' | 'file' | 'unset';
 
