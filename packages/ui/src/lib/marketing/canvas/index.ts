@@ -1,0 +1,14 @@
+export { default as CanvasEditor } from './CanvasEditor.svelte';
+export { default as CanvasToolbar } from './CanvasToolbar.svelte';
+export { default as CanvasPreview } from './CanvasPreview.svelte';
+export { createCanvasService } from './canvas-service.svelte.js';
+export { createCanvasHistory } from './canvas-history.svelte.js';
+export { createCanvasZoomPan } from './canvas-zoom-pan.svelte.js';
+export { addRectangle } from './tools/add-rectangle.js';
+export { addCircle } from './tools/add-circle.js';
+export { addText } from './tools/add-text.js';
+export { addImage } from './tools/add-image.js';
+export { addLine } from './tools/add-line.js';
+export type { CanvasService } from './canvas-service.svelte.js';
+export type { CanvasHistory } from './canvas-history.svelte.js';
+export type { CanvasZoomPan } from './canvas-zoom-pan.svelte.js';

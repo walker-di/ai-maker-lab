@@ -7,3 +7,4 @@ export * from './creatives/index.js';
 export * from './stories/index.js';
 export * from './dialogs/index.js';
 export * from './media/index.js';
+export * from './canvas/index.js';

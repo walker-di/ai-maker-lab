@@ -5,6 +5,10 @@ import { getAdapterForModel } from './adapters/index.js';
 const DEFAULT_IMAGE_MODEL = 'black-forest-labs/flux-1.1-pro';
 const DEFAULT_MUSICGEN_VERSION = '671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedcfb';
 
+const MODEL_VERSIONS: Record<string, string> = {
+  'stability-ai/sdxl': '7762fd07cf82c948538e41f63f77d685e02b063e37e496e96eefd46c929f9bdc',
+};
+
 interface ReplicateMarketingMediaGatewayConfig {
   imageModel?: string;
   musicGenVersion?: string;
@@ -32,13 +36,19 @@ export class ReplicateMarketingMediaGateway
     const adapter = getAdapterForModel(modelId);
     const input = adapter.buildInput({ prompt: fullPrompt, aspectRatio: options?.aspectRatio ?? '1:1' });
 
-    const output = await this.replicate.run(modelId as `${string}/${string}`, {
+    const version = MODEL_VERSIONS[modelId];
+    const identifier = version ? `${modelId}:${version}` : modelId;
+
+    const output = await this.replicate.run(identifier as `${string}/${string}` | `${string}/${string}:${string}`, {
       input,
       wait: { mode: 'block' },
     });
 
     const url = this.extractUrl(output);
-    if (!url) throw new Error('Replicate image generation returned no URL.');
+    if (!url) {
+      console.error('Replicate image generation returned no URL.', { modelId, identifier, outputType: typeof output, output: JSON.stringify(output)?.slice(0, 200) });
+      throw new Error('Replicate image generation returned no URL.');
+    }
     return { url };
   }
 
