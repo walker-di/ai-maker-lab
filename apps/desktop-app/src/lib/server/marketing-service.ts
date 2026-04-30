@@ -90,7 +90,33 @@ class CompositeMarketingMediaGateway
 	}
 }
 
-type NarrationProvider = 'azure' | 'huggingface-local' | 'vibevoice-local';
+export type NarrationProvider = 'azure' | 'huggingface-local' | 'vibevoice-local';
+
+export interface NarrationOption {
+	value: string;
+	label: string;
+}
+
+export interface NarrationOptionsResponse {
+	provider: NarrationProvider;
+	supportsLocalModelDownload: boolean;
+	models: NarrationOption[];
+	voices: NarrationOption[];
+	languages: NarrationOption[];
+	downloadSupportMessage?: string;
+	recommendedProviderForDownloads?: NarrationProvider;
+}
+
+const AZURE_MODEL_OPTIONS: NarrationOption[] = [{ value: 'azure-neural', label: 'Azure Neural Voices (managed)' }];
+const VIBEVOICE_MODEL_OPTIONS: NarrationOption[] = [{ value: 'vibevoice-local', label: 'VibeVoice local (unconfigured)' }];
+
+type LocalNarrationModelGateway = {
+	listModels: () => NarrationOption[];
+	listVoicesForModel: (model?: string) => NarrationOption[];
+	listLanguagesForModel: (model?: string) => NarrationOption[];
+	isModelLocal: (model: string) => Promise<boolean>;
+	ensureModelReady: (model: string) => Promise<void>;
+};
 
 export class CompositeNarrationAudioGateway implements Marketing.INarrationAudioGateway {
 	constructor(
@@ -113,6 +139,94 @@ export class CompositeNarrationAudioGateway implements Marketing.INarrationAudio
 	async listVoices(): Promise<{ id: string; name: string; lang: string; gender: string }[]> {
 		return this.gateways[this.defaultProvider].listVoices();
 	}
+
+	async listVoicesForProvider(provider: NarrationProvider): Promise<{ id: string; name: string; lang: string; gender: string }[]> {
+		return this.gateways[provider].listVoices();
+	}
+
+	async getOptions(provider: NarrationProvider, model?: string): Promise<NarrationOptionsResponse> {
+		if (provider === 'huggingface-local') {
+			const gateway = this.gateways['huggingface-local'];
+			if (isLocalNarrationModelGateway(gateway)) {
+				return {
+					provider,
+					supportsLocalModelDownload: true,
+					models: gateway.listModels(),
+					voices: gateway.listVoicesForModel(model),
+					languages: gateway.listLanguagesForModel(model),
+				};
+			}
+		}
+
+		const voices = await this.listVoicesForProvider(provider);
+
+		if (provider === 'azure') {
+			const languages = uniqueByValue(voices.map((voice) => ({ value: voice.lang, label: voice.lang })));
+			return {
+				provider,
+				supportsLocalModelDownload: false,
+				models: AZURE_MODEL_OPTIONS,
+				voices: voices.map((voice) => ({ value: voice.id, label: `${voice.name} (${voice.lang})` })),
+				languages,
+			};
+		}
+
+		return {
+			provider,
+			supportsLocalModelDownload: false,
+			models: VIBEVOICE_MODEL_OPTIONS,
+			voices: voices.map((voice) => ({ value: voice.id, label: `${voice.name} (${voice.lang})` })),
+			languages: [],
+			downloadSupportMessage: 'VibeVoice local narration is not configured in this app yet. Switch to Hugging Face local to download a local narration model.',
+			recommendedProviderForDownloads: 'huggingface-local',
+		};
+	}
+
+	async getModelStatus(provider: NarrationProvider, model: string): Promise<{ local: boolean; supportsLocalModelDownload: boolean }> {
+		if (provider !== 'huggingface-local') {
+			return { local: true, supportsLocalModelDownload: false };
+		}
+		const gateway = this.gateways[provider];
+		if (!isLocalNarrationModelGateway(gateway)) {
+			return { local: false, supportsLocalModelDownload: false };
+		}
+		return {
+			local: await gateway.isModelLocal(model),
+			supportsLocalModelDownload: true,
+		};
+	}
+
+	async downloadModel(provider: NarrationProvider, model: string): Promise<void> {
+		if (provider !== 'huggingface-local') {
+			throw new MarketingProviderConfigurationError(`Provider "${provider}" does not support local model downloads.`);
+		}
+		const gateway = this.gateways[provider];
+		if (!isLocalNarrationModelGateway(gateway)) {
+			throw new MarketingProviderConfigurationError(`Provider "${provider}" does not support local model downloads.`);
+		}
+		await gateway.ensureModelReady(model);
+	}
+}
+
+function isLocalNarrationModelGateway(gateway: Marketing.INarrationAudioGateway): gateway is Marketing.INarrationAudioGateway & LocalNarrationModelGateway {
+	return (
+		typeof (gateway as { listModels?: unknown }).listModels === 'function'
+		&& typeof (gateway as { listVoicesForModel?: unknown }).listVoicesForModel === 'function'
+		&& typeof (gateway as { listLanguagesForModel?: unknown }).listLanguagesForModel === 'function'
+		&& typeof (gateway as { isModelLocal?: unknown }).isModelLocal === 'function'
+		&& typeof (gateway as { ensureModelReady?: unknown }).ensureModelReady === 'function'
+	);
+}
+
+function uniqueByValue(options: NarrationOption[]): NarrationOption[] {
+	const seen = new Set<string>();
+	const deduped: NarrationOption[] = [];
+	for (const option of options) {
+		if (seen.has(option.value)) continue;
+		seen.add(option.value);
+		deduped.push(option);
+	}
+	return deduped;
 }
 
 export interface MarketingServices {
@@ -128,6 +242,7 @@ export interface MarketingServices {
 	strategyService: Marketing.StrategyService;
 	videoExportService: Marketing.VideoExportService;
 	storyboardService: Marketing.StoryboardService;
+	narrationGateway: Marketing.INarrationAudioGateway;
 	assetStorage: Marketing.IMarketingAssetStorage;
 	// Repos exposed for list-all queries not covered by service methods
 	personaRepo: Marketing.IPersonaRepository;
@@ -196,10 +311,60 @@ export function createNarrationAudioGateway(config: {
 
 function normalizeNarrationProvider(provider?: string, source = 'MARKETING_NARRATION_PROVIDER'): NarrationProvider {
 	if (!provider || provider === 'azure') return 'azure';
-	if (provider === 'huggingface-local' || provider === 'vibevoice-local') return provider;
+	if (provider === 'huggingface-local') return provider;
+	// Backward-compat: route legacy vibevoice-local provider through Hugging Face local models.
+	if (provider === 'vibevoice-local') return 'huggingface-local';
 	throw new MarketingProviderConfigurationError(
-		`Unsupported ${source} "${provider}". Use azure, huggingface-local, or vibevoice-local.`,
+		`Unsupported ${source} "${provider}". Use azure or huggingface-local.`,
 	);
+}
+
+export async function getNarrationOptions(params?: {
+	provider?: string;
+	model?: string;
+}): Promise<NarrationOptionsResponse> {
+	const normalizedProvider = normalizeNarrationProvider(params?.provider, 'narration provider');
+	const selectedModel = params?.model?.trim();
+	const { narrationGateway } = await getMarketingServices();
+	if (!(narrationGateway instanceof CompositeNarrationAudioGateway)) {
+		throw new MarketingProviderConfigurationError('Narration gateway does not support options lookup.');
+	}
+	return narrationGateway.getOptions(normalizedProvider, selectedModel);
+}
+
+export async function getNarrationModelStatus(params: {
+	provider?: string;
+	model: string;
+}): Promise<{ provider: NarrationProvider; model: string; local: boolean; supportsLocalModelDownload: boolean }> {
+	const normalizedProvider = normalizeNarrationProvider(params.provider, 'narration provider');
+	const { narrationGateway } = await getMarketingServices();
+	if (!(narrationGateway instanceof CompositeNarrationAudioGateway)) {
+		throw new MarketingProviderConfigurationError('Narration gateway does not support model status lookup.');
+	}
+	const status = await narrationGateway.getModelStatus(normalizedProvider, params.model);
+	return {
+		provider: normalizedProvider,
+		model: params.model,
+		local: status.local,
+		supportsLocalModelDownload: status.supportsLocalModelDownload,
+	};
+}
+
+export async function downloadNarrationModel(params: {
+	provider?: string;
+	model: string;
+}): Promise<{ provider: NarrationProvider; model: string; local: boolean }> {
+	const normalizedProvider = normalizeNarrationProvider(params.provider, 'narration provider');
+	const { narrationGateway } = await getMarketingServices();
+	if (!(narrationGateway instanceof CompositeNarrationAudioGateway)) {
+		throw new MarketingProviderConfigurationError('Narration gateway does not support model downloads.');
+	}
+	await narrationGateway.downloadModel(normalizedProvider, params.model);
+	return {
+		provider: normalizedProvider,
+		model: params.model,
+		local: true,
+	};
 }
 
 export function getMarketingServices(): Promise<MarketingServices> {
@@ -320,6 +485,7 @@ export function getMarketingServices(): Promise<MarketingServices> {
 					strategyService,
 					videoExportService,
 					storyboardService,
+					narrationGateway,
 					assetStorage,
 					personaRepo,
 					creativeRepo,

@@ -48,6 +48,34 @@ class RecordingNarrationGateway implements MarketingApplication.INarrationAudioG
 	}
 }
 
+class RecordingLocalModelNarrationGateway extends RecordingNarrationGateway {
+	listModels() {
+		return [{ value: 'Xenova/mms-tts-eng', label: 'MMS TTS English' }];
+	}
+
+	listVoicesForModel(model?: string) {
+		if (model === 'Xenova/mms-tts-eng') {
+			return [{ value: 'default', label: 'Default voice (model-managed)' }];
+		}
+		return [{ value: 'default', label: 'Default voice' }];
+	}
+
+	listLanguagesForModel(model?: string) {
+		if (model === 'Xenova/mms-tts-eng') {
+			return [{ value: 'en-US', label: 'English (US)' }];
+		}
+		return [{ value: 'en-US', label: 'English (US)' }];
+	}
+
+	async isModelLocal(): Promise<boolean> {
+		return true;
+	}
+
+	async ensureModelReady(): Promise<void> {
+		return;
+	}
+}
+
 describe('createNarrationAudioGateway', () => {
 	test('defaults to Azure narration voices', async () => {
 		const gateway = createNarrationAudioGateway({
@@ -63,7 +91,7 @@ describe('createNarrationAudioGateway', () => {
 		});
 	});
 
-	test('uses Hugging Face local voices when MARKETING_NARRATION_PROVIDER selects it as the default', async () => {
+	test('uses Hugging Face local provider with no fixed voice list by default', async () => {
 		process.env.MARKETING_HF_TTS_VOICE = 'mock-hf-voice';
 		process.env.MARKETING_HF_TTS_LANGUAGE = 'en-US';
 		const gateway = createNarrationAudioGateway({
@@ -72,9 +100,26 @@ describe('createNarrationAudioGateway', () => {
 			azure: { apiKey: 'key', region: 'eastus', voice: 'en-US-JennyNeural' },
 		});
 
-		await expect(gateway.listVoices()).resolves.toEqual([
-			{ id: 'mock-hf-voice', name: 'mock-hf-voice', lang: 'en-US', gender: 'unknown' },
-		]);
+		await expect(gateway.listVoices()).resolves.toEqual([]);
+	});
+
+	test('returns model-aware Hugging Face options with non-empty fallback voice', async () => {
+		const azure = new RecordingNarrationGateway('azure');
+		const huggingFace = new RecordingLocalModelNarrationGateway('huggingface-local');
+		const vibevoice = new RecordingNarrationGateway('vibevoice-local');
+		const gateway = new CompositeNarrationAudioGateway('azure', {
+			azure,
+			'huggingface-local': huggingFace,
+			'vibevoice-local': vibevoice,
+		});
+
+		await expect(gateway.getOptions('huggingface-local', 'Xenova/mms-tts-eng')).resolves.toMatchObject({
+			provider: 'huggingface-local',
+			supportsLocalModelDownload: true,
+			models: [{ value: 'Xenova/mms-tts-eng', label: 'MMS TTS English' }],
+			voices: [{ value: 'default', label: 'Default voice (model-managed)' }],
+			languages: [{ value: 'en-US', label: 'English (US)' }],
+		});
 	});
 
 	test('dispatches per-request provider while keeping Azure as fallback default', async () => {
@@ -107,19 +152,21 @@ describe('createNarrationAudioGateway', () => {
 		expect(vibevoice.calls).toEqual([]);
 	});
 
-	test('keeps vibevoice-local as a clear unsupported provider', async () => {
-		const defaultGateway = createNarrationAudioGateway({
-			provider: 'vibevoice-local',
-			assetStorage: testAssetStorage(),
-			azure: { apiKey: 'key', region: 'eastus', voice: 'en-US-JennyNeural' },
-		});
-		const perRequestGateway = createNarrationAudioGateway({
-			assetStorage: testAssetStorage(),
-			azure: { apiKey: 'key', region: 'eastus', voice: 'en-US-JennyNeural' },
+	test('maps legacy vibevoice-local provider requests to Hugging Face local', async () => {
+		const azure = new RecordingNarrationGateway('azure');
+		const huggingFace = new RecordingNarrationGateway('huggingface-local');
+		const vibevoice = new RecordingNarrationGateway('vibevoice-local');
+		const gateway = new CompositeNarrationAudioGateway('azure', {
+			azure,
+			'huggingface-local': huggingFace,
+			'vibevoice-local': vibevoice,
 		});
 
-		await expect(defaultGateway.synthesize('hello', 'voice')).rejects.toThrow('VibeVoice local narration is not configured');
-		await expect(perRequestGateway.synthesize('hello', 'voice', undefined, { provider: 'vibevoice-local' })).rejects.toThrow('VibeVoice local narration is not configured');
+		await gateway.synthesize('hello', 'voice', 'en-US', { provider: 'vibevoice-local', model: 'microsoft/VibeVoice-1.5B' });
+
+		expect(huggingFace.calls).toHaveLength(1);
+		expect(vibevoice.calls).toHaveLength(0);
+		expect(azure.calls).toHaveLength(0);
 	});
 });
 

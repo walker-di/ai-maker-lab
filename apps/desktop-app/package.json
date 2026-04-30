@@ -7,7 +7,7 @@
 		"build:web": "vite build",
 		"start": "bun run build:web && electrobun dev",
 		"dev": "bun run dev:web",
-		"dev:web": "SURREAL_HOST=mem:// SURREAL_NS=app SURREAL_DB=desktop_web_dev MARKETING_DEFAULT_TEXT_MODEL=anthropic:claude-sonnet-4-20250514 vite dev --port 5173",
+		"dev:web": "vite dev --port 5173",
 		"dev:browser": "bun run dev:web",
 		"dev:app": "bun run build:web && electrobun dev --watch",
 		"dev:desktop": "bun run dev:app",
@@ -25,7 +25,8 @@
 		"test:unit": "vitest run --project unit",
 		"test": "bun run test:unit && bun run test:e2e",
 		"storybook": "storybook dev -p 6006",
-		"build-storybook": "storybook build"
+		"build-storybook": "storybook build",
+		"vibevoice:onnx:check": "bun run scripts/vibevoice-onnx-feasibility.mjs"
 	},
 	"dependencies": {
 		"@ai-sdk/anthropic": "^3.0.71",
@@ -39,6 +40,7 @@
 		"domain": "workspace:*",
 		"electrobun": "^1.16.0",
 		"microsoft-cognitiveservices-speech-sdk": "^1.49.0",
+		"onnxruntime-node": "1.24.3",
 		"replicate": "^1.4.0",
 		"ui": "workspace:*"
 	},

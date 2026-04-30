@@ -9,6 +9,7 @@ const render: typeof import('vitest-browser-svelte').render =
 		: (await import('vitest-browser-svelte')).render;
 import StoryboardList from '../StoryboardList.svelte';
 import StoryboardFrameCard from '../StoryboardFrameCard.svelte';
+import FrameDetailPanel from '../FrameDetailPanel.svelte';
 
 const frame = {
 	id: 'frame-1',
@@ -23,6 +24,11 @@ const frame = {
 	transitionDurationMs: 1000,
 	createdAt: '2026-01-01T00:00:00.000Z',
 	updatedAt: '2026-01-01T00:00:00.000Z',
+};
+
+const frameWithNarrationAudio = {
+	...frame,
+	narrationAudioUrl: 'https://example.com/generated-narration.mp3',
 };
 
 describeBrowser('Storyboard UI', () => {
@@ -44,8 +50,26 @@ describeBrowser('Storyboard UI', () => {
 			onGenerateAsset: vi.fn(),
 			onUpdateTransition: vi.fn(),
 		});
-		await expect.element(screen.getByLabelText('Narration')).toBeVisible();
+		await expect.element(screen.getByRole('textbox', { name: 'Narration' })).toBeVisible();
 		await expect.element(screen.getByRole('button', { name: 'Generate main image' })).toBeVisible();
 		await expect.element(screen.getByRole('button', { name: 'Save transition' })).toBeVisible();
+	});
+
+	test('shows narration playback controls when narration audio exists', async () => {
+		const screen = render(FrameDetailPanel, {
+			frame: frameWithNarrationAudio,
+			frameIndex: 0,
+			frameCount: 1,
+			onNavigate: vi.fn(),
+			onSaveText: vi.fn(),
+			onDelete: vi.fn(),
+			onDuplicate: vi.fn(),
+			onRegeneratePrompt: vi.fn(),
+			onGenerateAsset: vi.fn(),
+			onUpdateTransition: vi.fn(),
+		});
+
+		await expect.element(screen.getByLabelText('Play generated narration audio')).toBeVisible();
+		await expect.element(screen.getByText('Narration audio')).toBeVisible();
 	});
 });

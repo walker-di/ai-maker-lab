@@ -1,5 +1,12 @@
 import type { Marketing } from 'domain/shared';
-import type { StoryboardAssetType, StoryboardPromptType, StoryboardTransport } from './StoryboardTransport';
+import type {
+	StoryboardAssetType,
+	StoryboardNarrationModelDownloadResult,
+	StoryboardNarrationModelStatus,
+	StoryboardNarrationOptions,
+	StoryboardPromptType,
+	StoryboardTransport,
+} from './StoryboardTransport';
 
 export type StoryboardTransportErrorKind =
 	| 'backend-unavailable'
@@ -188,6 +195,24 @@ export class WebStoryboardTransport implements StoryboardTransport {
 
 	async autoAssignTransitions(storyboardId: string, input: Marketing.AutoAssignTransitionsDto) {
 		return requestJson<Marketing.StoryboardDetail>(`${this.storyboardUrl(storyboardId)}/transitions/auto-assign`, {
+			method: 'POST',
+			body: JSON.stringify(input),
+		});
+	}
+
+	async getNarrationOptions(input: { provider: string; model?: string }) {
+		const params = new URLSearchParams({ provider: input.provider });
+		if (input.model) params.set('model', input.model);
+		return requestJson<StoryboardNarrationOptions>(`/api/marketing/narration/options?${params.toString()}`);
+	}
+
+	async getNarrationModelStatus(input: { provider: string; model: string }) {
+		const params = new URLSearchParams(input);
+		return requestJson<StoryboardNarrationModelStatus>(`/api/marketing/narration/models/status?${params.toString()}`);
+	}
+
+	async downloadNarrationModel(input: { provider: string; model: string }) {
+		return requestJson<StoryboardNarrationModelDownloadResult>('/api/marketing/narration/models/download', {
 			method: 'POST',
 			body: JSON.stringify(input),
 		});

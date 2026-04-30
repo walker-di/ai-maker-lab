@@ -121,4 +121,33 @@ describe('WebStoryboardTransport', () => {
 		expect(err).toBeInstanceOf(StoryboardTransportError);
 		expect((err as StoryboardTransportError).kind).toBe('validation');
 	});
+
+	test('calls narration model management endpoints with expected payloads', async () => {
+		const fetchMock = vi.fn(async () => jsonResponse({ ok: true }));
+		stubFetch(fetchMock as unknown as typeof fetch);
+		const transport = new WebStoryboardTransport();
+
+		await transport.getNarrationOptions({ provider: 'huggingface-local', model: 'Xenova/mms-tts-eng' });
+		await transport.getNarrationModelStatus({ provider: 'huggingface-local', model: 'onnx-community/Kokoro-82M-v1.0-ONNX' });
+		await transport.downloadNarrationModel({ provider: 'huggingface-local', model: 'onnx-community/Kokoro-82M-v1.0-ONNX' });
+
+		expect(fetchMock).toHaveBeenNthCalledWith(
+			1,
+			'/api/marketing/narration/options?provider=huggingface-local&model=Xenova%2Fmms-tts-eng',
+			expect.objectContaining({ headers: expect.objectContaining({ 'content-type': 'application/json' }) }),
+		);
+		expect(fetchMock).toHaveBeenNthCalledWith(
+			2,
+			'/api/marketing/narration/models/status?provider=huggingface-local&model=onnx-community%2FKokoro-82M-v1.0-ONNX',
+			expect.objectContaining({ headers: expect.objectContaining({ 'content-type': 'application/json' }) }),
+		);
+		expect(fetchMock).toHaveBeenNthCalledWith(
+			3,
+			'/api/marketing/narration/models/download',
+			expect.objectContaining({
+				method: 'POST',
+				body: JSON.stringify({ provider: 'huggingface-local', model: 'onnx-community/Kokoro-82M-v1.0-ONNX' }),
+			}),
+		);
+	});
 });

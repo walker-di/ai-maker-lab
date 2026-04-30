@@ -30,6 +30,33 @@ function createTransport(): StoryboardTransport {
 		async batchRegeneratePrompts() { return detail; },
 		async duplicateFrame() { detail = { ...detail, frameCount: detail.frameCount + 1, frames: [...detail.frames, { ...detail.frames[0], id: 'frame-dup', orderIndex: detail.frames.length }] }; return detail; },
 		async autoAssignTransitions() { detail = { ...detail, frames: detail.frames.map((f) => ({ ...f, transitionTypeAfter: 'fade' as const, transitionDurationMs: 500 })) }; return detail; },
+		async getNarrationOptions(input) {
+			const provider = input.provider;
+			const selectedModel = input.model;
+			const isHfMms = provider === 'huggingface-local' && selectedModel === 'Xenova/mms-tts-eng';
+			return {
+				provider,
+				supportsLocalModelDownload: provider === 'huggingface-local',
+				models: provider === 'huggingface-local'
+					? [{ value: 'Xenova/mms-tts-eng', label: 'MMS TTS English' }]
+					: [{ value: 'azure-neural', label: 'Azure Neural Voices (managed)' }],
+				voices: isHfMms ? [{ value: 'default', label: 'Default voice' }] : [],
+				languages: isHfMms
+					? [{ value: 'en', label: 'English' }]
+					: [{ value: 'en-US', label: 'English (US)' }],
+			};
+		},
+		async getNarrationModelStatus(input) {
+			return {
+				provider: input.provider,
+				model: input.model,
+				local: false,
+				supportsLocalModelDownload: input.provider === 'huggingface-local',
+			};
+		},
+		async downloadNarrationModel(input) {
+			return { provider: input.provider, model: input.model, local: true };
+		},
 	};
 }
 
@@ -81,7 +108,8 @@ describe('storyboard page model', () => {
 		// Force an operation error
 		const orig = transport.createStoryboard.bind(transport);
 		transport.createStoryboard = async () => { throw new Error('temporary write error'); };
-		await model.create({ name: 'fail' });
+		const created = await model.create({ name: 'fail' });
+		expect(created).toBe(false);
 		expect(model.initialLoadStatus).toBe('ready');
 		expect(model.operationError).toBe('temporary write error');
 		transport.createStoryboard = orig;
@@ -120,6 +148,30 @@ describe('storyboard page model', () => {
 		};
 		await model.generateFrames({ prompt: 'Test', count: 3 });
 		expect(model.operationError).toBe('An unexpected server error occurred.');
+	});
+
+	test('openCreateDialog opens dialog state', async () => {
+		const model = createStoryboardPageModel(createTransport());
+		expect(model.createDialogOpen).toBe(false);
+		model.openCreateDialog();
+		expect(model.createDialogOpen).toBe(true);
+	});
+
+	test('openCreateDialog surfaces backend unavailable as operation error', async () => {
+		const failingTransport: StoryboardTransport = {
+			...createTransport(),
+			async listStoryboards() {
+				throw new StoryboardTransportError({
+					kind: 'backend-unavailable',
+					userMessage: 'The storyboard service is temporarily unavailable.',
+				});
+			},
+		};
+		const model = createStoryboardPageModel(failingTransport);
+		await model.load();
+		model.openCreateDialog();
+		expect(model.createDialogOpen).toBe(false);
+		expect(model.operationError).toContain('temporarily unavailable');
 	});
 
 	test('viewMode defaults to timeline', async () => {
@@ -179,5 +231,67 @@ describe('storyboard page model', () => {
 		await model.autoAssignTransitions('uniform', 'fade', 500);
 		expect(model.selected?.frames[0].transitionTypeAfter).toBe('fade');
 		expect(model.selected?.frames[0].transitionDurationMs).toBe(500);
+	});
+
+	test('loads provider-specific narration options', async () => {
+		const model = createStoryboardPageModel(createTransport());
+		await model.setAudioProvider('huggingface-local');
+		expect(model.narrationOptions.provider).toBe('huggingface-local');
+		expect(model.narrationOptions.models[0]?.value).toBe('Xenova/mms-tts-eng');
+	});
+
+	test('requests model-aware narration options after audio model selection', async () => {
+		const transport = createTransport();
+		const optionCalls: Array<{ provider: string; model?: string }> = [];
+		const originalGetNarrationOptions = transport.getNarrationOptions.bind(transport);
+		transport.getNarrationOptions = async (input) => {
+			optionCalls.push(input);
+			return originalGetNarrationOptions(input);
+		};
+		const model = createStoryboardPageModel(transport);
+
+		await model.setAudioProvider('huggingface-local');
+		await model.setAudioModel('Xenova/mms-tts-eng');
+
+		expect(optionCalls.some((call) => call.provider === 'huggingface-local' && call.model === 'Xenova/mms-tts-eng')).toBe(true);
+		expect(model.narrationOptions.voices[0]?.value).toBe('default');
+		expect(model.narrationOptions.languages[0]?.value).toBe('en');
+	});
+
+	test('preserves manual voice and language when options are empty', async () => {
+		const transport = createTransport();
+		transport.getNarrationOptions = async (input) => ({
+			provider: input.provider,
+			supportsLocalModelDownload: true,
+			models: [{ value: 'Xenova/mms-tts-eng', label: 'MMS TTS English' }],
+			voices: [],
+			languages: [],
+		});
+		const model = createStoryboardPageModel(transport);
+		model.modelConfig = {
+			...model.modelConfig,
+			audioVoice: 'my-custom-voice',
+			audioLanguage: 'custom-locale',
+		};
+
+		await model.setAudioProvider('huggingface-local');
+
+		expect(model.modelConfig.audioVoice).toBe('my-custom-voice');
+		expect(model.modelConfig.audioLanguage).toBe('custom-locale');
+	});
+
+	test('downloads narration model and marks status ready', async () => {
+		const model = createStoryboardPageModel(createTransport());
+		await model.setAudioProvider('huggingface-local');
+		model.modelConfig = { ...model.modelConfig, audioModel: 'onnx-community/Kokoro-82M-v1.0-ONNX' };
+		await model.downloadNarrationModel();
+		expect(model.narrationModelStatus).toBe('ready');
+	});
+
+	test('huggingface options expose only supported local narration models', async () => {
+		const model = createStoryboardPageModel(createTransport());
+		await model.setAudioProvider('huggingface-local');
+		expect(model.narrationOptions.models.some((m) => m.value === 'Xenova/mms-tts-eng')).toBe(true);
+		expect(model.narrationOptions.models.some((m) => m.value.toLowerCase().includes('vibevoice'))).toBe(false);
 	});
 });

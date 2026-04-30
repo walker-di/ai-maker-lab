@@ -24,8 +24,7 @@ describe('HuggingFaceTransformersNarrationGateway', () => {
 		const calls: Array<{ task: string; model: string; text: string; options?: Record<string, unknown> }> = [];
 		const gateway = new HuggingFaceTransformersNarrationGateway({
 			assetStorage: new LocalMarketingAssetStorage({ assetRoot: tempDir, publicBaseUrl: '/marketing-assets' }),
-			model: 'mock/model',
-			voice: 'mock-voice',
+			model: 'Xenova/mms-tts-eng',
 			language: 'en-US',
 			importTransformers: async () => {
 				importCount += 1;
@@ -40,15 +39,15 @@ describe('HuggingFaceTransformersNarrationGateway', () => {
 
 		expect(importCount).toBe(0);
 
-		const result = await gateway.synthesize('Hello storyboard', 'override-voice', 'fr-FR');
+		const result = await gateway.synthesize('Hello storyboard', undefined, 'fr-FR');
 
 		expect(importCount).toBe(1);
 		expect(calls).toEqual([
 			{
 				task: 'text-to-speech',
-				model: 'mock/model',
+				model: 'Xenova/mms-tts-eng',
 				text: 'Hello storyboard',
-				options: { voice: 'override-voice', language: 'fr-FR' },
+				options: { language: 'fr-FR' },
 			},
 		]);
 		expect(result.audioUrl).toStartWith('/marketing-assets/audio/narration-hf-');
@@ -71,6 +70,36 @@ describe('HuggingFaceTransformersNarrationGateway', () => {
 
 		await expect(gateway.synthesize('Hello', 'voice')).rejects.toThrow(
 			'Hugging Face narration failed: Transformers TTS returned invalid audio',
+		);
+	});
+
+	test('returns model-aware fallback voice and language options', () => {
+		const gateway = new HuggingFaceTransformersNarrationGateway({
+			assetStorage: new LocalMarketingAssetStorage({ assetRoot: tempDir, publicBaseUrl: '/marketing-assets' }),
+		});
+
+		expect(gateway.listModels()).toEqual([
+			{ value: 'Xenova/mms-tts-eng', label: 'MMS TTS English' },
+		]);
+		expect(gateway.listVoicesForModel('Xenova/mms-tts-eng')).toEqual([
+			{ value: 'default', label: 'Default voice (model-managed)' },
+		]);
+		expect(gateway.listLanguagesForModel('Xenova/mms-tts-eng')).toEqual([
+			{ value: 'en-US', label: 'English (US)' },
+		]);
+	});
+
+	test('rejects unsupported VibeVoice models with an actionable message', async () => {
+		const gateway = new HuggingFaceTransformersNarrationGateway({
+			assetStorage: new LocalMarketingAssetStorage({ assetRoot: tempDir, publicBaseUrl: '/marketing-assets' }),
+			model: 'microsoft/VibeVoice-1.5B',
+			importTransformers: async () => ({
+				pipeline: async () => async () => ({ audio: new Float32Array([0.1]), sampling_rate: 16000 }),
+			}),
+		});
+
+		await expect(gateway.synthesize('Hello')).rejects.toThrow(
+			'VibeVoice models are not supported by @huggingface/transformers in this app yet',
 		);
 	});
 });

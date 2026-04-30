@@ -16,8 +16,8 @@ export interface AppDbConfig {
 export function getAppDbConfig(): AppDbConfig {
 	return {
 		host: process.env.SURREAL_HOST ?? 'mem://',
-		namespace: process.env.SURREAL_NS ?? 'app',
-		database: process.env.SURREAL_DB ?? 'desktop',
+		namespace: process.env.SURREAL_NS ?? process.env.DB_NAMESPACE ?? 'app',
+		database: process.env.SURREAL_DB ?? process.env.DB_DATABASE ?? 'desktop',
 		username: process.env.SURREAL_USER,
 		password: process.env.SURREAL_PASS,
 		token: process.env.SURREAL_TOKEN,

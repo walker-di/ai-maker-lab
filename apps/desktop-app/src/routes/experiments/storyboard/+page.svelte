@@ -80,7 +80,16 @@
 			</div>
 			<div class="flex flex-wrap items-center gap-2">
 				<ViewModeToggle mode={model.viewMode} onModeChange={(m) => { model.viewMode = m; }} disabled={model.isLoading} />
-				<Button type="button" variant="outline" size="sm" onclick={() => (showConfig = !showConfig)} disabled={model.isLoading}>
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					onclick={() => {
+						showConfig = !showConfig;
+						if (showConfig) void model.loadNarrationOptions();
+					}}
+					disabled={model.isLoading}
+				>
 					{showConfig ? 'Hide AI config' : 'AI config'}
 				</Button>
 				<Button type="button" variant="outline" size="sm" onclick={() => (model.addFramesDialogOpen = true)} disabled={model.isLoading}>Generate frames</Button>
@@ -99,14 +108,24 @@
 				audioModel={model.modelConfig.audioModel}
 				audioVoice={model.modelConfig.audioVoice}
 				audioLanguage={model.modelConfig.audioLanguage}
+				audioModelOptions={model.narrationOptions.models}
+				audioVoiceOptions={model.narrationOptions.voices}
+				audioLanguageOptions={model.narrationOptions.languages}
+				supportsLocalModelDownload={model.narrationOptions.supportsLocalModelDownload}
+				downloadSupportMessage={model.narrationOptions.downloadSupportMessage}
+				recommendedProviderForDownloads={model.narrationOptions.recommendedProviderForDownloads as 'azure' | 'huggingface-local' | 'vibevoice-local' | undefined}
+				narrationModelStatus={model.narrationModelStatus}
 				onTextProviderChange={(v) => model.modelConfig = { ...model.modelConfig, textProvider: v, textModel: '' }}
 				onTextModelChange={(v) => model.modelConfig = { ...model.modelConfig, textModel: v }}
 				onImageProviderChange={(v) => model.modelConfig = { ...model.modelConfig, imageProvider: v, imageModel: '' }}
 				onImageModelChange={(v) => model.modelConfig = { ...model.modelConfig, imageModel: v }}
-				onAudioProviderChange={(v) => model.modelConfig = { ...model.modelConfig, audioProvider: v }}
-				onAudioModelChange={(v) => model.modelConfig = { ...model.modelConfig, audioModel: v }}
+				onAudioProviderChange={(v) => void model.setAudioProvider(v)}
+				onAudioModelChange={(v) => void model.setAudioModel(v)}
 				onAudioVoiceChange={(v) => model.modelConfig = { ...model.modelConfig, audioVoice: v }}
 				onAudioLanguageChange={(v) => model.modelConfig = { ...model.modelConfig, audioLanguage: v }}
+				onCheckAudioModelLocal={model.checkNarrationModelStatus}
+				onDownloadAudioModel={model.downloadNarrationModel}
+				onUseRecommendedDownloadProvider={(provider) => void model.setAudioProvider(provider)}
 				disabled={model.isLoading}
 			/>
 		{/if}
@@ -168,7 +187,7 @@
 		<StoryboardList
 			storyboards={model.storyboards}
 			onOpen={model.open}
-			onCreate={() => { if (!model.isBackendUnavailable) model.createDialogOpen = true; }}
+			onCreate={model.openCreateDialog}
 		/>
 	{/if}
 

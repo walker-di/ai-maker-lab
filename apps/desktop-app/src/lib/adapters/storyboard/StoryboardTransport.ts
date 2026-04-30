@@ -7,6 +7,34 @@ export type StoryboardPromptType = Marketing.StoryboardPromptType;
 export type StoryboardAssetType = Marketing.StoryboardAssetType;
 export type StoryboardTransitionType = Marketing.StoryboardTransitionType;
 
+export interface StoryboardNarrationOption {
+	value: string;
+	label: string;
+}
+
+export interface StoryboardNarrationOptions {
+	provider: string;
+	supportsLocalModelDownload: boolean;
+	models: StoryboardNarrationOption[];
+	voices: StoryboardNarrationOption[];
+	languages: StoryboardNarrationOption[];
+	downloadSupportMessage?: string;
+	recommendedProviderForDownloads?: string;
+}
+
+export interface StoryboardNarrationModelStatus {
+	provider: string;
+	model: string;
+	local: boolean;
+	supportsLocalModelDownload: boolean;
+}
+
+export interface StoryboardNarrationModelDownloadResult {
+	provider: string;
+	model: string;
+	local: boolean;
+}
+
 export interface StoryboardTransport {
 	listStoryboards(): Promise<StoryboardSummary[]>;
 	getStoryboard(id: string): Promise<StoryboardDetail>;
@@ -25,4 +53,7 @@ export interface StoryboardTransport {
 	batchRegeneratePrompts(storyboardId: string, input?: Marketing.BatchRegeneratePromptsDto): Promise<StoryboardDetail>;
 	duplicateFrame(storyboardId: string, frameId: string, input?: Marketing.DuplicateFrameDto): Promise<StoryboardDetail>;
 	autoAssignTransitions(storyboardId: string, input: Marketing.AutoAssignTransitionsDto): Promise<StoryboardDetail>;
+	getNarrationOptions(input: { provider: string; model?: string }): Promise<StoryboardNarrationOptions>;
+	getNarrationModelStatus(input: { provider: string; model: string }): Promise<StoryboardNarrationModelStatus>;
+	downloadNarrationModel(input: { provider: string; model: string }): Promise<StoryboardNarrationModelDownloadResult>;
 }

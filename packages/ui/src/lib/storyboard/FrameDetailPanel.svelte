@@ -10,6 +10,7 @@
 	import CopyIcon from '@lucide/svelte/icons/copy';
 	import TransitionSelector from './TransitionSelector.svelte';
 	import DurationSlider from './DurationSlider.svelte';
+	import StoryboardFrameAudioControls from './StoryboardFrameAudioControls.svelte';
 	import type { StoryboardAssetType, StoryboardFrame, StoryboardPromptType } from './types.js';
 
 	interface Props {
@@ -61,46 +62,51 @@
 
 	<div class="flex-1 space-y-3 overflow-y-auto p-4">
 		<div class="space-y-1">
-			<Label class="text-xs">Title</Label>
-			<Input bind:value={title} disabled={props.disabled} class="h-8 text-sm" />
+			<Label for="frame-title" class="text-xs">Title</Label>
+			<Input id="frame-title" bind:value={title} disabled={props.disabled} class="h-8 text-sm" />
 		</div>
 
 		<div class="space-y-1">
 			<div class="flex items-center justify-between">
-				<Label class="text-xs">Narration</Label>
+				<Label for="frame-narration" class="text-xs">Narration</Label>
 				<button type="button" class="flex items-center gap-1 text-[10px] text-primary hover:text-primary/80" onclick={() => props.onRegeneratePrompt(props.frame.id, 'narration')}>
 					<SparklesIcon class="h-2.5 w-2.5" /> Regen
 				</button>
 			</div>
-			<Textarea bind:value={narration} rows={2} disabled={props.disabled} class="text-sm" />
+			<Textarea id="frame-narration" bind:value={narration} rows={2} disabled={props.disabled} class="text-sm" />
 		</div>
 
 		<div class="space-y-1">
 			<div class="flex items-center justify-between">
-				<Label class="text-xs">Main image prompt</Label>
+				<Label for="frame-main-image-prompt" class="text-xs">Main image prompt</Label>
 				<button type="button" class="flex items-center gap-1 text-[10px] text-primary hover:text-primary/80" onclick={() => props.onRegeneratePrompt(props.frame.id, 'mainImage')}>
 					<SparklesIcon class="h-2.5 w-2.5" /> Regen
 				</button>
 			</div>
-			<Textarea bind:value={mainImagePrompt} rows={2} disabled={props.disabled} class="text-sm" />
+			<Textarea id="frame-main-image-prompt" bind:value={mainImagePrompt} rows={2} disabled={props.disabled} class="text-sm" />
 		</div>
 
 		<div class="space-y-1">
-			<Label class="text-xs">Background prompt</Label>
-			<Textarea bind:value={backgroundImagePrompt} rows={2} disabled={props.disabled} class="text-sm" />
+			<Label for="frame-background-prompt" class="text-xs">Background prompt</Label>
+			<Textarea id="frame-background-prompt" bind:value={backgroundImagePrompt} rows={2} disabled={props.disabled} class="text-sm" />
 		</div>
 
 		<div class="space-y-1">
-			<Label class="text-xs">BGM prompt</Label>
-			<Textarea bind:value={bgmPrompt} rows={1} disabled={props.disabled} class="text-sm" />
+			<Label for="frame-bgm-prompt" class="text-xs">BGM prompt</Label>
+			<Textarea id="frame-bgm-prompt" bind:value={bgmPrompt} rows={1} disabled={props.disabled} class="text-sm" />
 		</div>
 
 		<div class="flex flex-wrap gap-1.5">
 			<Button type="button" size="sm" class="h-7 text-xs" onclick={() => props.onSaveText(props.frame.id, { title, narration, mainImagePrompt, backgroundImagePrompt, bgmPrompt })} disabled={props.disabled}>Save</Button>
-			<Button type="button" variant="outline" size="sm" class="h-7 text-xs" onclick={() => props.onGenerateAsset(props.frame.id, 'mainImage')} disabled={props.disabled}>Gen image</Button>
-			<Button type="button" variant="outline" size="sm" class="h-7 text-xs" onclick={() => props.onGenerateAsset(props.frame.id, 'backgroundImage')} disabled={props.disabled}>Gen background</Button>
+			<Button type="button" variant="outline" size="sm" class="h-7 text-xs" onclick={() => props.onGenerateAsset(props.frame.id, 'mainImage')} disabled={props.disabled} aria-label="Generate main image">Gen image</Button>
+			<Button type="button" variant="outline" size="sm" class="h-7 text-xs" onclick={() => props.onGenerateAsset(props.frame.id, 'backgroundImage')} disabled={props.disabled} aria-label="Generate background image">Gen background</Button>
 			<Button type="button" variant="outline" size="sm" class="h-7 text-xs" onclick={() => props.onGenerateAsset(props.frame.id, 'narrationAudio')} disabled={props.disabled} aria-label={`Generate narration audio for frame ${props.frameIndex + 1}`}>Gen audio</Button>
 			<Button type="button" variant="outline" size="sm" class="h-7 text-xs" onclick={() => props.onGenerateAsset(props.frame.id, 'bgm')} disabled={props.disabled}>Gen BGM</Button>
+		</div>
+
+		<div class="space-y-2 rounded-lg border bg-muted/20 p-3">
+			<span class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Audio playback</span>
+			<StoryboardFrameAudioControls narrationAudioUrl={props.frame.narrationAudioUrl} bgmUrl={props.frame.bgmUrl} />
 		</div>
 
 		<div class="space-y-2 rounded-lg border bg-muted/20 p-3">

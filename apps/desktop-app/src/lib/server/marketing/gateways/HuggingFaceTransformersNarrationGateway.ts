@@ -5,8 +5,16 @@ type TextToSpeechPipeline = (
 	options?: Record<string, unknown>,
 ) => Promise<unknown> | unknown;
 
+type TransformersPipelineOptions = {
+	local_files_only?: boolean;
+};
+
 type TransformersModule = {
-	pipeline: (task: string, model: string) => Promise<TextToSpeechPipeline> | TextToSpeechPipeline;
+	pipeline: (
+		task: string,
+		model: string,
+		options?: TransformersPipelineOptions,
+	) => Promise<TextToSpeechPipeline> | TextToSpeechPipeline;
 };
 
 export interface HuggingFaceTransformersNarrationGatewayConfig {
@@ -23,9 +31,27 @@ interface NormalizedAudioOutput {
 	sampleRate: number;
 }
 
-const DEFAULT_TTS_MODEL = 'onnx-community/Kokoro-82M-v1.0-ONNX';
-const DEFAULT_TTS_VOICE = 'af_heart';
+const DEFAULT_TTS_MODEL = 'Xenova/mms-tts-eng';
 const DEFAULT_TTS_TASK = 'text-to-speech';
+
+type NarrationModelMetadata = {
+	value: string;
+	label: string;
+	languages: Array<{ value: string; label: string }>;
+	voices?: Array<{ value: string; label: string }>;
+	fallbackVoice: { value: string; label: string };
+};
+
+const HF_LOCAL_MODEL_REGISTRY: readonly NarrationModelMetadata[] = [
+	{
+		value: 'Xenova/mms-tts-eng',
+		label: 'MMS TTS English',
+		languages: [{ value: 'en-US', label: 'English (US)' }],
+		fallbackVoice: { value: 'default', label: 'Default voice (model-managed)' },
+	},
+];
+
+const MODEL_METADATA_BY_VALUE = new Map(HF_LOCAL_MODEL_REGISTRY.map((entry) => [entry.value, entry]));
 
 export class HuggingFaceTransformersNarrationGateway implements Marketing.INarrationAudioGateway {
 	private readonly pipelinePromises = new Map<string, Promise<TextToSpeechPipeline>>();
@@ -41,12 +67,12 @@ export class HuggingFaceTransformersNarrationGateway implements Marketing.INarra
 		if (!text.trim()) throw new Error('Hugging Face narration requires non-empty text.');
 
 		try {
-			const model = options?.model || this.config.model || process.env.MARKETING_HF_TTS_MODEL || DEFAULT_TTS_MODEL;
+			const requestedModel = options?.model || this.config.model || process.env.MARKETING_HF_TTS_MODEL || DEFAULT_TTS_MODEL;
+			const model = requestedModel.trim();
+			assertSupportedNarrationModel(model);
 			const pipeline = await this.getPipeline(model);
-			const selectedVoice = voice || this.config.voice || process.env.MARKETING_HF_TTS_VOICE || DEFAULT_TTS_VOICE;
 			const selectedLanguage = lang || this.config.language || process.env.MARKETING_HF_TTS_LANGUAGE;
 			const pipelineOptions: Record<string, unknown> = {};
-			if (selectedVoice) pipelineOptions.voice = selectedVoice;
 			if (selectedLanguage) pipelineOptions.language = selectedLanguage;
 
 			const rawOutput = await pipeline(text, Object.keys(pipelineOptions).length ? pipelineOptions : undefined);
@@ -63,9 +89,46 @@ export class HuggingFaceTransformersNarrationGateway implements Marketing.INarra
 	}
 
 	async listVoices(): Promise<{ id: string; name: string; lang: string; gender: string }[]> {
-		const voice = this.config.voice || process.env.MARKETING_HF_TTS_VOICE || DEFAULT_TTS_VOICE;
-		const lang = this.config.language || process.env.MARKETING_HF_TTS_LANGUAGE || 'en-US';
-		return [{ id: voice, name: voice, lang, gender: 'unknown' }];
+		return [];
+	}
+
+	listModels(): Array<{ value: string; label: string }> {
+		return HF_LOCAL_MODEL_REGISTRY.map((model) => ({ value: model.value, label: model.label }));
+	}
+
+	listVoicesForModel(model?: string): Array<{ value: string; label: string }> {
+		const metadata = resolveNarrationModelMetadata(model ?? this.config.model ?? process.env.MARKETING_HF_TTS_MODEL);
+		if (metadata.voices && metadata.voices.length > 0) return metadata.voices;
+		return [metadata.fallbackVoice];
+	}
+
+	listLanguagesForModel(model?: string): Array<{ value: string; label: string }> {
+		const metadata = resolveNarrationModelMetadata(model ?? this.config.model ?? process.env.MARKETING_HF_TTS_MODEL);
+		if (metadata.languages.length > 0) return metadata.languages;
+		return [{ value: 'en-US', label: 'English (US)' }];
+	}
+
+	listLanguages(model?: string): Array<{ value: string; label: string }> {
+		return this.listLanguagesForModel(model);
+	}
+
+	async isModelLocal(model: string): Promise<boolean> {
+		if (!model.trim()) return false;
+		assertSupportedNarrationModel(model);
+		const task = this.config.task || DEFAULT_TTS_TASK;
+		try {
+			const module = await this.importTransformers();
+			await module.pipeline(task, model, { local_files_only: true });
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	async ensureModelReady(model: string): Promise<void> {
+		if (!model.trim()) throw new Error('Model is required to download local narration weights.');
+		assertSupportedNarrationModel(model);
+		await this.getPipeline(model);
 	}
 
 	private async getPipeline(model: string): Promise<TextToSpeechPipeline> {
@@ -113,6 +176,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNumberArray(value: unknown): value is number[] {
 	return Array.isArray(value) && value.every((sample) => typeof sample === 'number' && Number.isFinite(sample));
+}
+
+function resolveNarrationModelMetadata(model?: string): NarrationModelMetadata {
+	const selectedModel = (model ?? '').trim() || DEFAULT_TTS_MODEL;
+	assertSupportedNarrationModel(selectedModel);
+	const knownModel = MODEL_METADATA_BY_VALUE.get(selectedModel);
+	if (knownModel) return knownModel;
+	return {
+		value: selectedModel,
+		label: selectedModel,
+		languages: [{ value: 'en-US', label: 'English (US)' }],
+		fallbackVoice: { value: 'default', label: 'Default voice (model-managed)' },
+	};
+}
+
+function assertSupportedNarrationModel(model: string): void {
+	const selectedModel = model.trim();
+	if (!selectedModel) {
+		throw new Error('Model is required for Hugging Face local narration.');
+	}
+	if (/vibevoice/i.test(selectedModel)) {
+		throw new Error('VibeVoice models are not supported by @huggingface/transformers in this app yet.');
+	}
+	if (/kokoro|speecht5/i.test(selectedModel)) {
+		throw new Error('This model is not supported by the installed @huggingface/transformers runtime. Use Xenova/mms-tts-eng.');
+	}
 }
 
 export function encodePcm16Wav(samples: Float32Array | number[], sampleRate: number): Buffer {

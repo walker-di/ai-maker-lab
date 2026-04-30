@@ -1,4 +1,7 @@
-import type { StoryboardTransport } from '$lib/adapters/storyboard/StoryboardTransport';
+import type {
+	StoryboardNarrationOptions,
+	StoryboardTransport,
+} from '$lib/adapters/storyboard/StoryboardTransport';
 import type { Marketing } from 'domain/shared';
 import { StoryboardTransportError } from '$lib/adapters/storyboard/web-storyboard-transport';
 
@@ -32,21 +35,21 @@ function toStoryboardModelConfig(config: StoryboardModelConfigState): Marketing.
 }
 
 export function createStoryboardPageModel(transport: StoryboardTransport) {
-	let storyboards: Awaited<ReturnType<StoryboardTransport['listStoryboards']>> = [];
-	let selected: Awaited<ReturnType<StoryboardTransport['getStoryboard']>> | null = null;
-	let isLoading = false;
-	let initialLoadStatus: 'idle' | 'loading' | 'ready' | 'error' = 'idle';
-	let initialLoadError: StoryboardTransportError | null = null;
-	let operationError: string | null = null;
-	let createDialogOpen = false;
-	let addFramesDialogOpen = false;
-	let exportStatus: 'idle' | 'exporting' | 'done' | 'error' = 'idle';
-	let exportUrl: string | undefined;
-	let viewMode: 'timeline' | 'grid' | 'preview' = 'timeline';
-	let selectedFrameIndex = 0;
-	let isPlaying = false;
+	let storyboards = $state<Awaited<ReturnType<StoryboardTransport['listStoryboards']>>>([]);
+	let selected = $state<Awaited<ReturnType<StoryboardTransport['getStoryboard']>> | null>(null);
+	let isLoading = $state(false);
+	let initialLoadStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
+	let initialLoadError = $state<StoryboardTransportError | null>(null);
+	let operationError = $state<string | null>(null);
+	let createDialogOpen = $state(false);
+	let addFramesDialogOpen = $state(false);
+	let exportStatus = $state<'idle' | 'exporting' | 'done' | 'error'>('idle');
+	let exportUrl = $state<string | undefined>(undefined);
+	let viewMode = $state<'timeline' | 'grid' | 'preview'>('timeline');
+	let selectedFrameIndex = $state(0);
+	let isPlaying = $state(false);
 	let playbackTimer: ReturnType<typeof setInterval> | null = null;
-	let modelConfig: StoryboardModelConfigState = {
+	let modelConfig = $state<StoryboardModelConfigState>({
 		textProvider: 'openai',
 		textModel: 'gpt-4o-mini',
 		imageProvider: 'openai',
@@ -55,7 +58,16 @@ export function createStoryboardPageModel(transport: StoryboardTransport) {
 		audioModel: '',
 		audioVoice: '',
 		audioLanguage: '',
-	};
+	});
+	let narrationOptions = $state<StoryboardNarrationOptions>({
+		provider: 'azure',
+		supportsLocalModelDownload: false,
+		models: [],
+		voices: [],
+		languages: [],
+	});
+	let narrationModelStatus = $state<'idle' | 'checking' | 'missing' | 'downloading' | 'ready' | 'error'>('idle');
+	let narrationOptionsRequestId = 0;
 
 	async function run<T>(fn: () => Promise<T>): Promise<T | undefined> {
 		isLoading = true;
@@ -75,12 +87,132 @@ export function createStoryboardPageModel(transport: StoryboardTransport) {
 		}
 	}
 
+	function resolveSelectedNarrationOption(
+		currentValue: string | undefined,
+		options: StoryboardNarrationOptions['models'] | StoryboardNarrationOptions['voices'] | StoryboardNarrationOptions['languages'],
+	): string {
+		if (currentValue && options.some((option) => option.value === currentValue)) {
+			return currentValue;
+		}
+		if (options.length === 0) {
+			return currentValue ?? '';
+		}
+		return options[0]?.value ?? '';
+	}
+
+	function syncNarrationConfig(options: StoryboardNarrationOptions) {
+		const nextAudioModel = resolveSelectedNarrationOption(modelConfig.audioModel, options.models);
+		const nextAudioVoice = resolveSelectedNarrationOption(modelConfig.audioVoice, options.voices);
+		const nextAudioLanguage = resolveSelectedNarrationOption(modelConfig.audioLanguage, options.languages);
+		if (
+			nextAudioModel !== (modelConfig.audioModel ?? '')
+			|| nextAudioVoice !== (modelConfig.audioVoice ?? '')
+			|| nextAudioLanguage !== (modelConfig.audioLanguage ?? '')
+		) {
+			modelConfig = {
+				...modelConfig,
+				audioModel: nextAudioModel,
+				audioVoice: nextAudioVoice,
+				audioLanguage: nextAudioLanguage,
+			};
+		}
+	}
+
+	async function loadNarrationOptions(input?: { provider?: Marketing.StoryboardAudioProvider; model?: string }) {
+		const provider = input?.provider ?? modelConfig.audioProvider ?? 'azure';
+		const model = optionalText(input?.model ?? modelConfig.audioModel);
+		const requestId = ++narrationOptionsRequestId;
+		try {
+			const options = await transport.getNarrationOptions({ provider, model });
+			if (requestId !== narrationOptionsRequestId) return;
+			if ((modelConfig.audioProvider ?? 'azure') !== provider) return;
+			narrationOptions = options;
+			syncNarrationConfig(options);
+		} catch (cause) {
+			if (requestId !== narrationOptionsRequestId) return;
+			if ((modelConfig.audioProvider ?? 'azure') !== provider) return;
+			if (cause instanceof StoryboardTransportError) {
+				operationError = cause.technicalMessage
+					? `${cause.message} (${cause.technicalMessage})`
+					: cause.message;
+			} else {
+				operationError = cause instanceof Error ? cause.message : 'Unknown storyboard error';
+			}
+		}
+	}
+
+	async function setAudioProvider(provider: Marketing.StoryboardAudioProvider) {
+		modelConfig = {
+			...modelConfig,
+			audioProvider: provider,
+		};
+		narrationModelStatus = 'idle';
+		await loadNarrationOptions({ provider });
+	}
+
+	async function setAudioModel(model: string) {
+		modelConfig = {
+			...modelConfig,
+			audioModel: model,
+		};
+		narrationModelStatus = 'idle';
+		await loadNarrationOptions({ provider: modelConfig.audioProvider ?? 'azure', model });
+	}
+
+	async function checkNarrationModelStatus() {
+		const provider = modelConfig.audioProvider ?? 'azure';
+		const model = optionalText(modelConfig.audioModel);
+		if (!model) {
+			narrationModelStatus = 'idle';
+			return;
+		}
+		narrationModelStatus = 'checking';
+		try {
+			const status = await transport.getNarrationModelStatus({ provider, model });
+			narrationModelStatus = status.local ? 'ready' : 'missing';
+		} catch (cause) {
+			narrationModelStatus = 'error';
+			if (cause instanceof StoryboardTransportError) {
+				operationError = cause.technicalMessage
+					? `${cause.message} (${cause.technicalMessage})`
+					: cause.message;
+			} else {
+				operationError = cause instanceof Error ? cause.message : 'Unknown storyboard error';
+			}
+		}
+	}
+
+	async function downloadNarrationModel() {
+		const provider = modelConfig.audioProvider ?? 'azure';
+		const model = optionalText(modelConfig.audioModel);
+		if (!model) {
+			operationError = 'Select an audio model before downloading.';
+			return;
+		}
+		narrationModelStatus = 'downloading';
+		operationError = null;
+		try {
+			await transport.downloadNarrationModel({ provider, model });
+			narrationModelStatus = 'ready';
+		} catch (cause) {
+			narrationModelStatus = 'error';
+			if (cause instanceof StoryboardTransportError) {
+				operationError = cause.technicalMessage
+					? `${cause.message} (${cause.technicalMessage})`
+					: cause.message;
+			} else {
+				operationError = cause instanceof Error ? cause.message : 'Unknown storyboard error';
+			}
+		}
+	}
+
 	async function load() {
 		initialLoadStatus = 'loading';
 		initialLoadError = null;
 		isLoading = true;
 		try {
 			storyboards = await transport.listStoryboards();
+			await loadNarrationOptions();
 			initialLoadStatus = 'ready';
 		} catch (cause) {
 			initialLoadStatus = 'error';
@@ -96,12 +228,13 @@ export function createStoryboardPageModel(transport: StoryboardTransport) {
 		}
 	}
 
-	async function create(input: { name: string; description?: string }) {
+	async function create(input: { name: string; description?: string }): Promise<boolean> {
 		const created = await run(async () => transport.createStoryboard(input));
-		if (!created) return;
+		if (!created) return false;
 		createDialogOpen = false;
 		await load();
 		await open(created.id);
+		return true;
 	}
 
 	async function open(id: string) {
@@ -235,6 +368,19 @@ export function createStoryboardPageModel(transport: StoryboardTransport) {
 		await load();
 	}
 
+	function isBackendUnavailable() {
+		return initialLoadError?.kind === 'backend-unavailable';
+	}
+
+	function openCreateDialog() {
+		if (isBackendUnavailable()) {
+			operationError = 'The storyboard service is temporarily unavailable. Please try again shortly.';
+			return;
+		}
+		operationError = null;
+		createDialogOpen = true;
+	}
+
 	return {
 		get storyboards() { return storyboards; },
 		get selected() { return selected; },
@@ -242,7 +388,7 @@ export function createStoryboardPageModel(transport: StoryboardTransport) {
 		get initialLoadStatus() { return initialLoadStatus; },
 		get initialLoadError() { return initialLoadError; },
 		get operationError() { return operationError; },
-		get isBackendUnavailable() { return initialLoadError?.kind === 'backend-unavailable'; },
+		get isBackendUnavailable() { return isBackendUnavailable(); },
 		get createDialogOpen() { return createDialogOpen; },
 		set createDialogOpen(v) { createDialogOpen = v; },
 		get addFramesDialogOpen() { return addFramesDialogOpen; },
@@ -251,7 +397,9 @@ export function createStoryboardPageModel(transport: StoryboardTransport) {
 		set exportStatus(v) { exportStatus = v; },
 		get exportUrl() { return exportUrl; },
 		get modelConfig() { return modelConfig; },
-		set modelConfig(v) { modelConfig = v; },
+		set modelConfig(v) { modelConfig = v; narrationModelStatus = 'idle'; },
+		get narrationOptions() { return narrationOptions; },
+		get narrationModelStatus() { return narrationModelStatus; },
 		get viewMode() { return viewMode; },
 		set viewMode(v) { viewMode = v; },
 		get selectedFrameIndex() { return selectedFrameIndex; },
@@ -259,6 +407,7 @@ export function createStoryboardPageModel(transport: StoryboardTransport) {
 		get isPlaying() { return isPlaying; },
 		load,
 		create,
+		openCreateDialog,
 		open,
 		backToList,
 		generateFrames,
@@ -277,5 +426,10 @@ export function createStoryboardPageModel(transport: StoryboardTransport) {
 		batchRegeneratePrompts,
 		autoAssignTransitions,
 		duplicateFrame,
+		setAudioProvider,
+		setAudioModel,
+		loadNarrationOptions,
+		checkNarrationModelStatus,
+		downloadNarrationModel,
 	};
 }

@@ -8,7 +8,7 @@
 	interface Props {
 		open: boolean;
 		onOpenChange: (open: boolean) => void;
-		onCreate: (input: { name: string; description?: string }) => void | Promise<void>;
+		onCreate: (input: { name: string; description?: string }) => boolean | void | Promise<boolean | void>;
 		isLoading?: boolean;
 	}
 	let { open, onOpenChange, onCreate, isLoading = false }: Props = $props();
@@ -19,7 +19,8 @@
 	async function submit() {
 		error = '';
 		if (!name.trim()) { error = 'Storyboard name is required'; return; }
-		await onCreate({ name: name.trim(), description: description.trim() || undefined });
+		const created = await onCreate({ name: name.trim(), description: description.trim() || undefined });
+		if (created === false) return;
 		name = '';
 		description = '';
 	}
