@@ -25,16 +25,23 @@
 <div class="flex h-[600px] flex-col">
 	<div class="grid flex-1 grid-cols-[1fr_340px] overflow-hidden">
 		<!-- Preview Area -->
-		<div class="flex items-center justify-center overflow-hidden bg-muted/10 p-6">
+		<div class="relative flex items-center justify-center overflow-hidden bg-muted/10 p-6">
 			{#if selectedFrame}
+				{#if selectedFrame.backgroundImageUrl}
+					<img
+						src={selectedFrame.backgroundImageUrl}
+						alt="Background"
+						class="absolute inset-0 h-full w-full object-cover opacity-40"
+					/>
+				{/if}
 				{#if selectedFrame.mainImageUrl}
 					<img
 						src={selectedFrame.mainImageUrl}
 						alt={selectedFrame.title ?? `Frame ${props.selectedFrameIndex + 1}`}
-						class="max-h-full max-w-full rounded-lg object-contain shadow-lg"
+						class="relative max-h-full max-w-full rounded-lg object-contain shadow-lg"
 					/>
 				{:else}
-					<div class="flex aspect-video w-full max-w-lg items-center justify-center rounded-lg border border-dashed bg-muted/30">
+					<div class="relative flex aspect-video w-full max-w-lg items-center justify-center rounded-lg border border-dashed bg-muted/30">
 						<div class="text-center text-muted-foreground">
 							<p class="text-sm font-medium">Frame {props.selectedFrameIndex + 1}</p>
 							<p class="text-xs">{selectedFrame.title ?? 'No image generated'}</p>

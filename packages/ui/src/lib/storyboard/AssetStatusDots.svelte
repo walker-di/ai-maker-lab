@@ -13,6 +13,10 @@
 		title={frame.mainImageUrl ? 'Main image ready' : 'Main image missing'}
 	></span>
 	<span
+		class="h-2 w-2 rounded-full {frame.backgroundImageUrl ? 'bg-green-500' : 'bg-muted-foreground/30'}"
+		title={frame.backgroundImageUrl ? 'Background ready' : 'Background missing'}
+	></span>
+	<span
 		class="h-2 w-2 rounded-full {frame.narrationAudioUrl ? 'bg-green-500' : 'bg-muted-foreground/30'}"
 		title={frame.narrationAudioUrl ? 'Narration ready' : 'Narration missing'}
 	></span>

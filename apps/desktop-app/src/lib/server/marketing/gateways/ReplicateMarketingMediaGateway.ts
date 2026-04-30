@@ -1,5 +1,6 @@
 import Replicate from 'replicate';
 import type { Marketing } from 'domain/application';
+import { getAdapterForModel } from './adapters/index.js';
 
 const DEFAULT_IMAGE_MODEL = 'black-forest-labs/flux-1.1-pro';
 const DEFAULT_MUSICGEN_VERSION = '671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedcfb';
@@ -28,16 +29,11 @@ export class ReplicateMarketingMediaGateway
   async generateImage(prompt: string, style?: string, options?: { aspectRatio?: string; model?: string }): Promise<{ url: string }> {
     const fullPrompt = style ? `${prompt}, style: ${style}` : prompt;
     const modelId = options?.model ?? this.imageModel;
+    const adapter = getAdapterForModel(modelId);
+    const input = adapter.buildInput({ prompt: fullPrompt, aspectRatio: options?.aspectRatio ?? '1:1' });
 
     const output = await this.replicate.run(modelId as `${string}/${string}`, {
-      input: {
-        prompt: fullPrompt,
-        output_format: 'jpg',
-        aspect_ratio: options?.aspectRatio ?? '1:1',
-        output_quality: 80,
-        safety_tolerance: 2,
-        prompt_upsampling: true,
-      },
+      input,
       wait: { mode: 'block' },
     });
 
