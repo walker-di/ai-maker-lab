@@ -38,6 +38,19 @@ export interface StoryboardDetail extends StoryboardSummary {
 	frames: StoryboardFrame[];
 }
 
+export type StoryboardAudioProvider = 'azure' | 'huggingface-local' | 'vibevoice-local';
+
+export interface StoryboardModelConfigState {
+	textProvider: string;
+	textModel: string;
+	imageProvider: string;
+	imageModel: string;
+	audioProvider?: StoryboardAudioProvider;
+	audioModel?: string;
+	audioVoice?: string;
+	audioLanguage?: string;
+}
+
 export interface StoryboardAssetRef {
 	url: string;
 	path?: string;

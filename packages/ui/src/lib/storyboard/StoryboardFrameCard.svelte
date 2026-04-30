@@ -81,7 +81,7 @@
 			<Button type="button" size="sm" variant="outline" onclick={() => onRegeneratePrompt(frame.id, 'narration')} disabled={disabled}><SparklesIcon class="mr-1 h-3 w-3" />Narration</Button>
 			<Button type="button" size="sm" variant="outline" onclick={() => onGenerateAsset(frame.id, 'mainImage')} disabled={disabled}>Generate main image</Button>
 			<Button type="button" size="sm" variant="outline" onclick={() => onGenerateAsset(frame.id, 'backgroundImage')} disabled={disabled}>Generate background</Button>
-			<Button type="button" size="sm" variant="outline" onclick={() => onGenerateAsset(frame.id, 'narrationAudio')} disabled={disabled}>Generate narration</Button>
+			<Button type="button" size="sm" variant="outline" onclick={() => onGenerateAsset(frame.id, 'narrationAudio')} disabled={disabled} aria-label={`Generate narration audio for frame ${frame.orderIndex + 1}`}>Generate narration</Button>
 			<Button type="button" size="sm" variant="outline" onclick={() => onGenerateAsset(frame.id, 'bgm')} disabled={disabled}>Generate BGM</Button>
 		</div>
 

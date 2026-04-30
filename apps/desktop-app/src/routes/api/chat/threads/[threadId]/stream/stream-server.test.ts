@@ -2,17 +2,56 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { HOSTED_TOOL_FIXTURES } from '../../../../../../../../../packages/domain/src/application/chat/__test-helpers__/test-fixtures';
 import { toPersistedAssistantMessageParts } from '$lib/adapters/chat/ai-sdk-message-parts';
 
-const getChatServicesMock = vi.hoisted(() => vi.fn());
+const hoisted = (
+	(vi as unknown as { hoisted?: <T>(factory: () => T) => T }).hoisted ??
+	((factory: () => unknown) => factory())
+) as <T>(factory: () => T) => T;
 
-vi.mock('$lib/server/chat-services', async () => {
-	const actual =
-		await vi.importActual<typeof import('$lib/server/chat-services')>('$lib/server/chat-services');
+const getChatServicesMock = hoisted(() => vi.fn());
 
-	return {
-		...actual,
-		getChatServices: getChatServicesMock,
-	};
-});
+vi.mock('$lib/server/chat-services', () => ({
+	getChatServices: getChatServicesMock,
+	toChatErrorResponse: (error: unknown) =>
+		new Response(
+			JSON.stringify({
+				error: error instanceof Error ? error.message : 'Unknown error',
+			}),
+			{ status: 500, headers: { 'content-type': 'application/json' } },
+		),
+	normalizeMessageBody: (raw: Record<string, unknown>) => {
+		if (typeof raw.text === 'string' && raw.text.length > 0) {
+			return {
+				text: raw.text,
+				parentMessageId:
+					typeof raw.parentMessageId === 'string' ? raw.parentMessageId : undefined,
+				toolOverrides:
+					raw.toolOverrides && typeof raw.toolOverrides === 'object'
+						? (raw.toolOverrides as Record<string, boolean>)
+						: undefined,
+				attachments: undefined,
+			};
+		}
+		const messages = Array.isArray(raw.messages)
+			? (raw.messages as Array<{ role?: string; parts?: Array<{ type?: string; text?: string }> }>)
+			: [];
+		const lastUser = [...messages].reverse().find((message) => message.role === 'user');
+		const text =
+			lastUser?.parts
+				?.filter((part) => part.type === 'text' && typeof part.text === 'string')
+				.map((part) => part.text as string)
+				.join('\n') ?? '';
+		return {
+			text,
+			parentMessageId:
+				typeof raw.parentMessageId === 'string' ? raw.parentMessageId : undefined,
+			toolOverrides:
+				raw.toolOverrides && typeof raw.toolOverrides === 'object'
+					? (raw.toolOverrides as Record<string, boolean>)
+					: undefined,
+			attachments: undefined,
+		};
+	},
+}));
 
 describe('chat stream route', () => {
 	beforeEach(() => {

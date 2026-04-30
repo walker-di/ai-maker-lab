@@ -14,5 +14,9 @@
     "build:desktop-app": "bun run --filter ui prepack && cd apps/desktop-app && bun run build",
     "build:ui": "bun run --filter ui prepack",
     "dev:domain": "bun run --filter domain dev"
+  },
+  "devDependencies": {
+    "@ai-sdk/svelte": "^4.0.170",
+    "paneforge": "^1.0.2"
   }
 }

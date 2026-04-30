@@ -98,9 +98,20 @@ export const StoryboardImageModel = {
 } as const;
 export type StoryboardImageModel = (typeof StoryboardImageModel)[keyof typeof StoryboardImageModel];
 
+export const StoryboardAudioProvider = {
+  Azure: 'azure',
+  HuggingFaceLocal: 'huggingface-local',
+  VibeVoiceLocal: 'vibevoice-local',
+} as const;
+export type StoryboardAudioProvider = (typeof StoryboardAudioProvider)[keyof typeof StoryboardAudioProvider];
+
 export interface StoryboardModelConfig {
   textProvider?: StoryboardTextModelProvider;
   textModel?: StoryboardTextModel;
   imageProvider?: StoryboardImageModelProvider;
   imageModel?: StoryboardImageModel;
+  audioProvider?: StoryboardAudioProvider;
+  audioModel?: string;
+  audioVoice?: string;
+  audioLanguage?: string;
 }

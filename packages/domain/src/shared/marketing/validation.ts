@@ -17,12 +17,17 @@ const StoryboardImageModelSchema = z.enum([
   'black-forest-labs/flux-1.1-pro', 'black-forest-labs/flux-schnell', 'black-forest-labs/flux-dev',
   'stability-ai/sdxl', 'recraft-ai/recraft-v3',
 ]);
+const StoryboardAudioProviderSchema = z.enum(['azure', 'huggingface-local', 'vibevoice-local']);
 
 export const StoryboardModelConfigSchema = z.object({
   textProvider: StoryboardTextModelProviderSchema.optional(),
   textModel: StoryboardTextModelSchema.optional(),
   imageProvider: StoryboardImageModelProviderSchema.optional(),
   imageModel: StoryboardImageModelSchema.optional(),
+  audioProvider: StoryboardAudioProviderSchema.optional(),
+  audioModel: z.string().trim().min(1).optional(),
+  audioVoice: z.string().trim().min(1).optional(),
+  audioLanguage: z.string().trim().min(1).optional(),
 });
 export type StoryboardModelConfigDto = z.infer<typeof StoryboardModelConfigSchema>;
 

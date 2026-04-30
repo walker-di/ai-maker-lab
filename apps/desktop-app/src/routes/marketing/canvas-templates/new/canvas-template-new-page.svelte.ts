@@ -6,21 +6,19 @@ interface CreateNewTemplatePageModelInput {
 }
 
 export function createNewTemplatePageModel({ transport }: CreateNewTemplatePageModelInput) {
-	let name = $state('');
-	let description = $state('');
-	let aspectRatio = $state<CanvasAspectRatio>('16:9');
-	let canvasJson = $state<string | null>(null);
-	let isSaving = $state(false);
-	let errorMessage = $state<string | null>(null);
-
-	const isValid = $derived(name.trim().length > 0);
+	let name = '';
+	let description = '';
+	let aspectRatio: CanvasAspectRatio = '16:9';
+	let canvasJson: string | null = null;
+	let isSaving = false;
+	let errorMessage: string | null = null;
 
 	function updateCanvasData(json: string) {
 		canvasJson = json;
 	}
 
 	async function save(): Promise<boolean> {
-		if (!isValid) {
+		if (name.trim().length === 0) {
 			errorMessage = 'Template name is required.';
 			return false;
 		}
@@ -54,7 +52,7 @@ export function createNewTemplatePageModel({ transport }: CreateNewTemplatePageM
 		set aspectRatio(v: CanvasAspectRatio) { aspectRatio = v; },
 		get canvasJson() { return canvasJson; },
 		get isSaving() { return isSaving; },
-		get isValid() { return isValid; },
+		get isValid() { return name.trim().length > 0; },
 		get errorMessage() { return errorMessage; },
 		updateCanvasData,
 		save,

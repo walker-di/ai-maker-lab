@@ -72,8 +72,7 @@ export function createCanvasService(canvasEl: HTMLCanvasElement, options: Canvas
 
 	function resize(w: number, h: number) {
 		if (!canvas) return;
-		canvas.setWidth(w);
-		canvas.setHeight(h);
+		canvas.setDimensions({ width: w, height: h });
 		canvas.clipPath = new Rect({
 			left: 0, top: 0, width: w, height: h, absolutePositioned: true,
 		});

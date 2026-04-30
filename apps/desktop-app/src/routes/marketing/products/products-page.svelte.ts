@@ -8,14 +8,12 @@ interface CreateProductsPageModelInput {
 }
 
 export function createProductsPageModel({ transport }: CreateProductsPageModelInput) {
-	let products = $state<Product[]>([]);
-	let selectedProduct = $state<Product | undefined>();
-	let isFormOpen = $state(false);
-	let isLoading = $state(false);
-	let hasLoaded = $state(false);
-	let errorMessage = $state<string | null>(null);
-
-	const hasProducts = $derived(products.length > 0);
+	let products: Product[] = [];
+	let selectedProduct: Product | undefined;
+	let isFormOpen = false;
+	let isLoading = false;
+	let hasLoaded = false;
+	let errorMessage: string | null = null;
 
 	async function apply(action: () => Promise<void>) {
 		try {
@@ -42,7 +40,7 @@ export function createProductsPageModel({ transport }: CreateProductsPageModelIn
 		get isFormOpen() { return isFormOpen; },
 		get isLoading() { return isLoading; },
 		get hasLoaded() { return hasLoaded; },
-		get hasProducts() { return hasProducts; },
+		get hasProducts() { return products.length > 0; },
 		get errorMessage() { return errorMessage; },
 
 		async loadInitial() {

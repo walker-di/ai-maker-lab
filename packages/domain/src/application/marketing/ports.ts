@@ -157,7 +157,7 @@ export interface IMarketingImageGenerationGateway {
 }
 
 export interface INarrationAudioGateway {
-  synthesize(text: string, voice: string, lang?: string): Promise<{ audioUrl: string; durationMs: number }>;
+  synthesize(text: string, voice?: string, lang?: string, options?: { provider?: string; model?: string }): Promise<{ audioUrl: string; durationMs: number }>;
   listVoices(): Promise<{ id: string; name: string; lang: string; gender: string }[]>;
 }
 

@@ -9,15 +9,13 @@ interface CreateProductDetailPageModelInput {
 }
 
 export function createProductDetailPageModel({ productId, transport }: CreateProductDetailPageModelInput) {
-	let product = $state<Product | null>(null);
-	let personas = $state<Persona[]>([]);
-	let selectedPersona = $state<Persona | undefined>();
-	let isPersonaFormOpen = $state(false);
-	let isLoading = $state(false);
-	let hasLoaded = $state(false);
-	let errorMessage = $state<string | null>(null);
-
-	const hasPersonas = $derived(personas.length > 0);
+	let product: Product | null = null;
+	let personas: Persona[] = [];
+	let selectedPersona: Persona | undefined;
+	let isPersonaFormOpen = false;
+	let isLoading = false;
+	let hasLoaded = false;
+	let errorMessage: string | null = null;
 
 	async function apply(action: () => Promise<void>) {
 		try {
@@ -50,7 +48,7 @@ export function createProductDetailPageModel({ productId, transport }: CreatePro
 		get isPersonaFormOpen() { return isPersonaFormOpen; },
 		get isLoading() { return isLoading; },
 		get hasLoaded() { return hasLoaded; },
-		get hasPersonas() { return hasPersonas; },
+		get hasPersonas() { return personas.length > 0; },
 		get errorMessage() { return errorMessage; },
 
 		async loadInitial() {

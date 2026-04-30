@@ -20,6 +20,7 @@ function isZodValidationError(error: unknown): error is { issues: Array<{ path: 
 function isProviderError(error: unknown): boolean {
 	const msg = error instanceof Error ? error.message.toLowerCase() : '';
 	if (msg.includes('quota') || msg.includes('rate limit') || msg.includes('rate_limit')) return true;
+	if (msg.includes('hugging face narration failed') || msg.includes('transformers tts')) return true;
 	if (typeof error !== 'object' || error === null) return false;
 	const issues = 'issues' in error && Array.isArray((error as { issues: unknown }).issues)
 		? (error as { issues: unknown[] }).issues
@@ -48,6 +49,7 @@ import {
 	LocalMarketingAssetStorage,
 } from 'domain/infrastructure';
 import { AzureSpeechNarrationGateway } from './marketing/gateways/AzureSpeechNarrationGateway.js';
+import { HuggingFaceTransformersNarrationGateway } from './marketing/gateways/HuggingFaceTransformersNarrationGateway.js';
 import { OpenAIMarketingMediaGateway } from './marketing/gateways/OpenAIMarketingMediaGateway.js';
 import { ReplicateMarketingMediaGateway } from './marketing/gateways/ReplicateMarketingMediaGateway.js';
 import { FfmpegMarketingVideoExporter } from './marketing/gateways/FfmpegMarketingVideoExporter.js';
@@ -85,6 +87,31 @@ class CompositeMarketingMediaGateway
 	async generate(prompt: string, durationSecs: number): Promise<{ url: string }> {
 		if (!this.replicate) throw new Error('Replicate API key not configured. BGM generation requires Replicate.');
 		return this.replicate.generate(prompt, durationSecs);
+	}
+}
+
+type NarrationProvider = 'azure' | 'huggingface-local' | 'vibevoice-local';
+
+export class CompositeNarrationAudioGateway implements Marketing.INarrationAudioGateway {
+	constructor(
+		private readonly defaultProvider: NarrationProvider,
+		private readonly gateways: Record<NarrationProvider, Marketing.INarrationAudioGateway>,
+	) {}
+
+	async synthesize(
+		text: string,
+		voice?: string,
+		lang?: string,
+		options?: { provider?: string; model?: string },
+	): Promise<{ audioUrl: string; durationMs: number }> {
+		const provider = options?.provider
+			? normalizeNarrationProvider(options.provider, 'narration provider')
+			: this.defaultProvider;
+		return this.gateways[provider].synthesize(text, voice, lang, options);
+	}
+
+	async listVoices(): Promise<{ id: string; name: string; lang: string; gender: string }[]> {
+		return this.gateways[this.defaultProvider].listVoices();
 	}
 }
 
@@ -142,6 +169,39 @@ function parseTextModelConfig(): {
 	};
 }
 
+export function createNarrationAudioGateway(config: {
+	provider?: string;
+	azure: { apiKey: string; region: string; voice: string };
+	assetStorage: Marketing.IMarketingAssetStorage;
+}): Marketing.INarrationAudioGateway {
+	const defaultProvider = normalizeNarrationProvider(config.provider, 'MARKETING_NARRATION_PROVIDER');
+	return new CompositeNarrationAudioGateway(defaultProvider, {
+		azure: new AzureSpeechNarrationGateway({
+			apiKey: config.azure.apiKey,
+			region: config.azure.region,
+			voice: config.azure.voice,
+			assetStorage: config.assetStorage,
+		}),
+		'huggingface-local': new HuggingFaceTransformersNarrationGateway({
+			assetStorage: config.assetStorage,
+			model: process.env.MARKETING_HF_TTS_MODEL,
+			voice: process.env.MARKETING_HF_TTS_VOICE,
+			language: process.env.MARKETING_HF_TTS_LANGUAGE,
+		}),
+		'vibevoice-local': new UnconfiguredNarrationGateway(
+			'VibeVoice local narration is not configured in this app yet. Use MARKETING_NARRATION_PROVIDER=azure or huggingface-local, or add a dedicated VibeVoice adapter.',
+		),
+	});
+}
+
+function normalizeNarrationProvider(provider?: string, source = 'MARKETING_NARRATION_PROVIDER'): NarrationProvider {
+	if (!provider || provider === 'azure') return 'azure';
+	if (provider === 'huggingface-local' || provider === 'vibevoice-local') return provider;
+	throw new MarketingProviderConfigurationError(
+		`Unsupported ${source} "${provider}". Use azure, huggingface-local, or vibevoice-local.`,
+	);
+}
+
 export function getMarketingServices(): Promise<MarketingServices> {
 	if (!marketingServicesPromise) {
 		marketingServicesPromise = (async () => {
@@ -193,11 +253,14 @@ export function getMarketingServices(): Promise<MarketingServices> {
 				const imageGen: Marketing.IMarketingImageGenerationGateway & Marketing.IBackgroundMusicGateway =
 					new CompositeMarketingMediaGateway(openaiImageGateway, replicateGateway);
 
-				const narrationGateway = new AzureSpeechNarrationGateway({
-					apiKey: process.env.AZURE_SPEECH_KEY ?? '',
-					region: process.env.AZURE_SPEECH_REGION ?? 'eastus',
-					voice: process.env.AZURE_SPEECH_VOICE ?? 'en-US-JennyNeural',
-					outputDir: assetRoot,
+				const narrationGateway = createNarrationAudioGateway({
+					provider: process.env.MARKETING_NARRATION_PROVIDER,
+					azure: {
+						apiKey: process.env.AZURE_SPEECH_KEY ?? '',
+						region: process.env.AZURE_SPEECH_REGION ?? 'eastus',
+						voice: process.env.AZURE_SPEECH_VOICE ?? 'en-US-JennyNeural',
+					},
+					assetStorage,
 				});
 
 				const videoExporter = new FfmpegMarketingVideoExporter({
@@ -288,6 +351,18 @@ class UnconfiguredMarketingTextGateway implements Marketing.IMarketingTextGenera
 	generateCreativeText() { return Promise.resolve(this.fail()); }
 	generateMarketingStrategy() { return Promise.resolve(this.fail()); }
 	generateStoryboard() { return Promise.resolve(this.fail()); }
+}
+
+class UnconfiguredNarrationGateway implements Marketing.INarrationAudioGateway {
+	constructor(private readonly message: string) {}
+
+	async synthesize(): Promise<{ audioUrl: string; durationMs: number }> {
+		throw new MarketingProviderConfigurationError(this.message);
+	}
+
+	async listVoices(): Promise<{ id: string; name: string; lang: string; gender: string }[]> {
+		return [];
+	}
 }
 
 export class MarketingProviderConfigurationError extends Error {

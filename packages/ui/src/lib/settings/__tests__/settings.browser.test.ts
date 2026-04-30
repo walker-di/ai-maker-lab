@@ -1,10 +1,16 @@
-import { render } from 'vitest-browser-svelte';
 import { describe, expect, test } from 'vitest';
+
+const describeBrowser = typeof window === 'undefined' ? describe.skip : describe;
 import SettingsFixture from './SettingsFixture.svelte';
 
-describe('Settings UI', () => {
+async function renderFixture(...args: unknown[]) {
+	const { render } = await import('vitest-browser-svelte');
+	return render(args[0] as never, args[1] as never);
+}
+
+describeBrowser('Settings UI', () => {
 	test('renders one row per provider with the correct source badge', async () => {
-		const screen = render(SettingsFixture);
+		const screen = await renderFixture(SettingsFixture);
 
 		const openaiStatus = screen.getByTestId('settings-status-openai');
 		const anthropicStatus = screen.getByTestId('settings-status-anthropic');
@@ -20,7 +26,7 @@ describe('Settings UI', () => {
 	});
 
 	test('shell-set keys disable the input and show the override hint', async () => {
-		const screen = render(SettingsFixture);
+		const screen = await renderFixture(SettingsFixture);
 
 		const anthropicInput = screen.getByTestId('settings-input-anthropic');
 		await expect.element(anthropicInput).toBeDisabled();
@@ -39,7 +45,7 @@ describe('Settings UI', () => {
 	});
 
 	test('show/hide toggle flips the input type between password and text', async () => {
-		const screen = render(SettingsFixture);
+		const screen = await renderFixture(SettingsFixture);
 
 		const openaiInput = screen.getByTestId('settings-input-openai');
 		const reveal = screen.getByTestId('settings-reveal-openai');
@@ -57,7 +63,7 @@ describe('Settings UI', () => {
 	});
 
 	test('invalid validation surfaces a destructive badge and message', async () => {
-		const screen = render(SettingsFixture);
+		const screen = await renderFixture(SettingsFixture);
 
 		const validationBadge = screen.getByTestId('settings-validation-openai');
 		await expect.element(validationBadge.getByText('Invalid')).toBeVisible();
@@ -69,7 +75,7 @@ describe('Settings UI', () => {
 	});
 
 	test('restart hint card renders for the web-mode notice', async () => {
-		const screen = render(SettingsFixture);
+		const screen = await renderFixture(SettingsFixture);
 		await expect.element(screen.getByText('Web mode is read-only')).toBeVisible();
 
 		await expect(screen.getByTestId('settings-fixture')).toMatchScreenshot(

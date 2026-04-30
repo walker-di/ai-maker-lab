@@ -1,22 +1,27 @@
 <script lang="ts">
+	import { Input } from '$ui/components/ui/input/index.js';
 	import { Label } from '$ui/components/ui/label/index.js';
 	import * as Select from '$ui/components/ui/select/index.js';
-
-	interface ModelOption {
-		value: string;
-		label: string;
-		group?: string;
-	}
+	import { createStoryboardModelConfigModel } from './StoryboardModelConfig.svelte.js';
+	import type { StoryboardAudioProvider } from './types.js';
 
 	interface Props {
 		textProvider: string;
 		textModel: string;
 		imageProvider: string;
 		imageModel: string;
+		audioProvider?: StoryboardAudioProvider;
+		audioModel?: string;
+		audioVoice?: string;
+		audioLanguage?: string;
 		onTextProviderChange: (provider: string) => void;
 		onTextModelChange: (model: string) => void;
 		onImageProviderChange: (provider: string) => void;
 		onImageModelChange: (model: string) => void;
+		onAudioProviderChange?: (provider: StoryboardAudioProvider) => void;
+		onAudioModelChange?: (model: string) => void;
+		onAudioVoiceChange?: (voice: string) => void;
+		onAudioLanguageChange?: (language: string) => void;
 		disabled?: boolean;
 	}
 
@@ -25,60 +30,29 @@
 		textModel,
 		imageProvider,
 		imageModel,
+		audioProvider = 'azure',
+		audioModel = '',
+		audioVoice = '',
+		audioLanguage = '',
 		onTextProviderChange,
 		onTextModelChange,
 		onImageProviderChange,
 		onImageModelChange,
+		onAudioProviderChange,
+		onAudioModelChange,
+		onAudioVoiceChange,
+		onAudioLanguageChange,
 		disabled = false,
 	}: Props = $props();
 
-	const textProviderOptions: ModelOption[] = [
-		{ value: 'openai', label: 'OpenAI' },
-		{ value: 'anthropic', label: 'Anthropic' },
-		{ value: 'google', label: 'Google Gemini' },
-	];
-
-	const textModelsByProvider: Record<string, ModelOption[]> = {
-		openai: [
-			{ value: 'gpt-4.1', label: 'GPT-4.1' },
-			{ value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
-			{ value: 'gpt-4o', label: 'GPT-4o' },
-			{ value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-		],
-		anthropic: [
-			{ value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' },
-			{ value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku' },
-		],
-		google: [
-			{ value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-			{ value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-		],
-	};
-
-	const imageProviderOptions: ModelOption[] = [
-		{ value: 'openai', label: 'OpenAI' },
-		{ value: 'replicate', label: 'Replicate' },
-	];
-
-	const imageModelsByProvider: Record<string, ModelOption[]> = {
-		openai: [
-			{ value: 'gpt-image-1', label: 'GPT Image 1' },
-			{ value: 'dall-e-3', label: 'DALL-E 3' },
-		],
-		replicate: [
-			{ value: 'black-forest-labs/flux-1.1-pro', label: 'Flux 1.1 Pro' },
-			{ value: 'black-forest-labs/flux-schnell', label: 'Flux Schnell' },
-			{ value: 'black-forest-labs/flux-dev', label: 'Flux Dev' },
-			{ value: 'stability-ai/sdxl', label: 'SDXL' },
-			{ value: 'recraft-ai/recraft-v3', label: 'Recraft V3' },
-		],
-	};
-
-	const availableTextModels = $derived(textModelsByProvider[textProvider] ?? []);
-	const availableImageModels = $derived(imageModelsByProvider[imageProvider] ?? []);
+	const model = createStoryboardModelConfigModel({
+		get textProvider() { return textProvider; },
+		get imageProvider() { return imageProvider; },
+		get audioProvider() { return audioProvider; },
+	});
 </script>
 
-<div class="grid gap-4 sm:grid-cols-2">
+<div class="grid gap-4 lg:grid-cols-3">
 	<fieldset class="space-y-3 rounded-lg border p-3" {disabled}>
 		<legend class="px-1 text-xs font-medium text-muted-foreground">Text Generation (AI prompts)</legend>
 		<div class="space-y-1">
@@ -90,10 +64,10 @@
 				{disabled}
 			>
 				<Select.Trigger id="text-provider" class="w-full">
-					{textProviderOptions.find((o) => o.value === textProvider)?.label ?? 'Select provider'}
+					{model.textProviderOptions.find((o) => o.value === textProvider)?.label ?? 'Select provider'}
 				</Select.Trigger>
 				<Select.Content>
-					{#each textProviderOptions as opt (opt.value)}
+					{#each model.textProviderOptions as opt (opt.value)}
 						<Select.Item value={opt.value}>{opt.label}</Select.Item>
 					{/each}
 				</Select.Content>
@@ -108,10 +82,10 @@
 				{disabled}
 			>
 				<Select.Trigger id="text-model" class="w-full">
-					{availableTextModels.find((o) => o.value === textModel)?.label ?? 'Select model'}
+					{model.availableTextModels.find((o) => o.value === textModel)?.label ?? 'Select model'}
 				</Select.Trigger>
 				<Select.Content>
-					{#each availableTextModels as opt (opt.value)}
+					{#each model.availableTextModels as opt (opt.value)}
 						<Select.Item value={opt.value}>{opt.label}</Select.Item>
 					{/each}
 				</Select.Content>
@@ -130,10 +104,10 @@
 				{disabled}
 			>
 				<Select.Trigger id="image-provider" class="w-full">
-					{imageProviderOptions.find((o) => o.value === imageProvider)?.label ?? 'Select provider'}
+					{model.imageProviderOptions.find((o) => o.value === imageProvider)?.label ?? 'Select provider'}
 				</Select.Trigger>
 				<Select.Content>
-					{#each imageProviderOptions as opt (opt.value)}
+					{#each model.imageProviderOptions as opt (opt.value)}
 						<Select.Item value={opt.value}>{opt.label}</Select.Item>
 					{/each}
 				</Select.Content>
@@ -148,14 +122,74 @@
 				{disabled}
 			>
 				<Select.Trigger id="image-model" class="w-full">
-					{availableImageModels.find((o) => o.value === imageModel)?.label ?? 'Select model'}
+					{model.availableImageModels.find((o) => o.value === imageModel)?.label ?? 'Select model'}
 				</Select.Trigger>
 				<Select.Content>
-					{#each availableImageModels as opt (opt.value)}
+					{#each model.availableImageModels as opt (opt.value)}
 						<Select.Item value={opt.value}>{opt.label}</Select.Item>
 					{/each}
 				</Select.Content>
 			</Select.Root>
+		</div>
+	</fieldset>
+
+	<fieldset class="space-y-3 rounded-lg border p-3" {disabled} aria-describedby="audio-config-help">
+		<legend class="px-1 text-xs font-medium text-muted-foreground">Narration Audio</legend>
+		<p id="audio-config-help" class="text-xs text-muted-foreground">
+			Generate narration with the selected speech provider. Leave model, voice, or language blank to use server defaults.
+		</p>
+		<div class="space-y-1">
+			<Label for="audio-provider">Provider</Label>
+			<Select.Root
+				type="single"
+				value={audioProvider}
+				onValueChange={(v) => { if (v) onAudioProviderChange?.(v as StoryboardAudioProvider); }}
+				{disabled}
+			>
+				<Select.Trigger id="audio-provider" class="w-full" aria-label="Narration audio provider">
+					{model.selectedAudioProviderLabel}
+				</Select.Trigger>
+				<Select.Content>
+					{#each model.audioProviderOptions as opt (opt.value)}
+						<Select.Item value={opt.value}>{opt.label}</Select.Item>
+					{/each}
+				</Select.Content>
+			</Select.Root>
+		</div>
+		<div class="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+			<div class="space-y-1">
+				<Label for="audio-model">Audio model</Label>
+				<Input
+					id="audio-model"
+					value={audioModel}
+					oninput={(event) => onAudioModelChange?.(event.currentTarget.value)}
+					placeholder="Server default"
+					aria-label="Narration audio model"
+					{disabled}
+				/>
+			</div>
+			<div class="space-y-1">
+				<Label for="audio-voice">Voice</Label>
+				<Input
+					id="audio-voice"
+					value={audioVoice}
+					oninput={(event) => onAudioVoiceChange?.(event.currentTarget.value)}
+					placeholder="Server default"
+					aria-label="Narration voice"
+					{disabled}
+				/>
+			</div>
+			<div class="space-y-1">
+				<Label for="audio-language">Language</Label>
+				<Input
+					id="audio-language"
+					value={audioLanguage}
+					oninput={(event) => onAudioLanguageChange?.(event.currentTarget.value)}
+					placeholder="Server default"
+					aria-label="Narration language"
+					{disabled}
+				/>
+			</div>
 		</div>
 	</fieldset>
 </div>

@@ -622,7 +622,12 @@ export class StoryboardService {
     }
     if (assetType === 'narrationAudio') {
       if (!this.narration) throw new Error('Narration generation is not configured.');
-      return (await this.narration.synthesize(frame.narration, 'en-US-JennyNeural')).audioUrl;
+      return (await this.narration.synthesize(
+        frame.narration,
+        modelConfig?.audioVoice,
+        modelConfig?.audioLanguage,
+        { provider: modelConfig?.audioProvider, model: modelConfig?.audioModel },
+      )).audioUrl;
     }
     if (!this.bgm) throw new Error('BGM generation is not configured.');
     return (await this.bgm.generate(frame.bgmPrompt, Math.max(1, Math.round((frame.durationMs ?? 5000) / 1000)))).url;

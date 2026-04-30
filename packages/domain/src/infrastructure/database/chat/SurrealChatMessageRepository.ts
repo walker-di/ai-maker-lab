@@ -42,12 +42,21 @@ function toMessage(record: MessageRecord): ChatMessage {
 }
 
 export class SurrealChatMessageRepository implements IChatMessageRepository {
+  private lastCreatedAtMs = 0;
+
   constructor(private readonly db: IDbClient) {}
+
+  private nextCreatedAtIso(): string {
+    const now = Date.now();
+    const next = now <= this.lastCreatedAtMs ? this.lastCreatedAtMs + 1 : now;
+    this.lastCreatedAtMs = next;
+    return new Date(next).toISOString();
+  }
 
   async listByThread(threadId: string): Promise<ChatMessage[]> {
     try {
       const [records = []] = await this.db.query<MessageRecord[]>(
-        `SELECT * FROM ${TABLE} WHERE threadId = $threadId ORDER BY createdAt ASC;`,
+        `SELECT * FROM ${TABLE} WHERE threadId = $threadId ORDER BY createdAt ASC, id ASC;`,
         { threadId },
       );
       return records.map(toMessage);
@@ -88,7 +97,7 @@ export class SurrealChatMessageRepository implements IChatMessageRepository {
         parts: input.parts ?? [],
         attachments: input.attachments ?? [],
         toolInvocations: input.toolInvocations ?? [],
-        createdAt: new Date().toISOString(),
+        createdAt: this.nextCreatedAtIso(),
       },
     );
 
@@ -99,7 +108,7 @@ export class SurrealChatMessageRepository implements IChatMessageRepository {
   async listReplies(parentMessageId: string): Promise<ChatMessage[]> {
     try {
       const [records = []] = await this.db.query<MessageRecord[]>(
-        `SELECT * FROM ${TABLE} WHERE parentMessageId = $parentMessageId ORDER BY createdAt ASC;`,
+        `SELECT * FROM ${TABLE} WHERE parentMessageId = $parentMessageId ORDER BY createdAt ASC, id ASC;`,
         { parentMessageId },
       );
       return records.map(toMessage);

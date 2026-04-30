@@ -6,18 +6,13 @@ interface CreateSceneEditorPageModelInput {
 }
 
 export function createSceneEditorPageModel({ transport }: CreateSceneEditorPageModelInput) {
-	let scenes = $state<Scene[]>([]);
-	let activeSceneId = $state<string | null>(null);
-	let clips = $state<Clip[]>([]);
-	let storyId = $state<string | null>(null);
-	let isLoading = $state(false);
-	let isSaving = $state(false);
-	let errorMessage = $state<string | null>(null);
-
-	const orderedScenes = $derived([...scenes].sort((a, b) => a.orderIndex - b.orderIndex));
-	const activeScene = $derived(scenes.find((s) => s.id === activeSceneId) ?? null);
-	const orderedClips = $derived([...clips].sort((a, b) => a.orderIndex - b.orderIndex));
-	const hasScenes = $derived(scenes.length > 0);
+	let scenes: Scene[] = [];
+	let activeSceneId: string | null = null;
+	let clips: Clip[] = [];
+	let storyId: string | null = null;
+	let isLoading = false;
+	let isSaving = false;
+	let errorMessage: string | null = null;
 
 	async function apply(action: () => Promise<void>) {
 		try {
@@ -98,13 +93,13 @@ export function createSceneEditorPageModel({ transport }: CreateSceneEditorPageM
 	}
 
 	return {
-		get scenes() { return orderedScenes; },
-		get activeScene() { return activeScene; },
+		get scenes() { return [...scenes].sort((a, b) => a.orderIndex - b.orderIndex); },
+		get activeScene() { return scenes.find((s) => s.id === activeSceneId) ?? null; },
 		get activeSceneId() { return activeSceneId; },
-		get clips() { return orderedClips; },
+		get clips() { return [...clips].sort((a, b) => a.orderIndex - b.orderIndex); },
 		get isLoading() { return isLoading; },
 		get isSaving() { return isSaving; },
-		get hasScenes() { return hasScenes; },
+		get hasScenes() { return scenes.length > 0; },
 		get errorMessage() { return errorMessage; },
 		get storyId() { return storyId; },
 		loadScenes,

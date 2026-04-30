@@ -8,6 +8,7 @@ import {
 const BASE = '/api/marketing';
 
 let fetchMock: ReturnType<typeof vi.fn>;
+const originalFetch = globalThis.fetch;
 
 function ok(data: unknown, status = 200) {
 	return new Response(JSON.stringify(data), {
@@ -25,10 +26,11 @@ function errorResponse(status: number, body: { error: string }) {
 
 beforeEach(() => {
 	fetchMock = vi.fn();
-	vi.stubGlobal('fetch', fetchMock);
+	(globalThis as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch;
 });
 
 afterEach(() => {
+	(globalThis as { fetch: typeof fetch }).fetch = originalFetch;
 	vi.restoreAllMocks();
 });
 

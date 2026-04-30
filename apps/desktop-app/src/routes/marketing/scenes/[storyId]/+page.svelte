@@ -14,7 +14,7 @@
 	import { m } from '$lib/paraglide/messages.js';
 	import { createSceneEditorPage } from '../scene-editor-page.composition.js';
 
-	const storyId = $derived($pageStore.params.storyId);
+	const storyId = $derived($pageStore.params.storyId ?? '');
 	const page = createSceneEditorPage(storyId);
 	let editorRef: ReturnType<typeof CanvasEditor> | undefined = $state();
 

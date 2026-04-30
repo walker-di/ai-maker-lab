@@ -1,15 +1,22 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-const getMarketingServicesMock = vi.hoisted(() => vi.fn());
+const hoisted = (
+	(vi as unknown as { hoisted?: <T>(factory: () => T) => T }).hoisted ??
+	((factory: () => unknown) => factory())
+) as <T>(factory: () => T) => T;
 
-vi.mock('$lib/server/marketing-service', async () => {
-	const actual =
-		await vi.importActual<typeof import('$lib/server/marketing-service')>('$lib/server/marketing-service');
-	return {
-		...actual,
-		getMarketingServices: getMarketingServicesMock,
-	};
-});
+const getMarketingServicesMock = hoisted(() => vi.fn());
+
+vi.mock('$lib/server/marketing-service', () => ({
+	getMarketingServices: getMarketingServicesMock,
+	toMarketingErrorResponse: (error: unknown) =>
+		new Response(
+			JSON.stringify({
+				error: error instanceof Error ? error.message : 'Unknown error',
+			}),
+			{ status: 500, headers: { 'content-type': 'application/json' } },
+		),
+}));
 
 function makeProduct(id: string, name: string) {
 	return { id, name, description: '', targetAudience: '', features: [], benefits: [], imageUrl: undefined, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' };

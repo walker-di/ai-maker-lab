@@ -36,18 +36,14 @@ function emptyStatuses(): SettingsProviderKeyStatus[] {
  *   - `invalid` providers keep their dirty draft so the user can fix it.
  */
 export function createSettingsPageModel({ transport }: SettingsPageModelInput) {
-	let statuses = $state<SettingsProviderKeyStatus[]>(emptyStatuses());
-	let drafts = $state<Partial<Record<SettingsProviderId, string>>>({});
-	let validations = $state<Partial<Record<SettingsProviderId, SettingsProviderValidation>>>({});
-	let isLoading = $state(false);
-	let isSaving = $state(false);
-	let hasLoaded = $state(false);
-	let errorMessage = $state<string | null>(null);
-	let lastSaveOutcome = $state<SaveOutcome | null>(null);
-
-	const hasDirtyDraft = $derived(
-		Object.values(drafts).some((value) => value !== undefined),
-	);
+	let statuses: SettingsProviderKeyStatus[] = emptyStatuses();
+	let drafts: Partial<Record<SettingsProviderId, string>> = {};
+	let validations: Partial<Record<SettingsProviderId, SettingsProviderValidation>> = {};
+	let isLoading = false;
+	let isSaving = false;
+	let hasLoaded = false;
+	let errorMessage: string | null = null;
+	let lastSaveOutcome: SaveOutcome | null = null;
 
 	async function load(): Promise<boolean> {
 		isLoading = true;
@@ -180,7 +176,7 @@ export function createSettingsPageModel({ transport }: SettingsPageModelInput) {
 			return errorMessage;
 		},
 		get hasDirtyDraft() {
-			return hasDirtyDraft;
+			return Object.values(drafts).some((value) => value !== undefined);
 		},
 		get lastSaveOutcome() {
 			return lastSaveOutcome;

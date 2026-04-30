@@ -17,7 +17,7 @@
 {#if frameCount > 0}
 	<div class="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-4 py-2.5">
 		<span class="mr-1 text-xs font-medium text-muted-foreground">Batch:</span>
-		<Button type="button" variant="outline" size="sm" class="gap-1.5 text-xs" onclick={onBatchGenerate} {disabled}>
+		<Button type="button" variant="outline" size="sm" class="gap-1.5 text-xs" onclick={onBatchGenerate} {disabled} aria-label="Generate all missing storyboard assets including narration audio">
 			<ImageIcon class="h-3 w-3" />
 			Generate all missing assets
 		</Button>

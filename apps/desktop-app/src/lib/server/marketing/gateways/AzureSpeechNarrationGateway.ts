@@ -1,13 +1,11 @@
 import * as SpeechSDK from 'microsoft-cognitiveservices-speech-sdk';
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
 import type { Marketing } from 'domain/application';
 
 interface AzureSpeechNarrationGatewayConfig {
   apiKey: string;
   region: string;
   voice: string;
-  outputDir: string;
+  assetStorage: Marketing.IMarketingAssetStorage;
 }
 
 const AZURE_NEURAL_VOICES = [
@@ -34,7 +32,7 @@ export class AzureSpeechNarrationGateway implements Marketing.INarrationAudioGat
 
   async synthesize(
     text: string,
-    voice: string,
+    voice?: string,
     lang?: string,
   ): Promise<{ audioUrl: string; durationMs: number }> {
     const voiceName = voice || this.config.voice;
@@ -80,16 +78,13 @@ export class AzureSpeechNarrationGateway implements Marketing.INarrationAudioGat
       });
 
       const audioBuffer = Buffer.from(result.audioData);
-      await fs.mkdir(this.config.outputDir, { recursive: true });
-
       const filename = `narration-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
-      const filePath = path.join(this.config.outputDir, filename);
-      await fs.writeFile(filePath, audioBuffer);
+      const saved = await this.config.assetStorage.saveAudio(audioBuffer, filename);
 
       // audioDuration is in 100-nanosecond ticks; convert to ms
       const durationMs = Math.round(result.audioDuration / 10000);
 
-      return { audioUrl: filePath, durationMs };
+      return { audioUrl: saved.url, durationMs };
     } finally {
       if (synthesizer) synthesizer.close();
     }

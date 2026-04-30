@@ -2,14 +2,7 @@
 	import { Button } from '$ui/components/ui/button/index.js';
 	import StoryboardFrameCard from './StoryboardFrameCard.svelte';
 	import StoryboardModelConfig from './StoryboardModelConfig.svelte';
-	import type { StoryboardAssetType, StoryboardDetail, StoryboardPromptType } from './types.js';
-
-	export interface StoryboardModelConfigState {
-		textProvider: string;
-		textModel: string;
-		imageProvider: string;
-		imageModel: string;
-	}
+	import type { StoryboardAssetType, StoryboardDetail, StoryboardModelConfigState, StoryboardPromptType } from './types.js';
 
 	interface Props {
 		storyboard: StoryboardDetail;
@@ -55,10 +48,18 @@
 			textModel={props.modelConfig.textModel}
 			imageProvider={props.modelConfig.imageProvider}
 			imageModel={props.modelConfig.imageModel}
+			audioProvider={props.modelConfig.audioProvider}
+			audioModel={props.modelConfig.audioModel}
+			audioVoice={props.modelConfig.audioVoice}
+			audioLanguage={props.modelConfig.audioLanguage}
 			onTextProviderChange={(v) => props.onModelConfigChange?.({ ...props.modelConfig!, textProvider: v, textModel: '' })}
 			onTextModelChange={(v) => props.onModelConfigChange?.({ ...props.modelConfig!, textModel: v })}
 			onImageProviderChange={(v) => props.onModelConfigChange?.({ ...props.modelConfig!, imageProvider: v, imageModel: '' })}
 			onImageModelChange={(v) => props.onModelConfigChange?.({ ...props.modelConfig!, imageModel: v })}
+			onAudioProviderChange={(v) => props.onModelConfigChange?.({ ...props.modelConfig!, audioProvider: v })}
+			onAudioModelChange={(v) => props.onModelConfigChange?.({ ...props.modelConfig!, audioModel: v })}
+			onAudioVoiceChange={(v) => props.onModelConfigChange?.({ ...props.modelConfig!, audioVoice: v })}
+			onAudioLanguageChange={(v) => props.onModelConfigChange?.({ ...props.modelConfig!, audioLanguage: v })}
 			disabled={props.isLoading}
 		/>
 	{/if}

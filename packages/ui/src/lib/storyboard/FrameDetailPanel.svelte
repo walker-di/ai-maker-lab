@@ -99,7 +99,7 @@
 			<Button type="button" size="sm" class="h-7 text-xs" onclick={() => props.onSaveText(props.frame.id, { title, narration, mainImagePrompt, backgroundImagePrompt, bgmPrompt })} disabled={props.disabled}>Save</Button>
 			<Button type="button" variant="outline" size="sm" class="h-7 text-xs" onclick={() => props.onGenerateAsset(props.frame.id, 'mainImage')} disabled={props.disabled}>Gen image</Button>
 			<Button type="button" variant="outline" size="sm" class="h-7 text-xs" onclick={() => props.onGenerateAsset(props.frame.id, 'backgroundImage')} disabled={props.disabled}>Gen background</Button>
-			<Button type="button" variant="outline" size="sm" class="h-7 text-xs" onclick={() => props.onGenerateAsset(props.frame.id, 'narrationAudio')} disabled={props.disabled}>Gen audio</Button>
+			<Button type="button" variant="outline" size="sm" class="h-7 text-xs" onclick={() => props.onGenerateAsset(props.frame.id, 'narrationAudio')} disabled={props.disabled} aria-label={`Generate narration audio for frame ${props.frameIndex + 1}`}>Gen audio</Button>
 			<Button type="button" variant="outline" size="sm" class="h-7 text-xs" onclick={() => props.onGenerateAsset(props.frame.id, 'bgm')} disabled={props.disabled}>Gen BGM</Button>
 		</div>
 

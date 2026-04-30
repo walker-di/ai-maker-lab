@@ -144,6 +144,34 @@ describe('storyboard page model', () => {
 		expect(model.selected?.frames.length).toBe(2);
 	});
 
+	test('passes audio model config when generating narration assets', async () => {
+		const transport = createTransport();
+		const generateFrameAssetCalls: unknown[] = [];
+		transport.generateFrameAsset = async (_storyboardId, _frameId, _assetType, modelConfig) => {
+			generateFrameAssetCalls.push(modelConfig);
+			return transport.getStoryboard('story-1').then((storyboard) => storyboard.frames[0]);
+		};
+		const model = createStoryboardPageModel(transport);
+		await model.open('story-1');
+		await model.generateFrames({ prompt: 'Rocket', count: 1 });
+		model.modelConfig = {
+			...model.modelConfig,
+			audioProvider: 'huggingface-local',
+			audioModel: 'onnx-community/Kokoro-82M-v1.0-ONNX',
+			audioVoice: 'af_heart',
+			audioLanguage: 'en',
+		};
+
+		await model.generateAsset('frame-1', 'narrationAudio');
+
+		expect(generateFrameAssetCalls[0]).toMatchObject({
+			audioProvider: 'huggingface-local',
+			audioModel: 'onnx-community/Kokoro-82M-v1.0-ONNX',
+			audioVoice: 'af_heart',
+			audioLanguage: 'en',
+		});
+	});
+
 	test('autoAssignTransitions updates all frames', async () => {
 		const model = createStoryboardPageModel(createTransport());
 		await model.open('story-1');

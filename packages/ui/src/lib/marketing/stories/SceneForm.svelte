@@ -22,7 +22,7 @@
 	}
 </script>
 
-<form onsubmit|preventDefault={handleSubmit} class="flex flex-col gap-4">
+<form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }} class="flex flex-col gap-4">
 	<div class="flex flex-col gap-1.5">
 		<label for="scene-description" class="text-sm font-medium">Description</label>
 		<textarea

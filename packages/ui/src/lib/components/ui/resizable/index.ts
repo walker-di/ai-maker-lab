@@ -1,4 +1,4 @@
-import { Pane } from "paneforge";
+import { Pane } from "../../../../../node_modules/paneforge/dist/index.js";
 import Handle from "./resizable-handle.svelte";
 import PaneGroup from "./resizable-pane-group.svelte";
 

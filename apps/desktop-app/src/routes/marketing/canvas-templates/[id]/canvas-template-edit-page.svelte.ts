@@ -7,16 +7,14 @@ interface CreateEditTemplatePageModelInput {
 }
 
 export function createEditTemplatePageModel({ transport }: CreateEditTemplatePageModelInput) {
-	let template = $state<CanvasTemplate | null>(null);
-	let name = $state('');
-	let description = $state('');
-	let aspectRatio = $state<CanvasAspectRatio>('16:9');
-	let canvasJson = $state<string | null>(null);
-	let isLoading = $state(false);
-	let isSaving = $state(false);
-	let errorMessage = $state<string | null>(null);
-
-	const isValid = $derived(name.trim().length > 0);
+	let template: CanvasTemplate | null = null;
+	let name = '';
+	let description = '';
+	let aspectRatio: CanvasAspectRatio = '16:9';
+	let canvasJson: string | null = null;
+	let isLoading = false;
+	let isSaving = false;
+	let errorMessage: string | null = null;
 
 	async function load(id: string) {
 		try {
@@ -41,7 +39,7 @@ export function createEditTemplatePageModel({ transport }: CreateEditTemplatePag
 	}
 
 	async function save(): Promise<boolean> {
-		if (!template || !isValid) {
+		if (!template || name.trim().length === 0) {
 			errorMessage = 'Template name is required.';
 			return false;
 		}
@@ -77,7 +75,7 @@ export function createEditTemplatePageModel({ transport }: CreateEditTemplatePag
 		get canvasJson() { return canvasJson; },
 		get isLoading() { return isLoading; },
 		get isSaving() { return isSaving; },
-		get isValid() { return isValid; },
+		get isValid() { return name.trim().length > 0; },
 		get errorMessage() { return errorMessage; },
 		load,
 		updateCanvasData,

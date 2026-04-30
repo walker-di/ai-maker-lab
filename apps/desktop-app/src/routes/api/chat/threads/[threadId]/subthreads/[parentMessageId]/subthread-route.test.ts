@@ -1,17 +1,23 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ChatMessage, ChatSubthread } from 'domain/shared';
 
-const getChatServicesMock = vi.hoisted(() => vi.fn());
+const hoisted = (
+	(vi as unknown as { hoisted?: <T>(factory: () => T) => T }).hoisted ??
+	((factory: () => unknown) => factory())
+) as <T>(factory: () => T) => T;
 
-vi.mock('$lib/server/chat-services', async () => {
-	const actual =
-		await vi.importActual<typeof import('$lib/server/chat-services')>('$lib/server/chat-services');
+const getChatServicesMock = hoisted(() => vi.fn());
 
-	return {
-		...actual,
-		getChatServices: getChatServicesMock,
-	};
-});
+vi.mock('$lib/server/chat-services', () => ({
+	getChatServices: getChatServicesMock,
+	toChatErrorResponse: (error: unknown) =>
+		new Response(
+			JSON.stringify({
+				error: error instanceof Error ? error.message : 'Unknown error',
+			}),
+			{ status: 500, headers: { 'content-type': 'application/json' } },
+		),
+}));
 
 function makeMessage(overrides: Partial<ChatMessage>): ChatMessage {
 	return {

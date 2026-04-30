@@ -44,7 +44,7 @@
 			</p>
 		{/if}
 
-		<form onsubmit|preventDefault={handleSave} class="flex flex-col gap-6">
+		<form onsubmit={(e) => { e.preventDefault(); handleSave(); }} class="flex flex-col gap-6">
 			<div class="grid gap-4 sm:grid-cols-2">
 				<div class="flex flex-col gap-1.5">
 					<label for="name" class="text-sm font-medium">Template Name</label>

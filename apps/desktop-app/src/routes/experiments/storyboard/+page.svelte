@@ -95,10 +95,18 @@
 				textModel={model.modelConfig.textModel}
 				imageProvider={model.modelConfig.imageProvider}
 				imageModel={model.modelConfig.imageModel}
+				audioProvider={model.modelConfig.audioProvider}
+				audioModel={model.modelConfig.audioModel}
+				audioVoice={model.modelConfig.audioVoice}
+				audioLanguage={model.modelConfig.audioLanguage}
 				onTextProviderChange={(v) => model.modelConfig = { ...model.modelConfig, textProvider: v, textModel: '' }}
 				onTextModelChange={(v) => model.modelConfig = { ...model.modelConfig, textModel: v }}
 				onImageProviderChange={(v) => model.modelConfig = { ...model.modelConfig, imageProvider: v, imageModel: '' }}
 				onImageModelChange={(v) => model.modelConfig = { ...model.modelConfig, imageModel: v }}
+				onAudioProviderChange={(v) => model.modelConfig = { ...model.modelConfig, audioProvider: v }}
+				onAudioModelChange={(v) => model.modelConfig = { ...model.modelConfig, audioModel: v }}
+				onAudioVoiceChange={(v) => model.modelConfig = { ...model.modelConfig, audioVoice: v }}
+				onAudioLanguageChange={(v) => model.modelConfig = { ...model.modelConfig, audioLanguage: v }}
 				disabled={model.isLoading}
 			/>
 		{/if}

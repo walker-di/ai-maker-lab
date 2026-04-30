@@ -7,33 +7,55 @@ export interface StoryboardModelConfigState {
 	textModel: string;
 	imageProvider: string;
 	imageModel: string;
+	audioProvider?: Marketing.StoryboardAudioProvider;
+	audioModel?: string;
+	audioVoice?: string;
+	audioLanguage?: string;
+}
+
+function optionalText(value: string | undefined): string | undefined {
+	const trimmed = value?.trim();
+	return trimmed ? trimmed : undefined;
+}
+
+function toStoryboardModelConfig(config: StoryboardModelConfigState): Marketing.StoryboardModelConfig {
+	return {
+		textProvider: optionalText(config.textProvider) as Marketing.StoryboardTextModelProvider | undefined,
+		textModel: optionalText(config.textModel) as Marketing.StoryboardTextModel | undefined,
+		imageProvider: optionalText(config.imageProvider) as Marketing.StoryboardImageModelProvider | undefined,
+		imageModel: optionalText(config.imageModel) as Marketing.StoryboardImageModel | undefined,
+		audioProvider: config.audioProvider,
+		audioModel: optionalText(config.audioModel),
+		audioVoice: optionalText(config.audioVoice),
+		audioLanguage: optionalText(config.audioLanguage),
+	};
 }
 
 export function createStoryboardPageModel(transport: StoryboardTransport) {
-	let storyboards = $state<Awaited<ReturnType<StoryboardTransport['listStoryboards']>>>([]);
-	let selected = $state<Awaited<ReturnType<StoryboardTransport['getStoryboard']>> | null>(null);
-	let isLoading = $state(false);
-	let initialLoadStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
-	let initialLoadError = $state<StoryboardTransportError | null>(null);
-	let operationError = $state<string | null>(null);
-	let createDialogOpen = $state(false);
-	let addFramesDialogOpen = $state(false);
-	let exportStatus = $state<'idle' | 'exporting' | 'done' | 'error'>('idle');
-	let exportUrl = $state<string | undefined>();
-	let viewMode = $state<'timeline' | 'grid' | 'preview'>('timeline');
-	let selectedFrameIndex = $state(0);
-	let isPlaying = $state(false);
-	let playbackTimer = $state<ReturnType<typeof setInterval> | null>(null);
-	let modelConfig = $state<StoryboardModelConfigState>({
+	let storyboards: Awaited<ReturnType<StoryboardTransport['listStoryboards']>> = [];
+	let selected: Awaited<ReturnType<StoryboardTransport['getStoryboard']>> | null = null;
+	let isLoading = false;
+	let initialLoadStatus: 'idle' | 'loading' | 'ready' | 'error' = 'idle';
+	let initialLoadError: StoryboardTransportError | null = null;
+	let operationError: string | null = null;
+	let createDialogOpen = false;
+	let addFramesDialogOpen = false;
+	let exportStatus: 'idle' | 'exporting' | 'done' | 'error' = 'idle';
+	let exportUrl: string | undefined;
+	let viewMode: 'timeline' | 'grid' | 'preview' = 'timeline';
+	let selectedFrameIndex = 0;
+	let isPlaying = false;
+	let playbackTimer: ReturnType<typeof setInterval> | null = null;
+	let modelConfig: StoryboardModelConfigState = {
 		textProvider: 'openai',
 		textModel: 'gpt-4o-mini',
 		imageProvider: 'openai',
 		imageModel: 'gpt-image-1',
-	});
-
-	const isBackendUnavailable = $derived(
-		initialLoadError?.kind === 'backend-unavailable',
-	);
+		audioProvider: 'azure',
+		audioModel: '',
+		audioVoice: '',
+		audioLanguage: '',
+	};
 
 	async function run<T>(fn: () => Promise<T>): Promise<T | undefined> {
 		isLoading = true;
@@ -95,15 +117,7 @@ export function createStoryboardPageModel(transport: StoryboardTransport) {
 
 	async function generateFrames(input: { prompt: string; count: number }) {
 		if (!selected) return;
-		const mc: Marketing.StoryboardModelConfig | undefined =
-			modelConfig.textProvider && modelConfig.textModel
-				? {
-						textProvider: modelConfig.textProvider as Marketing.StoryboardTextModelProvider,
-						textModel: modelConfig.textModel as Marketing.StoryboardTextModel,
-						imageProvider: modelConfig.imageProvider as Marketing.StoryboardImageModelProvider,
-						imageModel: modelConfig.imageModel as Marketing.StoryboardImageModel,
-					}
-				: undefined;
+		const mc = toStoryboardModelConfig(modelConfig);
 		await run(async () => { selected = await transport.generateFrames(selected!.id, { ...input, modelConfig: mc }); });
 		addFramesDialogOpen = false;
 		await load();
@@ -138,15 +152,7 @@ export function createStoryboardPageModel(transport: StoryboardTransport) {
 
 	async function generateAsset(frameId: string, assetType: 'mainImage' | 'backgroundImage' | 'narrationAudio' | 'bgm') {
 		if (!selected) return;
-		const mc: Marketing.StoryboardModelConfig | undefined =
-			modelConfig.imageProvider && modelConfig.imageModel
-				? {
-						imageProvider: modelConfig.imageProvider as Marketing.StoryboardImageModelProvider,
-						imageModel: modelConfig.imageModel as Marketing.StoryboardImageModel,
-						textProvider: modelConfig.textProvider as Marketing.StoryboardTextModelProvider,
-						textModel: modelConfig.textModel as Marketing.StoryboardTextModel,
-					}
-				: undefined;
+		const mc = toStoryboardModelConfig(modelConfig);
 		await run(async () => { await transport.generateFrameAsset(selected!.id, frameId, assetType, mc); await refreshSelected(); });
 	}
 
@@ -166,8 +172,6 @@ export function createStoryboardPageModel(transport: StoryboardTransport) {
 			exportStatus = 'error';
 		}
 	}
-
-	const selectedFrame = $derived(selected?.frames[selectedFrameIndex] ?? null);
 
 	function selectFrame(index: number) {
 		if (selected && index >= 0 && index < selected.frames.length) {
@@ -238,7 +242,7 @@ export function createStoryboardPageModel(transport: StoryboardTransport) {
 		get initialLoadStatus() { return initialLoadStatus; },
 		get initialLoadError() { return initialLoadError; },
 		get operationError() { return operationError; },
-		get isBackendUnavailable() { return isBackendUnavailable; },
+		get isBackendUnavailable() { return initialLoadError?.kind === 'backend-unavailable'; },
 		get createDialogOpen() { return createDialogOpen; },
 		set createDialogOpen(v) { createDialogOpen = v; },
 		get addFramesDialogOpen() { return addFramesDialogOpen; },
@@ -251,7 +255,7 @@ export function createStoryboardPageModel(transport: StoryboardTransport) {
 		get viewMode() { return viewMode; },
 		set viewMode(v) { viewMode = v; },
 		get selectedFrameIndex() { return selectedFrameIndex; },
-		get selectedFrame() { return selectedFrame; },
+		get selectedFrame() { return selected?.frames[selectedFrameIndex] ?? null; },
 		get isPlaying() { return isPlaying; },
 		load,
 		create,

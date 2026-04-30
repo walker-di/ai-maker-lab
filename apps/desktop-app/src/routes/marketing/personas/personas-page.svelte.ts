@@ -8,15 +8,13 @@ interface CreatePersonasPageModelInput {
 }
 
 export function createPersonasPageModel({ transport }: CreatePersonasPageModelInput) {
-	let products = $state<Product[]>([]);
-	let personas = $state<Persona[]>([]);
-	let selectedPersona = $state<Persona | undefined>();
-	let isFormOpen = $state(false);
-	let isLoading = $state(false);
-	let hasLoaded = $state(false);
-	let errorMessage = $state<string | null>(null);
-
-	const hasPersonas = $derived(personas.length > 0);
+	let products: Product[] = [];
+	let personas: Persona[] = [];
+	let selectedPersona: Persona | undefined;
+	let isFormOpen = false;
+	let isLoading = false;
+	let hasLoaded = false;
+	let errorMessage: string | null = null;
 
 	async function apply(action: () => Promise<void>) {
 		try {
@@ -48,7 +46,7 @@ export function createPersonasPageModel({ transport }: CreatePersonasPageModelIn
 		get isFormOpen() { return isFormOpen; },
 		get isLoading() { return isLoading; },
 		get hasLoaded() { return hasLoaded; },
-		get hasPersonas() { return hasPersonas; },
+		get hasPersonas() { return personas.length > 0; },
 		get errorMessage() { return errorMessage; },
 
 		async loadInitial() { await apply(refresh); },

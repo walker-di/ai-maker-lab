@@ -13,6 +13,8 @@ interface FfmpegMarketingVideoExporterConfig {
   publicBaseUrl: string;
 }
 
+const ALLOWED_MARKETING_ASSET_KINDS = new Set(['images', 'audio', 'exports']);
+
 export class FfmpegMarketingVideoExporter implements Marketing.IVideoExporter {
   private readonly ffmpeg: string;
 
@@ -34,13 +36,13 @@ export class FfmpegMarketingVideoExporter implements Marketing.IVideoExporter {
     const args: string[] = ['-y', '-hide_banner', '-loglevel', 'warning'];
 
     if (imageUrl) {
-      args.push('-loop', '1', '-i', imageUrl);
+      args.push('-loop', '1', '-i', this.resolveInputUrl(imageUrl));
     } else {
       args.push('-f', 'lavfi', '-i', 'color=black:s=1280x720:r=30');
     }
 
     if (narrationUrl) {
-      args.push('-i', narrationUrl);
+      args.push('-i', this.resolveInputUrl(narrationUrl));
       args.push('-c:v', 'libx264', '-c:a', 'aac');
       args.push('-shortest');
     } else {
@@ -85,7 +87,7 @@ export class FfmpegMarketingVideoExporter implements Marketing.IVideoExporter {
       await execFileAsync(this.ffmpeg, [
         '-y', '-hide_banner', '-loglevel', 'warning',
         '-i', concatenatedPath,
-        '-stream_loop', '-1', '-i', bgmUrl,
+        '-stream_loop', '-1', '-i', this.resolveInputUrl(bgmUrl),
         '-filter_complex', '[1:a]volume=0.3[bgm];[0:a][bgm]amix=inputs=2:duration=first[aout]',
         '-map', '0:v', '-map', '[aout]',
         '-c:v', 'copy', '-c:a', 'aac',
@@ -102,5 +104,59 @@ export class FfmpegMarketingVideoExporter implements Marketing.IVideoExporter {
     ]);
 
     return { videoPath: outputPath, durationMs: totalDurationMs };
+  }
+
+  private resolveInputUrl(input: string): string {
+    return resolveMarketingAssetInputUrl(input, this.config);
+  }
+}
+
+export function resolveMarketingAssetInputUrl(
+  input: string,
+  config: Pick<FfmpegMarketingVideoExporterConfig, 'tempDir' | 'publicBaseUrl'>,
+): string {
+  const publicBaseUrl = config.publicBaseUrl.replace(/\/+$/, '');
+  if (publicBaseUrl && (input === publicBaseUrl || input.startsWith(`${publicBaseUrl}/`))) {
+    return resolvePublicMarketingAssetPath(input.slice(publicBaseUrl.length), config.tempDir);
+  }
+
+  if (input.startsWith('file://')) return new URL(input).pathname;
+  if (input.startsWith('http://') || input.startsWith('https://')) return input;
+
+  return input;
+}
+
+function resolvePublicMarketingAssetPath(rawPath: string, tempDir: string): string {
+  const withoutLeadingSlash = rawPath.replace(/^\/+/, '');
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(withoutLeadingSlash);
+  } catch {
+    throw new Error('Invalid marketing asset URL encoding.');
+  }
+
+  if (!decoded || decoded.includes('\0') || decoded.includes('\\')) {
+    throw new Error('Invalid marketing asset path.');
+  }
+
+  const segments = decoded.split('/');
+  const [kind, ...rest] = segments;
+  if (!ALLOWED_MARKETING_ASSET_KINDS.has(kind) || rest.length === 0) {
+    throw new Error('Invalid marketing asset path.');
+  }
+  if (segments.some((segment) => !segment || segment === '.' || segment === '..')) {
+    throw new Error('Invalid marketing asset path.');
+  }
+
+  const root = path.resolve(tempDir);
+  const resolved = path.resolve(root, ...segments);
+  assertPathInside(resolved, root);
+  return resolved;
+}
+
+function assertPathInside(filePath: string, root: string): void {
+  const relative = path.relative(root, filePath);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error('Marketing asset path resolves outside the asset root.');
   }
 }

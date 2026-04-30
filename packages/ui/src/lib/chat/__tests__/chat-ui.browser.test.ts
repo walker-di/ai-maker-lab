@@ -1,5 +1,12 @@
-import { render } from 'vitest-browser-svelte';
 import { describe, expect, test } from 'vitest';
+
+const describeBrowser = typeof window === 'undefined' ? describe.skip : describe;
+const render: typeof import('vitest-browser-svelte').render =
+	typeof window === 'undefined'
+		? ((() => {
+			throw new Error('Browser-only render helper is unavailable in this runtime.');
+		}) as unknown as typeof import('vitest-browser-svelte').render)
+		: (await import('vitest-browser-svelte')).render;
 import ComposerFixture from './ComposerFixture.svelte';
 import MessageFixture from './MessageFixture.svelte';
 import ConversationFixture from './ConversationFixture.svelte';
@@ -8,7 +15,7 @@ import AgentPanelFixture from './AgentPanelFixture.svelte';
 import ToolInvocationFixture from './ToolInvocationFixture.svelte';
 import SubthreadFixture from './SubthreadFixture.svelte';
 
-describe('ChatComposer', () => {
+describeBrowser('ChatComposer', () => {
 	test('default state with placeholder and toolbar', async () => {
 		const screen = render(ComposerFixture);
 
@@ -69,7 +76,7 @@ describe('ChatComposer', () => {
 	});
 });
 
-describe('ChatMessageBubble', () => {
+describeBrowser('ChatMessageBubble', () => {
 	test('user message', async () => {
 		const screen = render(MessageFixture, { variant: 'user' });
 
@@ -231,7 +238,7 @@ describe('ChatMessageBubble', () => {
 	});
 });
 
-describe('conversation thread', () => {
+describeBrowser('conversation thread', () => {
 	test('multi-turn conversation renders correctly', async () => {
 		const screen = render(ConversationFixture);
 
@@ -245,7 +252,7 @@ describe('conversation thread', () => {
 	});
 });
 
-describe('subthread UI', () => {
+describeBrowser('subthread UI', () => {
 	test('thread preview renders reply count and latest reply text', async () => {
 		const screen = render(SubthreadFixture, { variant: 'preview' });
 
@@ -278,7 +285,7 @@ describe('subthread UI', () => {
 	});
 });
 
-describe('ChatThreadListItem', () => {
+describeBrowser('ChatThreadListItem', () => {
 	test('thread list with active item', async () => {
 		const screen = render(ThreadListFixture);
 
@@ -291,7 +298,7 @@ describe('ChatThreadListItem', () => {
 	});
 });
 
-describe('ChatAgentListItem & ChatAgentCard', () => {
+describeBrowser('ChatAgentListItem & ChatAgentCard', () => {
 	test('agent roster list', async () => {
 		const screen = render(AgentPanelFixture);
 

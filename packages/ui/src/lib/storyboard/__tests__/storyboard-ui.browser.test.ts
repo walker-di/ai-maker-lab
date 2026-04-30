@@ -1,5 +1,12 @@
-import { render } from 'vitest-browser-svelte';
 import { describe, expect, test, vi } from 'vitest';
+
+const describeBrowser = typeof window === 'undefined' ? describe.skip : describe;
+const render: typeof import('vitest-browser-svelte').render =
+	typeof window === 'undefined'
+		? ((() => {
+			throw new Error('Browser-only render helper is unavailable in this runtime.');
+		}) as unknown as typeof import('vitest-browser-svelte').render)
+		: (await import('vitest-browser-svelte')).render;
 import StoryboardList from '../StoryboardList.svelte';
 import StoryboardFrameCard from '../StoryboardFrameCard.svelte';
 
@@ -18,7 +25,7 @@ const frame = {
 	updatedAt: '2026-01-01T00:00:00.000Z',
 };
 
-describe('Storyboard UI', () => {
+describeBrowser('Storyboard UI', () => {
 	test('renders empty state with accessible create action', async () => {
 		const onCreate = vi.fn();
 		const screen = render(StoryboardList, { storyboards: [], onOpen: vi.fn(), onCreate });
