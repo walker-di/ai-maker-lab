@@ -1,10 +1,6 @@
-import type { StoryboardAudioProvider } from './types.js';
+import type { StoryboardAudioProvider, StoryboardNarrationOption } from './types.js';
 
-export interface StoryboardModelOption {
-	value: string;
-	label: string;
-	group?: string;
-}
+export type StoryboardModelOption = StoryboardNarrationOption;
 
 export const textProviderOptions: StoryboardModelOption[] = [
 	{ value: 'openai', label: 'OpenAI' },
@@ -51,6 +47,7 @@ export const imageModelsByProvider: Record<string, StoryboardModelOption[]> = {
 export const audioProviderOptions: Array<StoryboardModelOption & { value: StoryboardAudioProvider }> = [
 	{ value: 'azure', label: 'Azure Speech' },
 	{ value: 'huggingface-local', label: 'Hugging Face local' },
+	{ value: 'vibevoice-local', label: 'VibeVoice local' },
 ];
 
 export function createStoryboardModelConfigModel(input: {

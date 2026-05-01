@@ -1,4 +1,5 @@
 import type { Marketing } from 'domain/application';
+import { AiModels } from 'domain/shared';
 
 type TextToSpeechPipeline = (
 	text: string,
@@ -33,25 +34,6 @@ interface NormalizedAudioOutput {
 
 const DEFAULT_TTS_MODEL = 'Xenova/mms-tts-eng';
 const DEFAULT_TTS_TASK = 'text-to-speech';
-
-type NarrationModelMetadata = {
-	value: string;
-	label: string;
-	languages: Array<{ value: string; label: string }>;
-	voices?: Array<{ value: string; label: string }>;
-	fallbackVoice: { value: string; label: string };
-};
-
-const HF_LOCAL_MODEL_REGISTRY: readonly NarrationModelMetadata[] = [
-	{
-		value: 'Xenova/mms-tts-eng',
-		label: 'MMS TTS English',
-		languages: [{ value: 'en-US', label: 'English (US)' }],
-		fallbackVoice: { value: 'default', label: 'Default voice (model-managed)' },
-	},
-];
-
-const MODEL_METADATA_BY_VALUE = new Map(HF_LOCAL_MODEL_REGISTRY.map((entry) => [entry.value, entry]));
 
 export class HuggingFaceTransformersNarrationGateway implements Marketing.INarrationAudioGateway {
 	private readonly pipelinePromises = new Map<string, Promise<TextToSpeechPipeline>>();
@@ -93,19 +75,20 @@ export class HuggingFaceTransformersNarrationGateway implements Marketing.INarra
 	}
 
 	listModels(): Array<{ value: string; label: string }> {
-		return HF_LOCAL_MODEL_REGISTRY.map((model) => ({ value: model.value, label: model.label }));
+		return AiModels.listNarrationModelCards('huggingface-local').map((model) => ({
+			value: model.value,
+			label: model.label,
+		}));
 	}
 
 	listVoicesForModel(model?: string): Array<{ value: string; label: string }> {
 		const metadata = resolveNarrationModelMetadata(model ?? this.config.model ?? process.env.MARKETING_HF_TTS_MODEL);
-		if (metadata.voices && metadata.voices.length > 0) return metadata.voices;
-		return [metadata.fallbackVoice];
+		return metadata.voices.map((voice) => ({ value: voice.value, label: voice.label }));
 	}
 
 	listLanguagesForModel(model?: string): Array<{ value: string; label: string }> {
 		const metadata = resolveNarrationModelMetadata(model ?? this.config.model ?? process.env.MARKETING_HF_TTS_MODEL);
-		if (metadata.languages.length > 0) return metadata.languages;
-		return [{ value: 'en-US', label: 'English (US)' }];
+		return metadata.languages.map((language) => ({ value: language.value, label: language.label }));
 	}
 
 	listLanguages(model?: string): Array<{ value: string; label: string }> {
@@ -178,16 +161,20 @@ function isNumberArray(value: unknown): value is number[] {
 	return Array.isArray(value) && value.every((sample) => typeof sample === 'number' && Number.isFinite(sample));
 }
 
-function resolveNarrationModelMetadata(model?: string): NarrationModelMetadata {
+function resolveNarrationModelMetadata(model?: string): AiModels.NarrationModelCard {
 	const selectedModel = (model ?? '').trim() || DEFAULT_TTS_MODEL;
 	assertSupportedNarrationModel(selectedModel);
-	const knownModel = MODEL_METADATA_BY_VALUE.get(selectedModel);
+	const knownModel = AiModels.findNarrationModelCardForProvider('huggingface-local', selectedModel);
 	if (knownModel) return knownModel;
 	return {
+		provider: 'huggingface-local',
 		value: selectedModel,
 		label: selectedModel,
-		languages: [{ value: 'en-US', label: 'English (US)' }],
-		fallbackVoice: { value: 'default', label: 'Default voice (model-managed)' },
+		availability: 'available',
+		status: 'available',
+		badges: ['local'],
+		voices: [{ value: 'default', label: 'Default voice (model-managed)', stability: 'stable' }],
+		languages: [{ value: 'en-US', label: 'English (US)', stability: 'stable' }],
 	};
 }
 
@@ -196,7 +183,8 @@ function assertSupportedNarrationModel(model: string): void {
 	if (!selectedModel) {
 		throw new Error('Model is required for Hugging Face local narration.');
 	}
-	if (/vibevoice/i.test(selectedModel)) {
+	const matchedModelCard = AiModels.findNarrationModelCard(selectedModel);
+	if (matchedModelCard?.provider === 'vibevoice-local' || /vibevoice/i.test(selectedModel)) {
 		throw new Error('VibeVoice models are not supported by @huggingface/transformers in this app yet.');
 	}
 	if (/kokoro|speecht5/i.test(selectedModel)) {

@@ -9,4 +9,5 @@ export * from './chat';
 export * as Platformer from './platformer/index.js';
 export * as Rts from './rts/index.js';
 export * as Marketing from './marketing/index.js';
+export * as AiModels from './ai-models/index.js';
 export { CanvasAspectRatio } from './marketing/constants.js';

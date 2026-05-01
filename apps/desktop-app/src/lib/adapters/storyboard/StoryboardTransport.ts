@@ -1,4 +1,4 @@
-import type { Marketing } from 'domain/shared';
+import type { AiModels, Marketing } from 'domain/shared';
 
 export type StoryboardSummary = Marketing.StoryboardSummary;
 export type StoryboardDetail = Marketing.StoryboardDetail;
@@ -10,6 +10,13 @@ export type StoryboardTransitionType = Marketing.StoryboardTransitionType;
 export interface StoryboardNarrationOption {
 	value: string;
 	label: string;
+	availability?: AiModels.NarrationModelAvailability;
+	status?: AiModels.NarrationModelStatus;
+	reason?: string;
+	badges?: readonly string[];
+	warning?: string;
+	capabilities?: AiModels.NarrationModelCapabilities;
+	stability?: AiModels.NarrationOptionStability;
 }
 
 export interface StoryboardNarrationOptions {
@@ -27,6 +34,10 @@ export interface StoryboardNarrationModelStatus {
 	model: string;
 	local: boolean;
 	supportsLocalModelDownload: boolean;
+	availability?: AiModels.NarrationModelAvailability;
+	status?: AiModels.NarrationModelStatus;
+	reason?: string;
+	warning?: string;
 }
 
 export interface StoryboardNarrationModelDownloadResult {

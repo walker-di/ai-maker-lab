@@ -40,6 +40,21 @@ export interface StoryboardDetail extends StoryboardSummary {
 
 export type StoryboardAudioProvider = 'azure' | 'huggingface-local' | 'vibevoice-local';
 
+export type StoryboardNarrationOptionStability = 'stable' | 'experimental' | (string & {});
+
+export interface StoryboardNarrationOption {
+	value: string;
+	label: string;
+	group?: string;
+	availability?: string;
+	status?: string;
+	reason?: string;
+	badges?: readonly string[];
+	warning?: string;
+	capabilities?: Record<string, unknown>;
+	stability?: StoryboardNarrationOptionStability;
+}
+
 export interface StoryboardModelConfigState {
 	textProvider: string;
 	textModel: string;

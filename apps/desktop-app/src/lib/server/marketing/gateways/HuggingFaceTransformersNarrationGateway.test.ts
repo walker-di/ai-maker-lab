@@ -79,7 +79,7 @@ describe('HuggingFaceTransformersNarrationGateway', () => {
 		});
 
 		expect(gateway.listModels()).toEqual([
-			{ value: 'Xenova/mms-tts-eng', label: 'MMS TTS English' },
+			{ value: 'Xenova/mms-tts-eng', label: 'MMS TTS English (HF local)' },
 		]);
 		expect(gateway.listVoicesForModel('Xenova/mms-tts-eng')).toEqual([
 			{ value: 'default', label: 'Default voice (model-managed)' },

@@ -116,6 +116,55 @@
 		},
 	];
 
+	function humanizeToken(token: string): string {
+		return token
+			.replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+			.replace(/[_-]+/g, ' ')
+			.trim()
+			.replace(/\s+/g, ' ')
+			.replace(/^./, (char) => char.toUpperCase());
+	}
+
+	function statusTone(option: StoryboardModelOption): 'neutral' | 'warning' | 'destructive' {
+		const tokens = [option.status, option.availability].filter(Boolean).map((part) => part!.toLowerCase());
+		if (tokens.some((part) => part.includes('blocked') || part.includes('missing') || part.includes('unavailable') || part.includes('error'))) {
+			return 'destructive';
+		}
+		if (tokens.some((part) => part.includes('experimental') || part.includes('beta') || part.includes('preview')) || option.stability === 'experimental') {
+			return 'warning';
+		}
+		return 'neutral';
+	}
+
+	function formatStabilityLabel(option: StoryboardModelOption): string {
+		if (option.stability === 'experimental') {
+			return `${option.label} (experimental)`;
+		}
+		return option.label;
+	}
+
+	function formatModelLabel(option: StoryboardModelOption): string {
+		const base = formatStabilityLabel(option);
+		const status = option.status ?? option.availability;
+		if (!status && !option.warning && !option.reason) {
+			return base;
+		}
+		const details = [
+			status ? humanizeToken(status) : undefined,
+			option.reason,
+			option.warning,
+		].filter(Boolean).join(' • ');
+		return details ? `${base} - ${details}` : base;
+	}
+
+	function formatCapabilityValue(value: unknown): string {
+		if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+		if (typeof value === 'number') return String(value);
+		if (typeof value === 'string') return value;
+		if (Array.isArray(value)) return value.map((entry) => String(entry)).join(', ');
+		return String(value);
+	}
+
 	const activePresetId = $derived.by(() => {
 		const found = presets.find((preset) =>
 			preset.textProvider === textProvider
@@ -127,6 +176,10 @@
 		return found?.id ?? null;
 	});
 
+	const selectedAudioModelOption = $derived(audioModelOptions.find((option) => option.value === audioModel));
+	const selectedAudioVoiceOption = $derived(audioVoiceOptions.find((option) => option.value === audioVoice));
+	const selectedAudioLanguageOption = $derived(audioLanguageOptions.find((option) => option.value === audioLanguage));
+
 	const selectedTextModelLabel = $derived(
 		model.availableTextModels.find((option) => option.value === textModel)?.label
 			?? (textModel.length > 0 ? textModel : 'Default'),
@@ -135,11 +188,68 @@
 		model.availableImageModels.find((option) => option.value === imageModel)?.label
 			?? (imageModel.length > 0 ? imageModel : 'Default'),
 	);
-	const selectedAudioModelLabel = $derived(
-		audioModelOptions.find((option) => option.value === audioModel)?.label
-			?? (audioModel.length > 0 ? audioModel : 'Default'),
-	);
+	const selectedAudioModelLabel = $derived.by(() => {
+		if (selectedAudioModelOption) return formatStabilityLabel(selectedAudioModelOption);
+		return audioModel.length > 0 ? audioModel : 'Default';
+	});
+	const selectedVoiceLabel = $derived.by(() => {
+		if (selectedAudioVoiceOption) return formatStabilityLabel(selectedAudioVoiceOption);
+		return audioVoice.length > 0 ? audioVoice : 'Select voice';
+	});
+	const selectedLanguageLabel = $derived.by(() => {
+		if (selectedAudioLanguageOption) return formatStabilityLabel(selectedAudioLanguageOption);
+		return audioLanguage.length > 0 ? audioLanguage : 'Select language';
+	});
+	const selectedAudioModelBadges = $derived.by(() => {
+		const option = selectedAudioModelOption;
+		if (!option) return [] as string[];
+		const labels: string[] = [];
+		for (const badge of option.badges ?? []) {
+			labels.push(humanizeToken(badge));
+		}
+		if (option.stability === 'experimental') {
+			labels.push('Experimental');
+		}
+		if (option.status) {
+			labels.push(humanizeToken(option.status));
+		}
+		if (option.availability && option.availability !== option.status) {
+			labels.push(humanizeToken(option.availability));
+		}
+		return [...new Set(labels)];
+	});
+	const selectedAudioCapabilities = $derived.by(() => {
+		const option = selectedAudioModelOption;
+		if (!option?.capabilities) return [] as Array<{ key: string; value: string }>;
+		return Object.entries(option.capabilities)
+			.filter(([, value]) => value !== undefined && value !== null)
+			.map(([key, value]) => ({
+				key: humanizeToken(key),
+				value: formatCapabilityValue(value),
+			}));
+	});
+	const selectedAudioNotices = $derived.by(() => {
+		const option = selectedAudioModelOption;
+		if (!option) return [] as string[];
+		const notices: string[] = [];
+		if (option.status) notices.push(`Status: ${humanizeToken(option.status)}`);
+		if (!option.status && option.availability) notices.push(`Availability: ${humanizeToken(option.availability)}`);
+		if (option.reason) notices.push(option.reason);
+		if (option.warning) notices.push(option.warning);
+		return notices;
+	});
+	const selectedAudioNoticeTone = $derived.by(() => {
+		if (!selectedAudioModelOption) return 'text-muted-foreground';
+		const tone = statusTone(selectedAudioModelOption);
+		if (tone === 'destructive') return 'text-destructive';
+		if (tone === 'warning') return 'text-amber-700';
+		return 'text-muted-foreground';
+	});
 	const canManageLocalModel = $derived(supportsLocalModelDownload && audioModel.length > 0);
+
+	function providerLabel(provider: StoryboardAudioProvider): string {
+		return model.audioProviderOptions.find((option) => option.value === provider)?.label ?? provider;
+	}
 
 	function applyPreset(preset: Preset) {
 		onTextProviderChange(preset.textProvider);
@@ -298,11 +408,11 @@
 						{disabled}
 					>
 						<Select.Trigger id="audio-model" class="w-full" aria-label="Narration audio model">
-							{audioModelOptions.find((o) => o.value === audioModel)?.label ?? 'Select model'}
+							{selectedAudioModelOption ? formatModelLabel(selectedAudioModelOption) : 'Select model'}
 						</Select.Trigger>
 						<Select.Content>
 							{#each audioModelOptions as opt (opt.value)}
-								<Select.Item value={opt.value}>{opt.label}</Select.Item>
+								<Select.Item value={opt.value}>{formatModelLabel(opt)}</Select.Item>
 							{/each}
 						</Select.Content>
 					</Select.Root>
@@ -316,11 +426,11 @@
 						{disabled}
 					>
 						<Select.Trigger id="audio-voice" class="w-full" aria-label="Narration voice">
-							{audioVoiceOptions.find((o) => o.value === audioVoice)?.label ?? 'Select voice'}
+							{selectedVoiceLabel}
 						</Select.Trigger>
 						<Select.Content>
 							{#each audioVoiceOptions as opt (opt.value)}
-								<Select.Item value={opt.value}>{opt.label}</Select.Item>
+								<Select.Item value={opt.value}>{formatStabilityLabel(opt)}</Select.Item>
 							{/each}
 						</Select.Content>
 					</Select.Root>
@@ -334,16 +444,43 @@
 						{disabled}
 					>
 						<Select.Trigger id="audio-language" class="w-full" aria-label="Narration language">
-							{audioLanguageOptions.find((o) => o.value === audioLanguage)?.label ?? 'Select language'}
+							{selectedLanguageLabel}
 						</Select.Trigger>
 						<Select.Content>
 							{#each audioLanguageOptions as opt (opt.value)}
-								<Select.Item value={opt.value}>{opt.label}</Select.Item>
+								<Select.Item value={opt.value}>{formatStabilityLabel(opt)}</Select.Item>
 							{/each}
 						</Select.Content>
 					</Select.Root>
 				</div>
 			</div>
+
+			{#if selectedAudioModelOption && (selectedAudioModelBadges.length > 0 || selectedAudioCapabilities.length > 0 || selectedAudioNotices.length > 0)}
+				<div class="rounded-md border bg-background/60 p-3" aria-live="polite" aria-label="Selected narration model details">
+					{#if selectedAudioModelBadges.length > 0}
+						<div class="mb-2 flex flex-wrap gap-1.5">
+							{#each selectedAudioModelBadges as badge (badge)}
+								<Badge variant="secondary">{badge}</Badge>
+							{/each}
+						</div>
+					{/if}
+					{#if selectedAudioCapabilities.length > 0}
+						<div class="mb-2 flex flex-wrap gap-1.5">
+							{#each selectedAudioCapabilities as capability (`${capability.key}-${capability.value}`)}
+								<Badge variant="outline">{capability.key}: {capability.value}</Badge>
+							{/each}
+						</div>
+					{/if}
+					{#if selectedAudioNotices.length > 0}
+						<div class="space-y-1 text-xs {selectedAudioNoticeTone}">
+							{#each selectedAudioNotices as notice (`${notice}`)}
+								<p>{notice}</p>
+							{/each}
+						</div>
+					{/if}
+				</div>
+			{/if}
+
 			<div class="mt-3 flex flex-wrap items-center gap-2">
 				<Button type="button" variant="outline" size="sm" onclick={() => onCheckAudioModelLocal?.()} disabled={disabled || !canManageLocalModel || narrationModelStatus === 'checking' || narrationModelStatus === 'downloading'}>
 					{narrationModelStatus === 'checking' ? 'Checking…' : 'Check local model'}
@@ -361,7 +498,7 @@
 							onclick={() => onUseRecommendedDownloadProvider(recommendedProviderForDownloads)}
 							disabled={disabled || audioProvider === recommendedProviderForDownloads}
 						>
-							Use {recommendedProviderForDownloads === 'huggingface-local' ? 'Hugging Face local' : recommendedProviderForDownloads}
+							Use {providerLabel(recommendedProviderForDownloads)}
 						</Button>
 					{/if}
 				{:else if narrationModelStatus === 'ready'}
