@@ -113,16 +113,22 @@ describe('createNarrationAudioGateway', () => {
 			'vibevoice-local': vibevoice,
 		});
 
-		await expect(gateway.getOptions('huggingface-local', 'Xenova/mms-tts-eng')).resolves.toMatchObject({
-			provider: 'huggingface-local',
-			supportsLocalModelDownload: true,
-			models: [{ value: 'Xenova/mms-tts-eng', label: 'MMS TTS English (HF local)', availability: 'available' }],
-			voices: [{ value: 'default', label: 'Default voice (model-managed)', stability: 'stable' }],
-			languages: [{ value: 'en-US', label: 'English (US)', stability: 'stable' }],
-		});
+		const options = await gateway.getOptions('huggingface-local', 'Xenova/mms-tts-eng');
+		expect(options.provider).toBe('huggingface-local');
+		expect(options.supportsLocalModelDownload).toBe(true);
+		expect(options.models).toEqual(expect.arrayContaining([
+			expect.objectContaining({ value: 'Xenova/mms-tts-eng', label: 'MMS TTS English (HF local)', availability: 'available' }),
+			expect.objectContaining({ value: 'onnx-community/Kokoro-82M-ONNX', label: 'Kokoro 82M (HF local)', availability: 'available' }),
+			expect.objectContaining({ value: 'Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign', label: 'Qwen3-TTS 1.7B Voice Design (HF local)', availability: 'available' }),
+			expect.objectContaining({ value: 'Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice', label: 'Qwen3-TTS 1.7B Custom Voice (HF local)', availability: 'available' }),
+			expect.objectContaining({ value: 'Qwen/Qwen3-TTS-12Hz-1.7B-Base', label: 'Qwen3-TTS 1.7B Base (HF local)', availability: 'available' }),
+			expect.objectContaining({ value: 'microsoft/VibeVoice-1.5B', label: 'VibeVoice 1.5B (long-form)', availability: 'available' }),
+		]));
+		expect(options.voices).toEqual([{ value: 'default', label: 'Default voice (model-managed)', stability: 'stable' }]);
+		expect(options.languages).toEqual([{ value: 'en-US', label: 'English (US)', stability: 'stable' }]);
 	});
 
-	test('returns blocked/missing metadata for vibevoice model cards', async () => {
+	test('returns experimental/missing metadata for vibevoice model cards', async () => {
 		const azure = new RecordingNarrationGateway('azure');
 		const huggingFace = new RecordingLocalModelNarrationGateway('huggingface-local');
 		const vibevoice = new RecordingNarrationGateway('vibevoice-local');
@@ -132,12 +138,13 @@ describe('createNarrationAudioGateway', () => {
 			'vibevoice-local': vibevoice,
 		});
 
-		const options = await gateway.getOptions('vibevoice-local', 'microsoft/VibeVoice-Realtime-0.5B');
-		expect(options.supportsLocalModelDownload).toBe(false);
-		expect(options.models).toEqual(expect.arrayContaining([
+		const longFormOptions = await gateway.getOptions('vibevoice-local', 'microsoft/VibeVoice-1.5B');
+		expect(longFormOptions.supportsLocalModelDownload).toBe(false);
+		expect(longFormOptions.recommendedProviderForDownloads).toBe('huggingface-local');
+		expect(longFormOptions.models).toEqual(expect.arrayContaining([
 			expect.objectContaining({
 				value: 'microsoft/VibeVoice-1.5B',
-				availability: 'blocked',
+				availability: 'available',
 			}),
 			expect.objectContaining({
 				value: 'microsoft/VibeVoice-Realtime-0.5B',
@@ -145,9 +152,29 @@ describe('createNarrationAudioGateway', () => {
 				status: 'experimental',
 			}),
 		]));
-		expect(options.languages).toContainEqual(expect.objectContaining({ value: 'en-US', stability: 'stable' }));
-		expect(options.languages).toContainEqual(expect.objectContaining({ value: 'es-ES', stability: 'experimental' }));
-		expect(options.downloadSupportMessage).toContain('Realtime local runtime is not configured');
+		expect(longFormOptions.voices).toContainEqual(expect.objectContaining({
+			value: 'default',
+			label: 'Default speaker control',
+		}));
+		expect(longFormOptions.voices).toContainEqual(expect.objectContaining({
+			value: 'custom-reference-audio',
+			label: 'Custom reference audio (user-provided sample)',
+		}));
+		expect(longFormOptions.languages).toContainEqual(expect.objectContaining({
+			value: 'auto',
+			label: 'Auto (infer script language from narration text)',
+		}));
+		expect(longFormOptions.languages).toContainEqual(expect.objectContaining({ value: 'en-US', stability: 'stable' }));
+		expect(longFormOptions.languages).toContainEqual(expect.objectContaining({ value: 'zh-CN', stability: 'stable' }));
+		expect(longFormOptions.downloadSupportMessage).toContain('speaker guidance');
+
+		const realtimeOptions = await gateway.getOptions('vibevoice-local', 'microsoft/VibeVoice-Realtime-0.5B');
+		expect(realtimeOptions.languages).toEqual([
+			expect.objectContaining({ value: 'auto', stability: 'experimental' }),
+			expect.objectContaining({ value: 'en-US', stability: 'experimental' }),
+			expect.objectContaining({ value: 'zh-CN', stability: 'experimental' }),
+		]);
+		expect(realtimeOptions.downloadSupportMessage).toContain('Realtime local runtime is not configured');
 	});
 
 	test('returns vibevoice model status metadata without pretending local availability', async () => {
@@ -163,12 +190,12 @@ describe('createNarrationAudioGateway', () => {
 		await expect(gateway.getModelStatus('vibevoice-local', 'microsoft/VibeVoice-1.5B')).resolves.toMatchObject({
 			local: false,
 			supportsLocalModelDownload: false,
-			availability: 'blocked',
-			status: 'blocked',
+			availability: 'available',
+			status: 'experimental',
 		});
 	});
 
-	test('rejects vibevoice local model download with explicit reason', async () => {
+	test('rejects vibevoice local model download when gateway lacks local model support', async () => {
 		const azure = new RecordingNarrationGateway('azure');
 		const huggingFace = new RecordingLocalModelNarrationGateway('huggingface-local');
 		const vibevoice = new RecordingNarrationGateway('vibevoice-local');
@@ -179,8 +206,21 @@ describe('createNarrationAudioGateway', () => {
 		});
 
 		await expect(gateway.downloadModel('vibevoice-local', 'microsoft/VibeVoice-1.5B')).rejects.toThrow(
-			'Official local usage is disabled upstream for this runtime.',
+			'does not support local model downloads',
 		);
+	});
+
+	test('supports vibevoice local model download when gateway implements local model interface', async () => {
+		const azure = new RecordingNarrationGateway('azure');
+		const huggingFace = new RecordingLocalModelNarrationGateway('huggingface-local');
+		const vibevoice = new RecordingLocalModelNarrationGateway('vibevoice-local');
+		const gateway = new CompositeNarrationAudioGateway('azure', {
+			azure,
+			'huggingface-local': huggingFace,
+			'vibevoice-local': vibevoice,
+		});
+
+		await expect(gateway.downloadModel('vibevoice-local', 'microsoft/VibeVoice-1.5B')).resolves.toBeUndefined();
 	});
 
 	test('dispatches per-request provider while keeping Azure as fallback default', async () => {
@@ -224,6 +264,23 @@ describe('createNarrationAudioGateway', () => {
 		});
 
 		await gateway.synthesize('hello', 'voice', 'en-US', { provider: 'vibevoice-local', model: 'microsoft/VibeVoice-1.5B' });
+
+		expect(huggingFace.calls).toHaveLength(0);
+		expect(vibevoice.calls).toHaveLength(1);
+		expect(azure.calls).toHaveLength(0);
+	});
+
+	test('auto-routes VibeVoice model to vibevoice gateway even when huggingface-local is requested', async () => {
+		const azure = new RecordingNarrationGateway('azure');
+		const huggingFace = new RecordingNarrationGateway('huggingface-local');
+		const vibevoice = new RecordingNarrationGateway('vibevoice-local');
+		const gateway = new CompositeNarrationAudioGateway('azure', {
+			azure,
+			'huggingface-local': huggingFace,
+			'vibevoice-local': vibevoice,
+		});
+
+		await gateway.synthesize('hello', 'voice', 'en-US', { provider: 'huggingface-local', model: 'microsoft/VibeVoice-1.5B' });
 
 		expect(huggingFace.calls).toHaveLength(0);
 		expect(vibevoice.calls).toHaveLength(1);

@@ -78,14 +78,32 @@ describe('HuggingFaceTransformersNarrationGateway', () => {
 			assetStorage: new LocalMarketingAssetStorage({ assetRoot: tempDir, publicBaseUrl: '/marketing-assets' }),
 		});
 
-		expect(gateway.listModels()).toEqual([
+		expect(gateway.listModels()).toEqual(expect.arrayContaining([
 			{ value: 'Xenova/mms-tts-eng', label: 'MMS TTS English (HF local)' },
-		]);
+			{ value: 'Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign', label: 'Qwen3-TTS 1.7B Voice Design (HF local)' },
+			{ value: 'Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice', label: 'Qwen3-TTS 1.7B Custom Voice (HF local)' },
+			{ value: 'Qwen/Qwen3-TTS-12Hz-1.7B-Base', label: 'Qwen3-TTS 1.7B Base (HF local)' },
+		]));
 		expect(gateway.listVoicesForModel('Xenova/mms-tts-eng')).toEqual([
+			{ value: 'default', label: 'Default voice (model-managed)' },
+		]);
+		expect(gateway.listVoicesForModel('Qwen/Qwen3-TTS-12Hz-1.7B-Base')).toEqual([
 			{ value: 'default', label: 'Default voice (model-managed)' },
 		]);
 		expect(gateway.listLanguagesForModel('Xenova/mms-tts-eng')).toEqual([
 			{ value: 'en-US', label: 'English (US)' },
+		]);
+		expect(gateway.listLanguagesForModel('Qwen/Qwen3-TTS-12Hz-1.7B-Base')).toEqual([
+			{ value: 'zh-CN', label: 'Chinese (zh-CN)' },
+			{ value: 'en-US', label: 'English (en-US)' },
+			{ value: 'ja-JP', label: 'Japanese (ja-JP)' },
+			{ value: 'ko-KR', label: 'Korean (ko-KR)' },
+			{ value: 'de-DE', label: 'German (de-DE)' },
+			{ value: 'fr-FR', label: 'French (fr-FR)' },
+			{ value: 'ru-RU', label: 'Russian (ru-RU)' },
+			{ value: 'pt-PT', label: 'Portuguese (pt-PT)' },
+			{ value: 'es-ES', label: 'Spanish (es-ES)' },
+			{ value: 'it-IT', label: 'Italian (it-IT)' },
 		]);
 	});
 

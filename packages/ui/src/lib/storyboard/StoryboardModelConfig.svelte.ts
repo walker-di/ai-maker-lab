@@ -46,8 +46,7 @@ export const imageModelsByProvider: Record<string, StoryboardModelOption[]> = {
 
 export const audioProviderOptions: Array<StoryboardModelOption & { value: StoryboardAudioProvider }> = [
 	{ value: 'azure', label: 'Azure Speech' },
-	{ value: 'huggingface-local', label: 'Hugging Face local' },
-	{ value: 'vibevoice-local', label: 'VibeVoice local' },
+	{ value: 'huggingface-local', label: 'Local models (HF + VibeVoice)' },
 ];
 
 export function createStoryboardModelConfigModel(input: {

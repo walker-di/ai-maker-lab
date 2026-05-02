@@ -74,3 +74,10 @@
 - [x] 9.5 Run `cd packages/domain && bun test`.
 - [x] 9.6 Run `cd apps/desktop-app && bun run test:unit`.
 - [x] 9.7 Run targeted storyboard e2e validation from `apps/desktop-app`.
+
+### 10. VibeVoice GGUF narration follow-up
+
+- [x] 10.1 Add a dedicated VibeVoice GGUF narration adapter and model discovery for `gguf-org/vibevoice-gguf` or an equivalent published VibeVoice GGUF repo.
+- [x] 10.2 Extend narration option/status/download flows so VibeVoice appears as available when the local GGUF runtime is configured.
+- [x] 10.3 Add route, service, page-model, and browser coverage for the VibeVoice narration flow, including recoverable error handling when the GGUF runtime or model is missing.
+- [x] 10.4 Update storyboard narration docs and UI copy to explain that VibeVoice uses prompt/reference-audio speaker guidance instead of a fixed voice catalog.

@@ -70,6 +70,8 @@ Define a `StoryboardTransport` interface under `apps/desktop-app/src/lib/adapter
 
 Structured storyboard frame generation, prompt regeneration, image generation, narration audio, BGM generation, and video export will be represented as application ports. Provider-specific SDKs and filesystem/FFmpeg details stay in infrastructure/app server adapters.
 
+VibeVoice narration should be modeled as a dedicated local adapter path that can resolve GGUF-backed models such as `gguf-org/vibevoice-gguf` or equivalent published VibeVoice GGUF repos. MMS/Qwen Hugging Face local narration remains on the existing Hugging Face local adapter, while VibeVoice can expose prompt/reference-audio speaker guidance instead of a fixed catalog when the selected model is voice-design or custom-voice driven.
+
 **Alternatives considered:**
 - Copy `aiService.ts` and FFmpeg utilities from the source repo. Rejected because they couple provider details, file layout, and route logic to the app layer.
 
@@ -138,6 +140,8 @@ The specs require at least unified video export plus clear error handling for un
 ## Risks / Trade-offs
 
 - Existing Story/Scene/Clip types may not exactly match source frame semantics.
+- VibeVoice GGUF runtime availability may vary by platform and packaging strategy.
+  - Mitigation: keep model selection and runtime probing behind the narration adapter boundary, and surface recoverable setup/download errors in the UI.
   - Mitigation: expose a storyboard frame DTO and explicitly map it at the application/repository boundary.
 - Background images and BGM prompts may require metadata not currently present on Scene/Clip.
   - Mitigation: add narrowly scoped metadata fields and validation rather than broad generic blobs.

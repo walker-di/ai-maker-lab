@@ -34,16 +34,25 @@ function createTransport(): StoryboardTransport {
 			const provider = input.provider;
 			const selectedModel = input.model;
 			const isHfMms = provider === 'huggingface-local' && selectedModel === 'Xenova/mms-tts-eng';
+			const isQwen = provider === 'huggingface-local' && selectedModel === 'Qwen/Qwen3-TTS-12Hz-1.7B-Base';
 			return {
 				provider,
 				supportsLocalModelDownload: provider === 'huggingface-local',
 				models: provider === 'huggingface-local'
-					? [{ value: 'Xenova/mms-tts-eng', label: 'MMS TTS English' }]
+					? [
+						{ value: 'Xenova/mms-tts-eng', label: 'MMS TTS English' },
+						{ value: 'Qwen/Qwen3-TTS-12Hz-1.7B-Base', label: 'Qwen3-TTS 1.7B Base' },
+					]
 					: [{ value: 'azure-neural', label: 'Azure Neural Voices (managed)' }],
-				voices: isHfMms ? [{ value: 'default', label: 'Default voice' }] : [],
+				voices: isHfMms || isQwen ? [{ value: 'default', label: 'Default voice' }] : [],
 				languages: isHfMms
 					? [{ value: 'en', label: 'English' }]
-					: [{ value: 'en-US', label: 'English (US)' }],
+					: isQwen
+						? [
+							{ value: 'en-US', label: 'English (en-US)' },
+							{ value: 'zh-CN', label: 'Chinese (zh-CN)' },
+						]
+						: [{ value: 'en-US', label: 'English (US)' }],
 			};
 		},
 		async getNarrationModelStatus(input) {
@@ -254,6 +263,7 @@ describe('storyboard page model', () => {
 		await model.setAudioModel('Xenova/mms-tts-eng');
 
 		expect(optionCalls.some((call) => call.provider === 'huggingface-local' && call.model === 'Xenova/mms-tts-eng')).toBe(true);
+		expect(model.narrationOptions.models.some((m) => m.value === 'Qwen/Qwen3-TTS-12Hz-1.7B-Base')).toBe(true);
 		expect(model.narrationOptions.voices[0]?.value).toBe('default');
 		expect(model.narrationOptions.languages[0]?.value).toBe('en');
 	});

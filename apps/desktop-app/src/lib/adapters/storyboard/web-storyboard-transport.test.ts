@@ -150,4 +150,33 @@ describe('WebStoryboardTransport', () => {
 			}),
 		);
 	});
+
+	test('calls narration endpoints for vibevoice-local provider', async () => {
+		const fetchMock = vi.fn(async () => jsonResponse({ ok: true }));
+		stubFetch(fetchMock as unknown as typeof fetch);
+		const transport = new WebStoryboardTransport();
+
+		await transport.getNarrationOptions({ provider: 'vibevoice-local', model: 'microsoft/VibeVoice-1.5B' });
+		await transport.getNarrationModelStatus({ provider: 'vibevoice-local', model: 'microsoft/VibeVoice-1.5B' });
+		await transport.downloadNarrationModel({ provider: 'vibevoice-local', model: 'microsoft/VibeVoice-1.5B' });
+
+		expect(fetchMock).toHaveBeenNthCalledWith(
+			1,
+			'/api/marketing/narration/options?provider=vibevoice-local&model=microsoft%2FVibeVoice-1.5B',
+			expect.objectContaining({ headers: expect.objectContaining({ 'content-type': 'application/json' }) }),
+		);
+		expect(fetchMock).toHaveBeenNthCalledWith(
+			2,
+			'/api/marketing/narration/models/status?provider=vibevoice-local&model=microsoft%2FVibeVoice-1.5B',
+			expect.objectContaining({ headers: expect.objectContaining({ 'content-type': 'application/json' }) }),
+		);
+		expect(fetchMock).toHaveBeenNthCalledWith(
+			3,
+			'/api/marketing/narration/models/download',
+			expect.objectContaining({
+				method: 'POST',
+				body: JSON.stringify({ provider: 'vibevoice-local', model: 'microsoft/VibeVoice-1.5B' }),
+			}),
+		);
+	});
 });

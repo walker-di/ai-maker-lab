@@ -1,0 +1,20 @@
+{
+  "url": "http://localhost:5173/experiments/storyboard",
+  "screenshot": "/Users/walker/Documents/Dev/AI Maker Lab/ai-maker-lab/artifacts/vibevoice-storyboard-runtime.png",
+  "panelText": "Available voices 5 Default speaker control (experimental) SelectedSpeaker prompt slot A (text prompt-guided) (experimental) Speaker prompt slot B (text prompt-guided) (experimental) Reference audio slot 1 (speaker sample) (experimental) Custom reference audio (user-provided sample) (experimental) Available languages 3 Auto (infer script language from narration text) English script (en-US) SelectedChinese/Mandarin script (zh-CN) Some voice models use prompt/reference-audio style speaker control instead of a fixed catalog. For these providers (including VibeVoice-style setups), keep voice selections as guidance and rely on model prompts/reference inputs for final speaker tone; language coverage can be narrower than standard TTS catalogs.",
+  "matches": {
+    "Available voices": 1,
+    "Available languages": 1,
+    "Auto (infer script language from narration text)": 1,
+    "English script (en-US)": 2,
+    "Chinese/Mandarin script (zh-CN)": 1,
+    "Default speaker control": 2,
+    "Reference audio slot 1 (speaker sample)": 1,
+    "Custom reference audio (user-provided sample)": 1,
+    "prompt/reference-audio style speaker control": 1
+  },
+  "audioProviderValue": "VibeVoice local",
+  "audioModelValue": "VibeVoice 1.5B (long-form) - Blocked • Official local usage is disabled upstream for this runtime. • VibeVoice local usage is blocked until upstream enables official support.",
+  "audioVoiceValue": "Default speaker control (experimental)",
+  "audioLanguageValue": "English script (en-US)"
+}

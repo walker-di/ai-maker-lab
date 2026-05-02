@@ -51,6 +51,7 @@ import {
 } from 'domain/infrastructure';
 import { AzureSpeechNarrationGateway } from './marketing/gateways/AzureSpeechNarrationGateway.js';
 import { HuggingFaceTransformersNarrationGateway } from './marketing/gateways/HuggingFaceTransformersNarrationGateway.js';
+import { VibeVoiceOnnxNarrationGateway } from './marketing/gateways/VibeVoiceOnnxNarrationGateway.js';
 import { OpenAIMarketingMediaGateway } from './marketing/gateways/OpenAIMarketingMediaGateway.js';
 import { ReplicateMarketingMediaGateway } from './marketing/gateways/ReplicateMarketingMediaGateway.js';
 import { FfmpegMarketingVideoExporter } from './marketing/gateways/FfmpegMarketingVideoExporter.js';
@@ -144,9 +145,15 @@ export class CompositeNarrationAudioGateway implements Marketing.INarrationAudio
 		lang?: string,
 		options?: { provider?: string; model?: string },
 	): Promise<{ audioUrl: string; durationMs: number }> {
-		const provider = options?.provider
+		let provider = options?.provider
 			? normalizeNarrationProvider(options.provider, 'narration provider')
 			: this.defaultProvider;
+		if (options?.model) {
+			const modelCard = AiModels.findNarrationModelCard(options.model);
+			if (modelCard && modelCard.provider !== provider) {
+				provider = modelCard.provider;
+			}
+		}
 		return this.gateways[provider].synthesize(text, voice, lang, options);
 	}
 
@@ -159,9 +166,14 @@ export class CompositeNarrationAudioGateway implements Marketing.INarrationAudio
 	}
 
 	async getOptions(provider: NarrationProvider, model?: string): Promise<NarrationOptionsResponse> {
-		const modelCards = AiModels.listNarrationModelCards(provider);
-		const selectedModelCard = AiModels.findNarrationModelCardForProvider(provider, model);
-		const supportsLocalModelDownload = provider === 'huggingface-local';
+		const modelCards = provider === 'huggingface-local'
+			? [...AiModels.listNarrationModelCards('huggingface-local'), ...AiModels.listNarrationModelCards('vibevoice-local')]
+			: AiModels.listNarrationModelCards(provider);
+		const selectedModelCard = model
+			? (AiModels.findNarrationModelCardForProvider(provider, model) ?? AiModels.findNarrationModelCard(model))
+			: AiModels.findNarrationModelCardForProvider(provider);
+		const supportsLocalModelDownload = provider === 'huggingface-local' ||
+			(provider === 'vibevoice-local' && isLocalNarrationModelGateway(this.gateways[provider]));
 
 		if (provider === 'azure') {
 			const voices = await this.listVoicesForProvider(provider);
@@ -181,17 +193,19 @@ export class CompositeNarrationAudioGateway implements Marketing.INarrationAudio
 			models: modelCards.map(modelCardToOption),
 			voices: (selectedModelCard?.voices ?? []).map(voiceCardToOption),
 			languages: (selectedModelCard?.languages ?? []).map(languageCardToOption),
-			downloadSupportMessage: provider === 'vibevoice-local'
+			downloadSupportMessage: provider === 'vibevoice-local' && !supportsLocalModelDownload
 				? selectedModelCard?.warning ?? selectedModelCard?.reason ?? 'VibeVoice local runtime is not configured in this app.'
 				: undefined,
+			recommendedProviderForDownloads: provider === 'vibevoice-local' && !supportsLocalModelDownload ? 'huggingface-local' : undefined,
 		};
 	}
 
 	async getModelStatus(provider: NarrationProvider, model: string): Promise<NarrationModelStatusResponse> {
-		const modelCard = AiModels.findNarrationModelCardForProvider(provider, model);
-		if (provider !== 'huggingface-local') {
+		const modelCard = AiModels.findNarrationModelCard(model) ?? AiModels.findNarrationModelCardForProvider(provider, model);
+		const effectiveProvider = modelCard?.provider ?? provider;
+		if (effectiveProvider !== 'huggingface-local' && effectiveProvider !== 'vibevoice-local') {
 			return {
-				local: provider === 'azure',
+				local: effectiveProvider === 'azure',
 				supportsLocalModelDownload: false,
 				availability: modelCard?.availability,
 				status: modelCard?.status,
@@ -199,7 +213,7 @@ export class CompositeNarrationAudioGateway implements Marketing.INarrationAudio
 				warning: modelCard?.warning,
 			};
 		}
-		const gateway = this.gateways[provider];
+		const gateway = this.gateways[effectiveProvider];
 		if (!isLocalNarrationModelGateway(gateway)) {
 			return {
 				local: false,
@@ -221,14 +235,15 @@ export class CompositeNarrationAudioGateway implements Marketing.INarrationAudio
 	}
 
 	async downloadModel(provider: NarrationProvider, model: string): Promise<void> {
-		if (provider !== 'huggingface-local') {
-			const modelCard = AiModels.findNarrationModelCardForProvider(provider, model);
-			const reason = modelCard?.reason ?? `Provider "${provider}" does not support local model downloads.`;
+		const modelCard = AiModels.findNarrationModelCard(model);
+		const effectiveProvider = modelCard?.provider ?? provider;
+		if (effectiveProvider !== 'huggingface-local' && effectiveProvider !== 'vibevoice-local') {
+			const reason = modelCard?.reason ?? `Provider "${effectiveProvider}" does not support local model downloads.`;
 			throw new MarketingProviderConfigurationError(reason);
 		}
-		const gateway = this.gateways[provider];
+		const gateway = this.gateways[effectiveProvider];
 		if (!isLocalNarrationModelGateway(gateway)) {
-			throw new MarketingProviderConfigurationError(`Provider "${provider}" does not support local model downloads.`);
+			throw new MarketingProviderConfigurationError(`Provider "${effectiveProvider}" does not support local model downloads.`);
 		}
 		await gateway.ensureModelReady(model);
 	}
@@ -358,9 +373,10 @@ export function createNarrationAudioGateway(config: {
 			voice: process.env.MARKETING_HF_TTS_VOICE,
 			language: process.env.MARKETING_HF_TTS_LANGUAGE,
 		}),
-		'vibevoice-local': new UnconfiguredNarrationGateway(
-			'VibeVoice local narration runtime is not configured in this app yet. Configure a dedicated VibeVoice adapter before using vibevoice-local synthesis.',
-		),
+		'vibevoice-local': new VibeVoiceOnnxNarrationGateway({
+			assetStorage: config.assetStorage,
+			modelsDir: process.env.VIBEVOICE_MODELS_DIR,
+		}),
 	});
 }
 

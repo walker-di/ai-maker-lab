@@ -131,6 +131,34 @@ The feature SHALL support generating and attaching per-frame visual and audio as
 - **THEN** the selected asset is associated with the requested frame field
 - **AND** persistence uses the current app's asset storage conventions rather than the source repo's static folder layout
 
+### Requirement: VibeVoice local narration is supported through a GGUF-capable adapter
+
+The feature SHALL support VibeVoice narration through a dedicated local adapter that can run GGUF-backed VibeVoice models, including published repos such as `gguf-org/vibevoice-gguf` or equivalent compatible model cards.
+
+#### Scenario: User selects a VibeVoice GGUF model
+
+- **WHEN** a user selects the VibeVoice local provider with a compatible GGUF model
+- **THEN** the narration options expose the model as available instead of blocked
+- **AND** the model selection persists as part of the storyboard narration configuration
+
+#### Scenario: User generates narration audio with VibeVoice
+
+- **WHEN** a user requests narration audio for a frame using the VibeVoice local provider and a compatible GGUF model
+- **THEN** the application service invokes the VibeVoice narration adapter with the frame narration and voice settings
+- **AND** the generated narration audio URL or asset reference is persisted on the frame
+
+#### Scenario: VibeVoice exposes speaker guidance instead of a fixed voice catalog
+
+- **WHEN** a user opens narration options for a VibeVoice GGUF model
+- **THEN** the UI shows supported prompt, speaker, or reference-audio guidance for that model
+- **AND** the language list reflects the selected model's supported locales or auto-detection behavior
+
+#### Scenario: VibeVoice runtime or model is unavailable
+
+- **WHEN** the VibeVoice local runtime cannot load the requested GGUF model
+- **THEN** the UI shows a recoverable configuration error
+- **AND** the error explains whether the model must be downloaded, selected, or fixed in the local runtime configuration
+
 ### Requirement: Frame transitions are configurable
 
 The feature SHALL let users configure a transition after a frame and persist transition intent for export.

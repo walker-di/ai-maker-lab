@@ -143,6 +143,42 @@
 		return option.label;
 	}
 
+	function formatStatusBadge(option: StoryboardModelOption): string | null {
+		if (option.status) return humanizeToken(option.status);
+		if (option.availability) return humanizeToken(option.availability);
+		return null;
+	}
+
+	function formatOptionSearchText(option: StoryboardModelOption): string {
+		const capabilityEntries = Object.entries(option.capabilities ?? {})
+			.map(([key, value]) => `${key} ${formatCapabilityValue(value)}`);
+		return [
+			option.value,
+			option.label,
+			option.group,
+			option.status,
+			option.availability,
+			option.reason,
+			option.warning,
+			...(option.badges ?? []),
+			...capabilityEntries,
+		]
+			.filter(Boolean)
+			.join(' ')
+			.toLowerCase();
+	}
+
+	function isReferenceOrPromptVoiceOption(option: StoryboardModelOption): boolean {
+		return /(vibevoice|reference|prompt|custom|clone|sample|speaker|style)/.test(formatOptionSearchText(option));
+	}
+
+	function optionToneClass(option: StoryboardModelOption): string {
+		const tone = statusTone(option);
+		if (tone === 'destructive') return 'border-destructive/40 text-destructive';
+		if (tone === 'warning') return 'border-amber-500/40 text-amber-700';
+		return '';
+	}
+
 	function formatModelLabel(option: StoryboardModelOption): string {
 		const base = formatStabilityLabel(option);
 		const status = option.status ?? option.availability;
@@ -179,6 +215,11 @@
 	const selectedAudioModelOption = $derived(audioModelOptions.find((option) => option.value === audioModel));
 	const selectedAudioVoiceOption = $derived(audioVoiceOptions.find((option) => option.value === audioVoice));
 	const selectedAudioLanguageOption = $derived(audioLanguageOptions.find((option) => option.value === audioLanguage));
+	const hasReferenceStyleVoiceOptions = $derived.by(() => {
+		if (audioProvider === 'vibevoice-local') return true;
+		if (selectedAudioVoiceOption && isReferenceOrPromptVoiceOption(selectedAudioVoiceOption)) return true;
+		return audioVoiceOptions.some((option) => isReferenceOrPromptVoiceOption(option));
+	});
 
 	const selectedTextModelLabel = $derived(
 		model.availableTextModels.find((option) => option.value === textModel)?.label
@@ -232,9 +273,9 @@
 		const option = selectedAudioModelOption;
 		if (!option) return [] as string[];
 		const notices: string[] = [];
-		if (option.status) notices.push(`Status: ${humanizeToken(option.status)}`);
-		if (!option.status && option.availability) notices.push(`Availability: ${humanizeToken(option.availability)}`);
-		if (option.reason) notices.push(option.reason);
+		if (option.status && option.status !== 'available') notices.push(`Status: ${humanizeToken(option.status)}`);
+		if (!option.status && option.availability && option.availability !== 'available') notices.push(`Availability: ${humanizeToken(option.availability)}`);
+		if (option.reason && option.availability !== 'available') notices.push(option.reason);
 		if (option.warning) notices.push(option.warning);
 		return notices;
 	});
@@ -453,6 +494,68 @@
 						</Select.Content>
 					</Select.Root>
 				</div>
+			</div>
+
+			<div class="rounded-md border bg-background/60 p-3" aria-live="polite" aria-label="Available narration voice and language options">
+				<div class="grid gap-3 md:grid-cols-2">
+					<div class="space-y-2">
+						<div class="flex items-center justify-between gap-2">
+							<p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Available voices</p>
+							<p class="text-xs text-muted-foreground">{audioVoiceOptions.length}</p>
+						</div>
+						{#if audioVoiceOptions.length === 0}
+							<p class="text-xs text-muted-foreground">No explicit voices returned for this provider/model yet.</p>
+						{:else}
+							<div class="flex flex-wrap gap-1.5">
+								{#each audioVoiceOptions as option (option.value)}
+									<Badge
+										variant={option.value === audioVoice ? 'secondary' : 'outline'}
+										class={optionToneClass(option)}
+									>
+										{formatStabilityLabel(option)}
+										{#if option.value === audioVoice}
+											<span class="ml-1 text-[10px] font-semibold uppercase tracking-wide">Selected</span>
+										{:else if formatStatusBadge(option)}
+											<span class="ml-1 text-[10px] uppercase tracking-wide">{formatStatusBadge(option)}</span>
+										{/if}
+									</Badge>
+								{/each}
+							</div>
+						{/if}
+					</div>
+
+					<div class="space-y-2">
+						<div class="flex items-center justify-between gap-2">
+							<p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Available languages</p>
+							<p class="text-xs text-muted-foreground">{audioLanguageOptions.length}</p>
+						</div>
+						{#if audioLanguageOptions.length === 0}
+							<p class="text-xs text-muted-foreground">No language list returned; current selection or server default will be used.</p>
+						{:else}
+							<div class="flex flex-wrap gap-1.5">
+								{#each audioLanguageOptions as option (option.value)}
+									<Badge
+										variant={option.value === audioLanguage ? 'secondary' : 'outline'}
+										class={optionToneClass(option)}
+									>
+										{formatStabilityLabel(option)}
+										{#if option.value === audioLanguage}
+											<span class="ml-1 text-[10px] font-semibold uppercase tracking-wide">Selected</span>
+										{:else if formatStatusBadge(option)}
+											<span class="ml-1 text-[10px] uppercase tracking-wide">{formatStatusBadge(option)}</span>
+										{/if}
+									</Badge>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				</div>
+
+				{#if hasReferenceStyleVoiceOptions}
+					<p class="mt-3 text-xs text-muted-foreground">
+						Some voice models use prompt/reference-audio style speaker control instead of a fixed catalog. For these providers (including VibeVoice-style setups), keep voice selections as guidance and rely on model prompts/reference inputs for final speaker tone; language coverage can be narrower than standard TTS catalogs.
+					</p>
+				{/if}
 			</div>
 
 			{#if selectedAudioModelOption && (selectedAudioModelBadges.length > 0 || selectedAudioCapabilities.length > 0 || selectedAudioNotices.length > 0)}

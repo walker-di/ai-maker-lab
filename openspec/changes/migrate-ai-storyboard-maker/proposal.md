@@ -11,6 +11,7 @@ The source project cannot be copied directly because it uses Bootstrap, Drizzle/
 - Add application use cases for storyboard creation, frame generation, frame editing, asset generation, transitions, and export.
 - Persist storyboard data through existing SurrealDB infrastructure instead of the source repo's Drizzle/SQLite schema.
 - Reuse or extend existing marketing AI/media/export gateways for structured text generation, image generation, narration audio, BGM, asset storage, and FFmpeg export.
+- Add VibeVoice narration support through a GGUF-capable local runtime, including model discovery for `gguf-org/vibevoice-gguf` or equivalent published VibeVoice GGUF repos.
 - Add app-local transport adapters so pages/page models never construct `/api/**` URLs directly.
 - Add shared shadcn-based UI components under `packages/ui` for storyboard list, editor, frame controls, dialogs, and export state.
 - Add tests across shared validation, application use cases, Surreal repositories, adapters, Svelte page models/components, and e2e smoke coverage.
@@ -20,6 +21,7 @@ The source project cannot be copied directly because it uses Bootstrap, Drizzle/
 ### New Capabilities
 
 - Create and list storyboards.
+- Generate narration audio with a VibeVoice local provider backed by a GGUF-capable runtime, including multilingual narration and prompt/reference-audio speaker guidance.
 - Generate ordered storyboard frames from a story prompt.
 - Insert blank frames into an existing storyboard.
 - Edit narration and media prompts per frame.
@@ -37,6 +39,7 @@ The source project cannot be copied directly because it uses Bootstrap, Drizzle/
 ### Modified Capabilities
 
 - Existing marketing story/scene/clip domain and infrastructure may gain storyboard-specific metadata, validation, ports, repositories, or use cases.
+- Existing narration model catalogs and gateways may gain dedicated VibeVoice GGUF model cards and runtime wiring while keeping MMS/Qwen Hugging Face local support intact.
 - Existing AI/media/export gateways may gain structured storyboard generation, aspect-ratio-aware image generation, and transition-aware export support.
 - Desktop app navigation gains an entry for Storyboard Maker.
 

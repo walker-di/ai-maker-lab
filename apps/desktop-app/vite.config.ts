@@ -20,7 +20,8 @@ export default defineConfig({
     exclude: ['domain', 'ui']
   },
   ssr: {
-    noExternal: ['domain', 'ui']
+    noExternal: ['domain', 'ui'],
+    external: ['@surrealdb/node', '@surrealdb/node-darwin-arm64'],
   },
   test: {
     projects: [{

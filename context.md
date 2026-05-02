@@ -1,179 +1,228 @@
-# Anticipating upstream pi-subagents PRs
+# Storyboard Narration / Speech Provider Investigation
 
----
+## Scope
+Inspected the `ai-maker-lab` storyboard maker implementation to locate the narration/speech provider UI and map controlling files/functions/data structures for:
+- narration provider
+- audio model
+- voice
+- language
+- local model status/download
+- Hugging Face local and VibeVoice local integration
 
-## PR #113 — Package agent tier + resumable sessions
+Also reviewed OpenSpec change:
+- `openspec/changes/migrate-ai-storyboard-maker/proposal.md`
+- `openspec/changes/migrate-ai-storyboard-maker/specs/storyboard-maker/spec.md`
+- `openspec/changes/migrate-ai-storyboard-maker/tasks.md`
 
-PR: https://github.com/nicobailon/pi-subagents/pull/113 | Author: `blai` | +479/-26
+## Likely UI in screenshot (narration provider controls)
+Primary component:
+- `packages/ui/src/lib/storyboard/StoryboardModelConfig.svelte`
 
-### What lands
+This file renders:
+- provider select (`audioProvider`)
+- audio model select (`audioModelOptions`)
+- voice select (`audioVoiceOptions`)
+- language select (`audioLanguageOptions`)
+- local model management actions:
+  - `Check local model`
+  - `Download model`
+- status hints (`ready/missing/error`) and provider recommendation CTA
 
-1. **Package agent tier** — new `package` source in priority chain: `builtin < package < user < project`
-2. **Resumable sessions** — `resume: true` + `sessionDir` for SINGLE-mode subagent calls
+Provider list and static provider labels are defined in:
+- `packages/ui/src/lib/storyboard/StoryboardModelConfig.svelte.ts`
+  - `audioProviderOptions = [azure, huggingface-local, vibevoice-local]`
 
----
+## End-to-end control flow
 
-## Impact on ai-maker-lab agent setup
+### 1) Route/UI wiring
+- `apps/desktop-app/src/routes/experiments/storyboard/+page.svelte`
+  - mounts `StoryboardModelConfig`
+  - passes current config values from page model
+  - wires callbacks:
+    - `onAudioProviderChange -> model.setAudioProvider`
+    - `onAudioModelChange -> model.setAudioModel`
+    - `onAudioVoiceChange/onAudioLanguageChange -> model.modelConfig update`
+    - `onCheckAudioModelLocal -> model.checkNarrationModelStatus`
+    - `onDownloadAudioModel -> model.downloadNarrationModel`
 
-### Current state
+### 2) Page model behavior/state
+- `apps/desktop-app/src/routes/experiments/storyboard/storyboard-page.svelte.ts`
 
-Agents live in `~/.pi/agent/agents/` (user scope):
-- `backend-worker.md`, `frontend-worker.md`, `designer.md`, `domain-reviewer.md`, `qa-worker.md`
-- Chains: `implement-test-review.chain.md`, `scout-implement-review.chain.md`
+Key state:
+- `modelConfig` includes `audioProvider/audioModel/audioVoice/audioLanguage`
+- `narrationOptions` includes provider-scoped `models/voices/languages`
+- `narrationModelStatus` in `{ idle, checking, missing, downloading, ready, error }`
 
-### What changes (nothing breaks)
+Key functions:
+- `loadNarrationOptions({ provider?, model? })`
+  - calls transport `getNarrationOptions`
+  - syncs selected model/voice/language to valid options
+- `setAudioProvider(provider)`
+  - updates provider, resets status, reloads options
+- `setAudioModel(model)`
+  - updates model, resets status, reloads options
+- `checkNarrationModelStatus()`
+  - transport call to model status endpoint
+- `downloadNarrationModel()`
+  - transport call to download endpoint
 
-User-scope agents already sit above `package` in the priority chain. No name collisions with known builtins. Agent list will now show `[user]` badge explicitly (was already the case, but now `[pkg]` exists as a distinct label for package agents).
+### 3) Frontend transport/API clients
+- `apps/desktop-app/src/lib/adapters/storyboard/StoryboardTransport.ts`
+  - defines `getNarrationOptions`, `getNarrationModelStatus`, `downloadNarrationModel`
+- `apps/desktop-app/src/lib/adapters/storyboard/web-storyboard-transport.ts`
+  - GET `/api/marketing/narration/options?provider=&model=`
+  - GET `/api/marketing/narration/models/status?provider=&model=`
+  - POST `/api/marketing/narration/models/download`
 
-### What to adopt
+### 4) Narration API routes
+- `apps/desktop-app/src/routes/api/marketing/narration/options/+server.ts`
+- `apps/desktop-app/src/routes/api/marketing/narration/models/status/+server.ts`
+- `apps/desktop-app/src/routes/api/marketing/narration/models/download/+server.ts`
 
-#### 1. Resumable iterative workflows
+All delegate to `marketing-service` helper functions and normalize/validate provider+model input.
 
-The chains already pass `{previous}` between steps — inter-step context flows fine. But **multi-pass single-agent work** benefits from `resume: true`:
+### 5) Backend service composition and provider behavior
+- `apps/desktop-app/src/lib/server/marketing-service.ts`
 
-```
-# Iterative backend work (step 1 → step 2 with full memory)
-{ agent: "backend-worker", task: "Implement repository layer for threads",
-  sessionDir: "/tmp/feature-threads" }
+Core pieces:
+- `createNarrationAudioGateway(...)`
+  - creates `CompositeNarrationAudioGateway` with:
+    - `azure -> AzureSpeechNarrationGateway`
+    - `huggingface-local -> HuggingFaceTransformersNarrationGateway`
+    - `vibevoice-local -> UnconfiguredNarrationGateway` (explicit not-configured error)
+- `normalizeNarrationProvider(...)`
+  - accepted providers: `azure | huggingface-local | vibevoice-local`
+- `getNarrationOptions(...)`
+- `getNarrationModelStatus(...)`
+- `downloadNarrationModel(...)`
 
-# Later...
-{ agent: "backend-worker", task: "Now add the use case layer",
-  sessionDir: "/tmp/feature-threads", resume: true }
-```
+Composite logic (`CompositeNarrationAudioGateway`):
+- `getOptions(provider, model)`
+  - Azure: dynamic voices from gateway `listVoices()`; languages deduped from voice langs
+  - Local providers: model/voice/language from model card metadata
+  - `supportsLocalModelDownload`: true only for `huggingface-local`
+  - `downloadSupportMessage` populated for `vibevoice-local`
+- `getModelStatus(provider, model)`
+  - non-HF local providers report non-downloadable metadata status
+  - HF local checks actual local presence via `isModelLocal()` if gateway supports it
+- `downloadModel(provider, model)`
+  - only `huggingface-local` allowed
+  - `vibevoice-local` rejected with model-card reason
 
-This eliminates re-pasting scout reports or prior implementation context between iterations. Best for:
-- Multi-step feature implementation with `backend-worker` or `frontend-worker`
-- Iterative design review loops with `designer`
-- QA re-runs where `qa-worker` should remember prior test failures
+## Hugging Face local integration details
+Primary gateway:
+- `apps/desktop-app/src/lib/server/marketing/gateways/HuggingFaceTransformersNarrationGateway.ts`
 
-**Constraints to remember:**
-- SINGLE mode only — chains/parallel already handle their own per-step sessions
-- Cannot combine with `context: 'fork'`
-- First call with no prior session silently starts fresh (safe)
+Important behavior:
+- Uses `@huggingface/transformers` pipeline (`text-to-speech` task)
+- Defaults to model `Xenova/mms-tts-eng`
+- Supports language option passthrough to pipeline
+- Persists generated WAV via app `assetStorage`
+- Implements local model management methods used by composite gateway:
+  - `isModelLocal(model)` via `pipeline(..., { local_files_only: true })`
+  - `ensureModelReady(model)` for download/prepare
+- Explicit model guardrails:
+  - rejects VibeVoice models in this gateway (`not supported by @huggingface/transformers in this app yet`)
+  - rejects some unsupported patterns (e.g. kokoro/speecht5)
 
-#### 2. Package-tier agent sharing
+Related tests:
+- `apps/desktop-app/src/lib/server/marketing/gateways/HuggingFaceTransformersNarrationGateway.test.ts`
+- `apps/desktop-app/src/lib/server/marketing-service.test.ts`
 
-The Paperclip company agents (backend-worker, frontend-worker, designer, domain-reviewer, qa-worker, chains) are project-specific but the *pattern* is reusable. Once PR #113 lands, a pi extension could register a shared agents directory:
+## VibeVoice local integration details
+Data/model metadata source:
+- `packages/domain/src/shared/ai-models/narration-model-cards.ts`
 
-```ts
-pi.events.emit("subagents:register-agent-dir", {
-  dir: "/path/to/shared-paperclip-agents"
-})
-```
+VibeVoice cards exist for:
+- `microsoft/VibeVoice-1.5B` with `availability/status = blocked`
+- `microsoft/VibeVoice-Realtime-0.5B` with `availability = missing`, `status = experimental`
 
-Those would appear as `[pkg]` and be overridable per-project. This matters if ai-maker-lab agents are reused across multiple repos.
+Current runtime reality:
+- `vibevoice-local` is selectable in UI/provider options
+- narration options/status are exposed from metadata
+- local download is not supported (`supportsLocalModelDownload = false`)
+- synthesis runtime is intentionally unconfigured in service composition
+- attempting VibeVoice download is rejected with explicit reason
 
-**Not urgent** — current user-scope placement works. But worth considering if the Paperclip pattern is extracted into a standalone pi extension.
+Related feasibility artifact:
+- `apps/desktop-app/scripts/vibevoice-onnx-feasibility.mjs`
+  - diagnostic script for ONNX/runtime metadata viability
+  - indicates exploratory/prototyping status rather than integrated production adapter
 
----
+## Data structures controlling provider/model/voice/language
 
-## Preparation done
+### UI/shared types
+- `packages/ui/src/lib/storyboard/types.ts`
+  - `StoryboardAudioProvider = 'azure' | 'huggingface-local' | 'vibevoice-local'`
+  - `StoryboardNarrationOption` with `availability/status/reason/badges/warning/capabilities/stability`
+  - `StoryboardModelConfigState` includes `audioProvider/audioModel/audioVoice/audioLanguage`
 
-### Chain updates (resume-ready patterns)
+### Domain/shared contracts
+- `packages/domain/src/shared/marketing/storyboard-types.ts`
+  - `StoryboardModelConfig` fields for text/image/audio provider+model+voice+language
+- `packages/domain/src/shared/marketing/validation.ts`
+  - `StoryboardModelConfigSchema`
+  - `StoryboardAudioProviderSchema` enum includes all three providers
 
-Both chains (`implement-test-review`, `scout-implement-review`) work unchanged since resume is SINGLE-only and chains use `{previous}` for step-to-step context.
+### Model card catalog
+- `packages/domain/src/shared/ai-models/narration-model-cards.ts`
+  - canonical catalog used for narration option metadata and statuses
 
-New workflow patterns to use once PR #113 merges:
+## Where narration config is applied in actual asset generation
+- `packages/domain/src/application/marketing/story-service.ts`
+  - `StoryboardService.generateAssetUrl(..., assetType, modelConfig)`
+  - for `narrationAudio` asset type:
+    - `narration.synthesize(frame.narration, modelConfig.audioVoice, modelConfig.audioLanguage, { provider: modelConfig.audioProvider, model: modelConfig.audioModel })`
 
-**Iterative implementation with memory:**
-```
-{ agent: "backend-worker", task: "Step 1: domain layer",
-  sessionDir: "/tmp/feature-X" }
-{ agent: "backend-worker", task: "Step 2: application layer",
-  sessionDir: "/tmp/feature-X", resume: true }
-{ agent: "backend-worker", task: "Step 3: adapters",
-  sessionDir: "/tmp/feature-X", resume: true }
-```
+This is the key point where selected UI provider/model/voice/language influence generation.
 
-**Design iteration loop:**
-```
-{ agent: "designer", task: "Sketch layout for settings page",
-  sessionDir: "/tmp/design-settings" }
-{ agent: "designer", task: "Revise based on feedback: needs more whitespace",
-  sessionDir: "/tmp/design-settings", resume: true }
-```
+## OpenSpec relevance
+`migrate-ai-storyboard-maker` spec/tasks broadly align with current implementation:
+- migration to shared UI + clean architecture completed
+- storyboard asset generation includes narration provider + voice settings
+- tests mention no live providers in automated runs
 
-**QA re-validation:**
-```
-{ agent: "qa-worker", task: "Validate thread CRUD",
-  sessionDir: "/tmp/qa-threads" }
-{ agent: "qa-worker", task: "Re-run after fixes, focus on edge cases from last run",
-  sessionDir: "/tmp/qa-threads", resume: true }
-```
+OpenSpec does not appear to define a concrete VibeVoice runtime adapter requirement; current implementation exposes VibeVoice as metadata/selection but keeps runtime unconfigured.
 
-### Agent naming (no collision risk)
+## Likely change points (if enabling/adjusting narration provider behavior)
+1. UI/provider presentation and local-model UX
+- `packages/ui/src/lib/storyboard/StoryboardModelConfig.svelte`
+- `packages/ui/src/lib/storyboard/StoryboardModelConfig.svelte.ts`
 
-Checked all five agent names against known pi-subagents builtins — no collisions. The `package` tier inserts below `user`, so even if a future package ships a `backend-worker`, the user-scope version wins.
+2. Client orchestration and narration option synchronization
+- `apps/desktop-app/src/routes/experiments/storyboard/storyboard-page.svelte.ts`
 
----
+3. API transport surface
+- `apps/desktop-app/src/lib/adapters/storyboard/web-storyboard-transport.ts`
+- `apps/desktop-app/src/routes/api/marketing/narration/**/+server.ts`
 
-## Watch list when PR #113 ships
+4. Provider capability/routing and download policy
+- `apps/desktop-app/src/lib/server/marketing-service.ts`
+  - `createNarrationAudioGateway`
+  - `CompositeNarrationAudioGateway.{getOptions,getModelStatus,downloadModel}`
 
-1. **`sessionFile` in results** — now always surfaced when sessions are used (not just when `share: true`). Useful for debugging failed runs.
-2. **`[pkg]` badge in agent list** — new visual in `subagent { action: "list" }`. Don't confuse with `[builtin]`.
-3. **`subagents:register-agent-dir` event** — new extension surface. If writing a pi extension for ai-maker-lab, this is the hook for sharing agents.
-4. **Process-global `extraAgentDirs`** — package dirs persist across session resets unless explicitly unregistered. If agents appear stale after extension changes, check registration lifecycle.
+5. Provider/model catalog metadata
+- `packages/domain/src/shared/ai-models/narration-model-cards.ts`
 
----
+6. Concrete gateway implementation
+- `apps/desktop-app/src/lib/server/marketing/gateways/HuggingFaceTransformersNarrationGateway.ts`
+- (new future adapter likely needed for real VibeVoice runtime)
 
-## PR #40 — Stream mode for chain execution
+## Validation commands
+From repo root:
+- `bunx @fission-ai/openspec@latest validate migrate-ai-storyboard-maker --type change --no-interactive`
+- `bun run check:desktop-app`
 
-PR: https://github.com/nicobailon/pi-subagents/pull/40 | Author: `vekexasia` | +402/-38
+Targeted storyboard/narration tests:
+- `cd apps/desktop-app && bun run test:unit`
+- `cd apps/desktop-app && bun test src/lib/server/marketing-service.test.ts`
+- `cd apps/desktop-app && bun test src/lib/server/marketing/gateways/HuggingFaceTransformersNarrationGateway.test.ts`
+- `cd apps/desktop-app && bun test src/routes/experiments/storyboard/storyboard-page.test.ts`
+- `cd apps/desktop-app && bun test src/lib/adapters/storyboard/web-storyboard-transport.test.ts`
 
-### What lands
+Domain/shared validation/tests:
+- `cd packages/domain && bun test`
+- `cd packages/domain && bun test src/shared/ai-models/narration-model-cards.test.ts`
 
-Live inline rendering of chain step output instead of compact summary. Each step's assistant messages, tool calls, and thinking are rendered using pi-mono's `AssistantMessageComponent` and `ToolExecutionComponent` — matching the main chat look. A sticky bottom status bar shows chain progress with blinking animation:
-
-```
-✓ scout 12s → ● planner 3s → ○ worker
-```
-
-### Activation methods (four ways)
-
-1. `stream: true` tool parameter — `{ chain: [...], stream: true }`
-2. `--stream` CLI flag — `/chain scout "task" -> planner --stream`
-3. `v` toggle in chain clarify TUI
-4. `streamModeByDefault` config flag — defaults to `true` (stream is ON by default)
-
-### Impact on ai-maker-lab chains
-
-Both chains benefit immediately with zero changes:
-
-- **`implement-test-review`**: Live visibility into worker writing code, qa-worker running tests, domain-reviewer reporting findings. No more waiting for the compact summary to see if the worker went off-track.
-- **`scout-implement-review`**: Watch the scout investigate, the worker implement, and the reviewer critique — all inline as it happens.
-
-This is especially valuable for the longer steps (worker can take minutes on complex tasks). You'll be able to spot problems mid-step instead of after.
-
-### What to adopt
-
-**Nothing to change** — `streamModeByDefault: true` means chains stream automatically after this merges. Both chains work as-is.
-
-**Optional config if compact view is preferred for some workflows:**
-```json
-{ "streamModeByDefault": false }
-```
-Then use `--stream` or `v` toggle selectively per invocation.
-
-### New tool parameter for programmatic use
-
-```
-{ chain: [{agent: "scout", task: "..."}, {agent: "worker"}],
-  stream: true }
-```
-
-Useful when invoking chains via the subagent tool rather than `/chain` slash command.
-
-### New type surface
-
-- `Details.stream?: boolean` — indicates stream mode in results
-- `ExtensionConfig.streamModeByDefault?: boolean` — global config flag
-- `DisplayItem` gains `{ type: "thinking"; thinking: string }` variant
-- `CHAIN_STATUS_WIDGET_KEY` — new widget key for the sticky status bar
-- `formatToolCallThemed()` — themed tool call formatting (used internally)
-
-### Watch list when PR #40 ships
-
-1. **Default is stream ON** — all `/chain` runs will show live output. If this is too noisy for quick chains, set `streamModeByDefault: false`.
-2. **Status widget** — a new `subagent-chain-status` widget appears at the bottom during chain runs. It auto-clears on completion/error.
-3. **`extractBgFlag` renamed to `extractFlags`** — internal change, but if any custom extensions called this, they'd break.
-4. **Thinking content in display items** — `getDisplayItems()` now includes thinking parts from assistant messages. Extensions consuming display items should handle the new `thinking` type.
+Optional manual diagnostic (non-production path):
+- `cd apps/desktop-app && bun run scripts/vibevoice-onnx-feasibility.mjs`

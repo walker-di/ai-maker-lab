@@ -7,6 +7,8 @@ node_modules/
 .vercel
 .netlify
 .wrangler
+/models/*
+!models/.gitkeep
 /.svelte-kit
 /build
 

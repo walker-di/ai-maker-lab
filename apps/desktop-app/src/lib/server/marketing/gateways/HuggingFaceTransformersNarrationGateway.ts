@@ -54,8 +54,10 @@ export class HuggingFaceTransformersNarrationGateway implements Marketing.INarra
 			assertSupportedNarrationModel(model);
 			const pipeline = await this.getPipeline(model);
 			const selectedLanguage = lang || this.config.language || process.env.MARKETING_HF_TTS_LANGUAGE;
+			const selectedVoice = voice || this.config.voice || process.env.MARKETING_HF_TTS_VOICE;
 			const pipelineOptions: Record<string, unknown> = {};
 			if (selectedLanguage) pipelineOptions.language = selectedLanguage;
+			if (selectedVoice && isKokoroModel(model)) pipelineOptions.voice = selectedVoice;
 
 			const rawOutput = await pipeline(text, Object.keys(pipelineOptions).length ? pipelineOptions : undefined);
 			const output = normalizeAudioOutput(rawOutput);
@@ -178,6 +180,10 @@ function resolveNarrationModelMetadata(model?: string): AiModels.NarrationModelC
 	};
 }
 
+function isKokoroModel(model: string): boolean {
+	return /kokoro/i.test(model);
+}
+
 function assertSupportedNarrationModel(model: string): void {
 	const selectedModel = model.trim();
 	if (!selectedModel) {
@@ -187,8 +193,8 @@ function assertSupportedNarrationModel(model: string): void {
 	if (matchedModelCard?.provider === 'vibevoice-local' || /vibevoice/i.test(selectedModel)) {
 		throw new Error('VibeVoice models are not supported by @huggingface/transformers in this app yet.');
 	}
-	if (/kokoro|speecht5/i.test(selectedModel)) {
-		throw new Error('This model is not supported by the installed @huggingface/transformers runtime. Use Xenova/mms-tts-eng.');
+	if (/speecht5/i.test(selectedModel)) {
+		throw new Error('SpeechT5 is not supported by the installed @huggingface/transformers runtime. Use Xenova/mms-tts-eng or onnx-community/Kokoro-82M-ONNX.');
 	}
 }
 
