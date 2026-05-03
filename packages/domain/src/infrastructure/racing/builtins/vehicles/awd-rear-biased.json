@@ -1,0 +1,24 @@
+{
+  "id": "awd-rear-biased",
+  "label": "AWD / Rear-biased",
+  "driveLabel": "AWD",
+  "layoutLabel": "Front-mid",
+  "color": 12559871,
+  "wheelbase": 2.75,
+  "trackWidth": 1.72,
+  "frontMassPct": 0.53,
+  "finalDrive": 4.4,
+  "gears": [
+    { "n": "R", "ratio": -3.9 },
+    { "n": "N", "ratio": 0 },
+    { "n": "1", "ratio": 3.1 },
+    { "n": "2", "ratio": 2.15 },
+    { "n": "3", "ratio": 1.6 },
+    { "n": "4", "ratio": 1.25 },
+    { "n": "5", "ratio": 1.0 },
+    { "n": "6", "ratio": 0.82 }
+  ],
+  "steerMaxDeg": 34,
+  "axleDrive": { "front": 0.38, "rear": 0.62 },
+  "diffType": "clutchLSD"
+}

@@ -1,0 +1,1917 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AML Racing Garage — Physics &amp; Telemetry V1</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #06090d;
+      --panel: rgba(10, 14, 21, 0.88);
+      --panel-soft: rgba(15, 21, 30, 0.74);
+      --panel-solid: #0d131c;
+      --line: rgba(221, 238, 255, 0.10);
+      --line-strong: rgba(118, 203, 255, 0.40);
+      --text: #f5f8fc;
+      --muted: #96a8bb;
+      --muted-2: #7a8aa0;
+      --blue: #77cfff;
+      --cyan: #66f0ff;
+      --green: #6ade8f;
+      --gold: #f1c86b;
+      --orange: #ffad66;
+      --red: #ff7070;
+      --purple: #bfa3ff;
+      --magenta: #ff8fd1;
+      --shadow: 0 26px 70px rgba(0, 0, 0, 0.52);
+      --shadow-sm: 0 10px 26px rgba(0, 0, 0, 0.36);
+      --radius-xl: 28px;
+      --radius-lg: 20px;
+      --radius-md: 14px;
+      --radius-sm: 10px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { background: var(--bg); }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 18% 0%, rgba(83, 161, 255, 0.18), transparent 32%),
+        radial-gradient(circle at 88% 14%, rgba(255, 173, 102, 0.12), transparent 26%),
+        radial-gradient(circle at 65% 110%, rgba(191, 163, 255, 0.10), transparent 36%),
+        linear-gradient(180deg, #101923 0%, #06090d 56%, #040609 100%);
+    }
+
+    h1, h2, h3, h4, p { margin: 0; }
+    button, input, select { font: inherit; color: inherit; }
+
+    a { color: inherit; text-decoration: none; }
+
+    .page {
+      width: min(1600px, 100%);
+      margin: 0 auto;
+      padding: 20px;
+      display: grid;
+      gap: 18px;
+    }
+
+    /* --- shared panel surfaces --- */
+    .topbar,
+    .intro,
+    .module,
+    .stat-card,
+    .car-card,
+    .tire,
+    .telemetry-card,
+    .timeline,
+    .surface-row,
+    .setup-row,
+    .pill,
+    .nav-btn,
+    .seg button,
+    .compare-card {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+    }
+
+    /* ----------------- top bar ----------------- */
+    .topbar {
+      border-radius: var(--radius-xl);
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-mark {
+      width: 38px; height: 38px;
+      border-radius: 12px;
+      background:
+        conic-gradient(from 220deg, #ffad66, #ff7070, #bfa3ff, #66f0ff, #ffad66);
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.06), inset 0 0 18px rgba(0,0,0,0.5);
+      display: grid; place-items: center;
+      color: #0a0d12; font-weight: 800; letter-spacing: -0.02em;
+    }
+    .brand-mark span { font-size: 18px; }
+
+    .brand-text { display: grid; gap: 2px; }
+    .brand-text .name { font-weight: 700; letter-spacing: -0.015em; font-size: 16px; }
+    .brand-text .sub { font-size: 11px; color: var(--muted); letter-spacing: 0.16em; text-transform: uppercase; }
+
+    .nav {
+      display: flex; gap: 6px; flex-wrap: wrap;
+      margin-left: 8px;
+    }
+    .nav-btn {
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      cursor: pointer;
+      background: transparent;
+      border-color: transparent;
+      box-shadow: none;
+    }
+    .nav-btn.is-active {
+      background: rgba(118, 203, 255, 0.12);
+      color: var(--blue);
+      border-color: rgba(118, 203, 255, 0.28);
+    }
+
+    .top-meta {
+      margin-left: auto;
+      display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    }
+    .pill {
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 12px;
+      color: var(--muted);
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--panel-soft);
+      box-shadow: none;
+    }
+    .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px rgba(106,222,143,0.16); }
+    .pill.warn .dot { background: var(--gold); box-shadow: 0 0 0 3px rgba(241,200,107,0.16); }
+    .pill.bad .dot { background: var(--red); box-shadow: 0 0 0 3px rgba(255,112,112,0.16); }
+    .pill strong { color: var(--text); font-weight: 600; }
+
+    .btn {
+      cursor: pointer;
+      border: 1px solid var(--line-strong);
+      background: linear-gradient(180deg, rgba(118,203,255,0.18), rgba(118,203,255,0.06));
+      color: var(--blue);
+      padding: 9px 14px;
+      border-radius: 999px;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      box-shadow: 0 8px 22px rgba(43, 102, 158, 0.28);
+    }
+    .btn.primary {
+      background: linear-gradient(180deg, #77cfff, #459cd6);
+      color: #061018;
+      border-color: rgba(255,255,255,0.18);
+    }
+    .btn.ghost {
+      background: transparent;
+      color: var(--muted);
+      border-color: var(--line);
+      box-shadow: none;
+    }
+
+    /* ----------------- intro ----------------- */
+    .intro {
+      border-radius: var(--radius-xl);
+      padding: 20px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+      gap: 22px;
+      align-items: stretch;
+    }
+    .eyebrow {
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .intro h1 {
+      margin-top: 8px;
+      font-size: clamp(28px, 3.4vw, 44px);
+      line-height: 1.0;
+      letter-spacing: -0.04em;
+      max-width: 820px;
+    }
+    .intro p.lede {
+      margin-top: 12px;
+      color: var(--muted);
+      max-width: 760px;
+      line-height: 1.55;
+    }
+
+    .intro-tags { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; }
+    .tag {
+      font-size: 11px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: rgba(118,203,255,0.08);
+      border: 1px solid rgba(118,203,255,0.22);
+      color: var(--blue);
+      letter-spacing: 0.04em;
+    }
+    .tag.gold { background: rgba(241,200,107,0.10); border-color: rgba(241,200,107,0.32); color: var(--gold); }
+    .tag.orange { background: rgba(255,173,102,0.10); border-color: rgba(255,173,102,0.32); color: var(--orange); }
+    .tag.purple { background: rgba(191,163,255,0.10); border-color: rgba(191,163,255,0.32); color: var(--purple); }
+    .tag.green { background: rgba(106,222,143,0.10); border-color: rgba(106,222,143,0.32); color: var(--green); }
+
+    .intro-stats {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      align-content: end;
+    }
+    .stat-card {
+      padding: 14px;
+      border-radius: var(--radius-md);
+      display: grid;
+      gap: 6px;
+    }
+    .stat-card .label {
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .stat-card .value {
+      font-size: 24px;
+      letter-spacing: -0.02em;
+      font-weight: 600;
+    }
+    .stat-card .value small { font-size: 12px; color: var(--muted); margin-left: 4px; font-weight: 400; }
+    .stat-card .delta {
+      font-size: 11px;
+      color: var(--green);
+    }
+    .stat-card .delta.bad { color: var(--red); }
+
+    /* ----------------- modules / sections ----------------- */
+    .module {
+      border-radius: var(--radius-xl);
+      padding: 20px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .module-head {
+      display: flex; align-items: end; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    }
+    .module-head h2 {
+      font-size: 18px; letter-spacing: -0.015em;
+    }
+    .module-head .sub {
+      color: var(--muted); font-size: 12px; max-width: 520px; line-height: 1.5;
+    }
+
+    .seg {
+      display: inline-flex;
+      padding: 4px;
+      gap: 4px;
+      background: var(--panel-soft);
+      border-radius: 999px;
+      border-color: var(--line);
+    }
+    .seg button {
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+      color: var(--muted);
+      padding: 7px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+    }
+    .seg button.is-active {
+      background: rgba(118, 203, 255, 0.16);
+      color: var(--blue);
+    }
+
+    /* ----------------- garage / car selection ----------------- */
+    .garage {
+      display: grid;
+      grid-template-columns: 1.05fr 1fr;
+      gap: 18px;
+    }
+
+    .car-display {
+      border-radius: var(--radius-xl);
+      padding: 18px;
+      background:
+        radial-gradient(circle at 50% 90%, rgba(118,203,255,0.18), transparent 60%),
+        linear-gradient(180deg, rgba(15,21,30,0.86), rgba(8,12,18,0.92));
+      border: 1px solid var(--line);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 12px;
+      min-height: 440px;
+      box-shadow: var(--shadow);
+    }
+
+    .car-display-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    }
+    .car-display-title {
+      display: grid; gap: 2px;
+    }
+    .car-display-title .class { font-size: 11px; color: var(--muted); letter-spacing: 0.18em; text-transform: uppercase; }
+    .car-display-title .name { font-size: 22px; letter-spacing: -0.02em; font-weight: 600; }
+
+    .car-stage {
+      position: relative;
+      border-radius: var(--radius-lg);
+      background:
+        radial-gradient(ellipse at 50% 75%, rgba(255,255,255,0.06), transparent 60%),
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.025) 0 1px, transparent 1px 64px),
+        linear-gradient(180deg, #0a1018, #060a10);
+      overflow: hidden;
+    }
+    .car-stage svg { width: 100%; height: 100%; display: block; }
+
+    .stage-overlay {
+      position: absolute; inset: 0;
+      pointer-events: none;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: 1fr auto;
+      padding: 14px;
+      gap: 10px;
+    }
+    .anchor {
+      align-self: end;
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      opacity: 0.65;
+    }
+    .anchor.r { text-align: right; }
+
+    .telemetry-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .telemetry-strip .telemetry-card {
+      border-radius: var(--radius-md);
+      padding: 10px 12px;
+      display: grid; gap: 4px;
+      background: var(--panel-soft);
+      box-shadow: var(--shadow-sm);
+    }
+    .telemetry-strip .label {
+      font-size: 10px; color: var(--muted); letter-spacing: 0.16em; text-transform: uppercase;
+    }
+    .telemetry-strip .value {
+      font-size: 18px; font-weight: 600; letter-spacing: -0.02em;
+    }
+    .telemetry-strip .value small { color: var(--muted); font-size: 11px; margin-left: 4px; font-weight: 400; }
+
+    /* car list */
+    .car-list {
+      display: grid;
+      gap: 10px;
+      max-height: 540px;
+      overflow: hidden;
+    }
+
+    .car-list-head { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+    .car-search {
+      flex: 1;
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 13px;
+      outline: none;
+    }
+    .car-search:focus { border-color: var(--line-strong); }
+
+    .car-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .car-card {
+      border-radius: var(--radius-md);
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+      cursor: pointer;
+      background: var(--panel-soft);
+    }
+    .car-card.is-active {
+      border-color: rgba(118,203,255,0.5);
+      box-shadow: 0 0 0 1px rgba(118,203,255,0.18) inset, var(--shadow-sm);
+    }
+    .car-card .thumb {
+      aspect-ratio: 16/9;
+      border-radius: 10px;
+      background:
+        radial-gradient(circle at 50% 80%, rgba(255,255,255,0.06), transparent 60%),
+        linear-gradient(180deg, #0c121b, #060a10);
+      display: grid; place-items: center;
+      overflow: hidden;
+    }
+    .car-card .thumb svg { width: 80%; height: auto; display: block; }
+    .car-card .meta {
+      display: flex; align-items: center; justify-content: space-between; gap: 6px;
+    }
+    .car-card .name { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+    .car-card .class { font-size: 10px; color: var(--muted); letter-spacing: 0.14em; text-transform: uppercase; }
+    .car-card .specs { display: flex; gap: 6px; flex-wrap: wrap; font-size: 10px; color: var(--muted-2); }
+    .car-card .specs span { background: rgba(255,255,255,0.04); border: 1px solid var(--line); border-radius: 999px; padding: 2px 6px; }
+
+    /* ----------------- setup / sliders ----------------- */
+    .setup-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .setup-card {
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+      background: var(--panel-soft);
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }
+    .setup-card h3 {
+      font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+    }
+    .setup-card .desc {
+      font-size: 12px; color: var(--muted-2); line-height: 1.5;
+    }
+
+    .setup-row {
+      border-radius: var(--radius-md);
+      padding: 10px 12px;
+      display: grid; gap: 6px;
+      background: rgba(255,255,255,0.02);
+      box-shadow: none;
+    }
+    .setup-row .row {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    }
+    .setup-row label {
+      font-size: 12px; letter-spacing: 0.04em;
+    }
+    .setup-row .value {
+      font-variant-numeric: tabular-nums;
+      font-size: 13px;
+      color: var(--blue);
+    }
+    .setup-row .help {
+      font-size: 11px;
+      color: var(--muted-2);
+      line-height: 1.4;
+    }
+    .setup-row .range {
+      position: relative;
+      height: 6px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(118,203,255,0.10), rgba(118,203,255,0.04));
+    }
+    .setup-row .range .fill {
+      position: absolute; left: 0; top: 0; bottom: 0;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--cyan), var(--blue));
+      box-shadow: 0 0 0 1px rgba(118,203,255,0.4);
+    }
+    .setup-row .range .knob {
+      position: absolute; top: 50%; transform: translate(-50%, -50%);
+      width: 14px; height: 14px; border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+    }
+    .setup-row .scale {
+      display: flex; justify-content: space-between;
+      font-size: 10px; color: var(--muted-2);
+      letter-spacing: 0.08em;
+    }
+    .range-input {
+      width: 100%;
+      margin: 0;
+      accent-color: #77cfff;
+      background: transparent;
+    }
+
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    }
+    .toggle-row .label {
+      font-size: 12px;
+    }
+    .toggle-row .help {
+      font-size: 11px; color: var(--muted-2);
+    }
+    .toggle {
+      width: 38px; height: 22px; border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--line);
+      position: relative; cursor: pointer;
+    }
+    .toggle::after {
+      content: ""; position: absolute; left: 2px; top: 2px;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: var(--muted);
+      transition: 160ms ease;
+    }
+    .toggle.is-on {
+      background: rgba(106,222,143,0.18);
+      border-color: rgba(106,222,143,0.45);
+    }
+    .toggle.is-on::after {
+      left: 18px;
+      background: var(--green);
+    }
+
+    /* ----------------- tire status (5-point contact) ----------------- */
+    .tires {
+      display: grid;
+      grid-template-columns: 1fr 280px 1fr;
+      gap: 14px;
+      align-items: stretch;
+    }
+    .tire-side { display: grid; gap: 12px; }
+
+    .tire {
+      border-radius: var(--radius-lg);
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+      background: var(--panel-soft);
+    }
+
+    .tire-head {
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted);
+    }
+    .tire-head .pos { color: var(--text); font-weight: 600; }
+
+    .tire-body {
+      display: grid;
+      grid-template-columns: 130px 1fr;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .tire-svg {
+      aspect-ratio: 1/1;
+      border-radius: 12px;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(255,255,255,0.05), transparent 65%),
+        linear-gradient(180deg, #0c121b, #070b11);
+      display: grid; place-items: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .tire-stats {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      font-variant-numeric: tabular-nums;
+    }
+    .tire-stat {
+      border-radius: 8px;
+      padding: 6px 8px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--line);
+    }
+    .tire-stat .label {
+      font-size: 9px; color: var(--muted-2); letter-spacing: 0.14em; text-transform: uppercase;
+    }
+    .tire-stat .v {
+      font-size: 13px; font-weight: 600;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .tire-stat .bar {
+      height: 4px; border-radius: 999px; background: rgba(255,255,255,0.05); overflow: hidden;
+      margin-top: 4px;
+    }
+    .tire-stat .bar > span {
+      display: block; height: 100%;
+      background: linear-gradient(90deg, var(--cyan), var(--blue));
+    }
+    .tire-stat.warn .bar > span { background: linear-gradient(90deg, var(--gold), var(--orange)); }
+    .tire-stat.bad .bar > span { background: linear-gradient(90deg, var(--orange), var(--red)); }
+    .tire-stat.warn .v { color: var(--gold); }
+    .tire-stat.bad .v { color: var(--red); }
+
+    /* center chassis diagram */
+    .chassis {
+      border-radius: var(--radius-lg);
+      padding: 14px;
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 10px;
+    }
+    .chassis h3 {
+      font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+    }
+
+    .chassis-stage {
+      position: relative;
+      aspect-ratio: 3/4;
+      border-radius: 12px;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(118,203,255,0.10), transparent 60%),
+        linear-gradient(180deg, #0c121b, #060a10);
+      overflow: hidden;
+    }
+    .chassis-stage svg { width: 100%; height: 100%; }
+
+    .balance-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    }
+    .balance-card {
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      padding: 8px 10px;
+      background: rgba(255,255,255,0.02);
+    }
+    .balance-card .label { font-size: 10px; color: var(--muted-2); letter-spacing: 0.14em; text-transform: uppercase; }
+    .balance-card .v { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .balance-card .v small { color: var(--muted); font-weight: 400; font-size: 10px; margin-left: 4px; }
+
+    /* ----------------- surface grip table ----------------- */
+    .surface-grid {
+      display: grid;
+      gap: 0;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      border: 1px solid var(--line);
+    }
+    .surface-row {
+      display: grid;
+      grid-template-columns: 1.4fr repeat(4, 1fr);
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--panel-soft);
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      box-shadow: none;
+    }
+    .surface-row.head {
+      font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted);
+      background: rgba(118,203,255,0.05);
+    }
+    .surface-row:last-child { border-bottom: 0; }
+    .surface-name { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+    .surface-swatch { width: 16px; height: 16px; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08); }
+    .meter {
+      position: relative; height: 6px; border-radius: 999px;
+      background: rgba(255,255,255,0.04);
+    }
+    .meter > span {
+      position: absolute; left: 0; top: 0; bottom: 0;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--cyan), var(--blue));
+    }
+    .meter.warn > span { background: linear-gradient(90deg, var(--gold), var(--orange)); }
+    .meter.bad > span { background: linear-gradient(90deg, var(--orange), var(--red)); }
+    .meter.green > span { background: linear-gradient(90deg, #6ade8f, #2eab59); }
+
+    /* ----------------- telemetry / debug ----------------- */
+    .debug {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr 1fr;
+      gap: 14px;
+    }
+    .debug .telemetry-card {
+      border-radius: var(--radius-lg);
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+      background: var(--panel-soft);
+    }
+    .telemetry-card h3 {
+      font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+
+    .graph {
+      position: relative;
+      height: 160px;
+      border-radius: 12px;
+      background:
+        repeating-linear-gradient(0deg, rgba(255,255,255,0.04) 0 1px, transparent 1px 32px),
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.04) 0 1px, transparent 1px 56px),
+        linear-gradient(180deg, #0a1118, #060a10);
+      overflow: hidden;
+      border: 1px solid var(--line);
+    }
+    .graph svg { width: 100%; height: 100%; display: block; }
+    .graph .legend {
+      position: absolute; top: 8px; left: 10px; right: 10px;
+      display: flex; gap: 12px;
+      font-size: 10px; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase;
+    }
+    .graph .legend .swatch { display: inline-block; width: 10px; height: 2px; vertical-align: middle; margin-right: 6px; border-radius: 2px; }
+
+    /* tire load lines */
+    .ll-fl { background: var(--cyan); }
+    .ll-fr { background: var(--blue); }
+    .ll-rl { background: var(--gold); }
+    .ll-rr { background: var(--orange); }
+
+    .grid-2 {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    }
+    .kv {
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      padding: 8px 10px;
+      display: grid; gap: 2px;
+      background: rgba(255,255,255,0.02);
+    }
+    .kv .label { font-size: 10px; color: var(--muted-2); letter-spacing: 0.14em; text-transform: uppercase; }
+    .kv .v { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .kv .v small { color: var(--muted); font-weight: 400; font-size: 10px; margin-left: 4px; }
+
+    /* gg circle */
+    .gg-stage {
+      position: relative;
+      aspect-ratio: 1/1;
+      border-radius: 14px;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(118,203,255,0.10), transparent 70%),
+        linear-gradient(180deg, #0a1118, #060a10);
+      border: 1px solid var(--line);
+      overflow: hidden;
+    }
+    .gg-stage svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+    /* ----------------- compare row ----------------- */
+    .compare {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .compare-card {
+      border-radius: var(--radius-lg);
+      padding: 14px;
+      display: grid; gap: 8px;
+      background: var(--panel-soft);
+    }
+    .compare-card h4 { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+    .compare-card .desc { font-size: 12px; color: var(--muted-2); line-height: 1.5; }
+    .compare-card .source { font-size: 11px; color: var(--blue); }
+    .compare-card .badge {
+      align-self: start;
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 10px; padding: 3px 8px; border-radius: 999px;
+      background: rgba(255,255,255,0.04); border: 1px solid var(--line); color: var(--text);
+      letter-spacing: 0.06em; text-transform: uppercase;
+    }
+
+    /* ----------------- footer notes ----------------- */
+    .notes {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    .note {
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+      background: var(--panel-soft);
+      padding: 14px;
+      display: grid; gap: 6px;
+    }
+    .note h4 { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--blue); }
+    .note p { font-size: 12px; color: var(--muted); line-height: 1.55; }
+
+    /* ----------------- responsive ----------------- */
+    @media (max-width: 1180px) {
+      .garage { grid-template-columns: 1fr; }
+      .debug { grid-template-columns: 1fr 1fr; }
+      .compare { grid-template-columns: 1fr 1fr; }
+      .notes { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 820px) {
+      .intro { grid-template-columns: 1fr; }
+      .setup-grid { grid-template-columns: 1fr; }
+      .tires { grid-template-columns: 1fr; }
+      .telemetry-strip { grid-template-columns: 1fr 1fr; }
+      .debug { grid-template-columns: 1fr; }
+      .compare { grid-template-columns: 1fr; }
+      .notes { grid-template-columns: 1fr; }
+      .surface-row { grid-template-columns: 1.2fr 1fr 1fr; }
+      .surface-row .col-hide { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+
+    <!-- ============== top bar ============== -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark"><span>R</span></div>
+        <div class="brand-text">
+          <div class="name">AML Racing — Garage</div>
+          <div class="sub">Three.js · Jolt Physics · Pacejka Tire Model</div>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="Sections">
+        <button class="nav-btn">Drive</button>
+        <button class="nav-btn is-active">Garage</button>
+        <button class="nav-btn">Track</button>
+        <button class="nav-btn">Replay</button>
+        <button class="nav-btn">Telemetry</button>
+        <button class="nav-btn">Settings</button>
+      </nav>
+
+      <div class="top-meta">
+        <span class="pill"><span class="dot"></span>Physics <strong>240 Hz</strong></span>
+        <span class="pill warn"><span class="dot"></span>FFB <strong>Stub</strong></span>
+        <span class="pill"><span class="dot"></span>Render <strong>144 fps</strong></span>
+        <button class="btn ghost" id="save-setup-btn" type="button">Save Setup</button>
+        <button class="btn primary" id="go-to-track-btn" type="button">Go to Track</button>
+      </div>
+    </header>
+
+    <!-- ============== intro / hero ============== -->
+    <section class="intro">
+      <div>
+        <div class="eyebrow">Sprint 04 · Racing Sim Foundation</div>
+        <h1>A garage that exposes the physics, not hides it.</h1>
+        <p class="lede">
+          The setup screen is where serious sim racers live. This proposal models the car the way
+          Assetto Corsa, rFactor 2, Automobilista 2, and Rennsport do — multi-point tire contact,
+          Pacejka-style slip curves, real spring and damper rates, surface-aware grip, and aero
+          that reacts to ride height. Visuals stay friendly to Kenney's low-poly racing kit, but
+          the language and controls are motorsport.
+        </p>
+
+        <div class="intro-tags">
+          <span class="tag">5-Point Contact Patch</span>
+          <span class="tag green">Pacejka MF 5.2</span>
+          <span class="tag gold">Spring / Damper</span>
+          <span class="tag orange">Aero · Ride Height</span>
+          <span class="tag purple">Drivetrain · Diff · TC</span>
+          <span class="tag">Per-Surface Grip</span>
+        </div>
+      </div>
+
+      <div class="intro-stats">
+        <div class="stat-card">
+          <div class="label">Active Car</div>
+          <div class="value">Race-Future <small>GT4 Concept</small></div>
+          <div class="delta">kenney_car-kit · race-future.fbx</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Mass</div>
+          <div class="value">1240 <small>kg</small></div>
+          <div class="delta">FR 46% · RR 54%</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Power</div>
+          <div class="value">462 <small>hp @ 7800</small></div>
+          <div class="delta">Drivetrain RWD · 6-speed</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Setup</div>
+          <div class="value">Custom-A</div>
+          <div class="delta">Δ stock: -0.32s lap est.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============== garage / car selection ============== -->
+    <section class="module">
+      <div class="module-head">
+        <div>
+          <h2>Garage</h2>
+          <div class="sub">Pick a car. Visuals come from Kenney's car-kit and racing-kit. Class, mass, drivetrain, and aero presets drive the underlying physics body.</div>
+        </div>
+        <div class="seg" role="tablist" aria-label="Class filter">
+          <button class="is-active" type="button">All</button>
+          <button type="button">Race</button>
+          <button type="button">GT</button>
+          <button type="button">Kart</button>
+          <button type="button">Road</button>
+          <button type="button">Truck</button>
+        </div>
+      </div>
+
+      <div class="garage">
+        <!-- selected car big preview -->
+        <div class="car-display">
+          <div class="car-display-head">
+            <div class="car-display-title">
+              <div class="class">Race · Prototype</div>
+              <div class="name">Race-Future <span style="color: var(--muted); font-weight: 400; font-size: 14px;">· GT4-class concept</span></div>
+            </div>
+            <div style="display:flex; gap:6px;">
+              <button class="btn ghost">Detune</button>
+              <button class="btn">Calibrate Tires</button>
+            </div>
+          </div>
+
+          <div class="car-stage">
+            <!-- low-poly side profile car -->
+            <svg viewBox="0 0 800 360" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <defs>
+                <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#ffad66"/>
+                  <stop offset="1" stop-color="#d96a3c"/>
+                </linearGradient>
+                <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#bce4ff" stop-opacity="0.9"/>
+                  <stop offset="1" stop-color="#3d6e9c" stop-opacity="0.85"/>
+                </linearGradient>
+                <radialGradient id="floor" cx="50%" cy="100%" r="60%">
+                  <stop offset="0" stop-color="rgba(0,0,0,0.45)"/>
+                  <stop offset="1" stop-color="rgba(0,0,0,0)"/>
+                </radialGradient>
+              </defs>
+              <!-- shadow -->
+              <ellipse cx="400" cy="300" rx="280" ry="22" fill="url(#floor)"/>
+              <!-- chassis -->
+              <path d="M120,250 L200,210 L320,180 L500,170 L600,180 L660,210 L700,240 L700,260 L120,260 Z" fill="url(#body)"/>
+              <!-- side scoop -->
+              <path d="M260,228 L320,212 L420,210 L420,232 L260,232 Z" fill="#0a0d12" opacity="0.5"/>
+              <!-- glass canopy -->
+              <path d="M300,210 L380,180 L500,178 L520,210 Z" fill="url(#glass)"/>
+              <!-- rear wing -->
+              <path d="M610,164 L700,162 L700,176 L640,176 Z" fill="#1d2330"/>
+              <path d="M620,164 L700,164 L700,170 L640,170 Z" fill="#3a4253"/>
+              <!-- front splitter -->
+              <path d="M120,255 L170,255 L170,262 L120,262 Z" fill="#1d2330"/>
+              <!-- lights -->
+              <rect x="660" y="220" width="22" height="6" rx="2" fill="#ffe4a8"/>
+              <rect x="138" y="218" width="22" height="6" rx="2" fill="#ffd6c0"/>
+              <!-- accent stripe -->
+              <path d="M180,236 L660,224 L660,232 L180,242 Z" fill="#fff" opacity="0.18"/>
+              <!-- wheels -->
+              <g>
+                <circle cx="220" cy="270" r="34" fill="#0a0d12"/>
+                <circle cx="220" cy="270" r="22" fill="#1a2030" stroke="#3a4253" stroke-width="2"/>
+                <circle cx="220" cy="270" r="6" fill="#77cfff"/>
+              </g>
+              <g>
+                <circle cx="600" cy="270" r="34" fill="#0a0d12"/>
+                <circle cx="600" cy="270" r="22" fill="#1a2030" stroke="#3a4253" stroke-width="2"/>
+                <circle cx="600" cy="270" r="6" fill="#77cfff"/>
+              </g>
+              <!-- racing number -->
+              <text x="380" y="232" fill="#0a0d12" font-family="Inter, sans-serif" font-size="28" font-weight="800">07</text>
+            </svg>
+
+            <div class="stage-overlay">
+              <div class="anchor">FRONT</div>
+              <div></div>
+              <div class="anchor r">REAR</div>
+              <div class="anchor" style="grid-column: 1 / -1; align-self: end; opacity: 0.5;">CG offset 12mm rearward · ride height 78mm</div>
+            </div>
+          </div>
+
+          <div class="telemetry-strip">
+            <div class="telemetry-card">
+              <div class="label">Top Speed</div>
+              <div class="value">298 <small>km/h</small></div>
+            </div>
+            <div class="telemetry-card">
+              <div class="label">0-100</div>
+              <div class="value">3.4 <small>s</small></div>
+            </div>
+            <div class="telemetry-card">
+              <div class="label">Downforce @ 200</div>
+              <div class="value">412 <small>N</small></div>
+            </div>
+            <div class="telemetry-card">
+              <div class="label">Yaw Inertia</div>
+              <div class="value">2160 <small>kg·m²</small></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- car list -->
+        <div>
+          <div class="car-list-head" style="margin-bottom: 10px;">
+            <input class="car-search" type="search" placeholder="Search models · race-future, kart-oozi, sedan-sports…" />
+            <button class="btn ghost">Sort: Class</button>
+          </div>
+          <div class="car-grid">
+
+            <article class="car-card is-active">
+              <div class="thumb">
+                <svg viewBox="0 0 200 80" aria-hidden="true">
+                  <path d="M20,55 L50,40 L130,38 L170,52 L170,60 L20,60 Z" fill="#ffad66"/>
+                  <path d="M70,42 L100,32 L130,32 L140,42 Z" fill="#bce4ff" opacity="0.85"/>
+                  <circle cx="50" cy="62" r="8" fill="#0a0d12"/>
+                  <circle cx="150" cy="62" r="8" fill="#0a0d12"/>
+                </svg>
+              </div>
+              <div class="meta">
+                <div>
+                  <div class="name">Race-Future</div>
+                  <div class="class">Race · GT4</div>
+                </div>
+                <span class="tag" style="margin:0;">Selected</span>
+              </div>
+              <div class="specs"><span>1240 kg</span><span>462 hp</span><span>RWD</span></div>
+            </article>
+
+            <article class="car-card">
+              <div class="thumb">
+                <svg viewBox="0 0 200 80" aria-hidden="true">
+                  <path d="M22,56 L62,42 L138,40 L168,55 L168,62 L22,62 Z" fill="#ff7070"/>
+                  <path d="M70,44 L100,34 L130,34 L140,44 Z" fill="#bce4ff" opacity="0.85"/>
+                  <circle cx="52" cy="64" r="8" fill="#0a0d12"/>
+                  <circle cx="148" cy="64" r="8" fill="#0a0d12"/>
+                </svg>
+              </div>
+              <div class="meta">
+                <div>
+                  <div class="name">Race</div>
+                  <div class="class">Race · Open Wheel</div>
+                </div>
+              </div>
+              <div class="specs"><span>720 kg</span><span>520 hp</span><span>RWD</span></div>
+            </article>
+
+            <article class="car-card">
+              <div class="thumb">
+                <svg viewBox="0 0 200 80" aria-hidden="true">
+                  <path d="M20,52 L60,38 L140,36 L172,52 L172,62 L20,62 Z" fill="#bfa3ff"/>
+                  <path d="M62,40 L98,28 L138,28 L150,40 Z" fill="#bce4ff" opacity="0.85"/>
+                  <circle cx="52" cy="64" r="9" fill="#0a0d12"/>
+                  <circle cx="150" cy="64" r="9" fill="#0a0d12"/>
+                </svg>
+              </div>
+              <div class="meta">
+                <div>
+                  <div class="name">Hatchback Sports</div>
+                  <div class="class">Road · Hot Hatch</div>
+                </div>
+              </div>
+              <div class="specs"><span>1180 kg</span><span>275 hp</span><span>FWD</span></div>
+            </article>
+
+            <article class="car-card">
+              <div class="thumb">
+                <svg viewBox="0 0 200 80" aria-hidden="true">
+                  <path d="M22,54 L66,40 L134,38 L170,54 L170,62 L22,62 Z" fill="#6ade8f"/>
+                  <path d="M68,42 L100,30 L132,30 L142,42 Z" fill="#bce4ff" opacity="0.85"/>
+                  <circle cx="52" cy="64" r="8" fill="#0a0d12"/>
+                  <circle cx="150" cy="64" r="8" fill="#0a0d12"/>
+                </svg>
+              </div>
+              <div class="meta">
+                <div>
+                  <div class="name">Sedan Sports</div>
+                  <div class="class">GT · Touring</div>
+                </div>
+              </div>
+              <div class="specs"><span>1390 kg</span><span>360 hp</span><span>AWD</span></div>
+            </article>
+
+            <article class="car-card">
+              <div class="thumb">
+                <svg viewBox="0 0 200 80" aria-hidden="true">
+                  <path d="M30,56 L60,46 L150,46 L172,56 L172,62 L30,62 Z" fill="#f1c86b"/>
+                  <path d="M64,46 L86,38 L130,38 L150,46 Z" fill="#0a0d12" opacity="0.7"/>
+                  <circle cx="60" cy="64" r="8" fill="#0a0d12"/>
+                  <circle cx="150" cy="64" r="8" fill="#0a0d12"/>
+                </svg>
+              </div>
+              <div class="meta">
+                <div>
+                  <div class="name">Kart-Oozi</div>
+                  <div class="class">Kart · Shifter</div>
+                </div>
+              </div>
+              <div class="specs"><span>168 kg</span><span>52 hp</span><span>Direct</span></div>
+            </article>
+
+            <article class="car-card">
+              <div class="thumb">
+                <svg viewBox="0 0 200 80" aria-hidden="true">
+                  <path d="M22,56 L62,42 L138,40 L168,55 L168,62 L22,62 Z" fill="#66f0ff"/>
+                  <path d="M70,42 L100,32 L130,32 L140,42 Z" fill="#bce4ff" opacity="0.85"/>
+                  <circle cx="52" cy="64" r="8" fill="#0a0d12"/>
+                  <circle cx="148" cy="64" r="8" fill="#0a0d12"/>
+                </svg>
+              </div>
+              <div class="meta">
+                <div>
+                  <div class="name">Kart-Oodi</div>
+                  <div class="class">Kart · 100cc</div>
+                </div>
+              </div>
+              <div class="specs"><span>140 kg</span><span>22 hp</span><span>Direct</span></div>
+            </article>
+
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============== setup / sliders ============== -->
+    <section class="module">
+      <div class="module-head">
+        <div>
+          <h2>Setup</h2>
+          <div class="sub">Sliders write directly into the physics body. Default values match a calibrated baseline; deltas are previewed live in the telemetry below.</div>
+        </div>
+        <div class="seg" role="tablist" aria-label="Setup tabs">
+          <button class="is-active" type="button">Tires</button>
+          <button type="button">Suspension</button>
+          <button type="button">Aero</button>
+          <button type="button">Drivetrain</button>
+          <button type="button">Brakes</button>
+          <button type="button">Assists</button>
+          <button type="button">Geometry</button>
+        </div>
+      </div>
+
+      <div class="setup-grid">
+
+        <!-- Tires -->
+        <div class="setup-card">
+          <h3>Tires · Pacejka MF 5.2</h3>
+          <p class="desc">Per-axle compound and pressure. Slip stiffness and load sensitivity are baked from compound data.</p>
+
+          <div class="setup-row">
+            <div class="row"><label>Compound · Front</label><span class="value">Soft (S2)</span></div>
+            <div class="range"><span class="fill" style="width: 32%;"></span><span class="knob" style="left: 32%;"></span></div>
+            <div class="scale"><span>Wet</span><span>Hard</span><span>Med</span><span>Soft</span><span>Slick</span></div>
+          </div>
+          <div class="setup-row">
+            <div class="row"><label>Compound · Rear</label><span class="value">Medium (M3)</span></div>
+            <div class="range"><span class="fill" style="width: 56%;"></span><span class="knob" style="left: 56%;"></span></div>
+            <div class="scale"><span>Wet</span><span>Hard</span><span>Med</span><span>Soft</span><span>Slick</span></div>
+          </div>
+          <div class="setup-row">
+            <div class="row"><label>Cold Pressure FL/FR</label><span class="value">25.4 / 25.4 psi</span></div>
+            <div class="range"><span class="fill" style="width: 42%;"></span><span class="knob" style="left: 42%;"></span></div>
+            <div class="scale"><span>22</span><span>24</span><span>26</span><span>28</span><span>30</span></div>
+          </div>
+          <div class="setup-row">
+            <div class="row"><label>Cold Pressure RL/RR</label><span class="value">23.8 / 23.8 psi</span></div>
+            <div class="range"><span class="fill" style="width: 30%;"></span><span class="knob" style="left: 30%;"></span></div>
+            <div class="scale"><span>22</span><span>24</span><span>26</span><span>28</span><span>30</span></div>
+          </div>
+          <div class="setup-row">
+            <div class="row"><label>Camber Front / Rear</label><span class="value">-3.5° / -2.8°</span></div>
+            <div class="range"><span class="fill" style="width: 65%;"></span><span class="knob" style="left: 65%;"></span></div>
+            <div class="scale"><span>-1°</span><span>-2°</span><span>-3°</span><span>-4°</span><span>-5°</span></div>
+          </div>
+        </div>
+
+        <!-- Suspension -->
+        <div class="setup-card">
+          <h3>Suspension · Spring · Damper</h3>
+          <p class="desc">Linear spring + bump/rebound damper per corner. Scales the vertical force returned to the chassis at every physics tick.</p>
+
+          <div class="setup-row">
+            <div class="row"><label>Spring Rate · Front</label><span class="value">128 N/mm</span></div>
+            <div class="range"><span class="fill" style="width: 48%;"></span><span class="knob" style="left: 48%;"></span></div>
+            <div class="scale"><span>80</span><span>100</span><span>120</span><span>140</span><span>160</span></div>
+          </div>
+          <div class="setup-row">
+            <div class="row"><label>Spring Rate · Rear</label><span class="value">142 N/mm</span></div>
+            <div class="range"><span class="fill" style="width: 58%;"></span><span class="knob" style="left: 58%;"></span></div>
+            <div class="scale"><span>80</span><span>100</span><span>120</span><span>140</span><span>160</span></div>
+          </div>
+          <div class="setup-row">
+            <div class="row"><label>Bump · Front</label><span class="value">3 / 11</span></div>
+            <div class="range"><span class="fill" style="width: 27%;"></span><span class="knob" style="left: 27%;"></span></div>
+            <div class="scale"><span>0</span><span>3</span><span>6</span><span>9</span><span>11</span></div>
+          </div>
+          <div class="setup-row">
+            <div class="row"><label>Rebound · Front</label><span class="value">5 / 11</span></div>
+            <div class="range"><span class="fill" style="width: 45%;"></span><span class="knob" style="left: 45%;"></span></div>
+            <div class="scale"><span>0</span><span>3</span><span>6</span><span>9</span><span>11</span></div>
+          </div>
+          <div class="setup-row">
+            <div class="row"><label>Anti-Roll Bar F / R</label><span class="value">62% / 48%</span></div>
+            <div class="range"><span class="fill" style="width: 55%;"></span><span class="knob" style="left: 55%;"></span></div>
+            <div class="scale"><span>Soft</span><span></span><span>Mid</span><span></span><span>Stiff</span></div>
+          </div>
+        </div>
+
+        <!-- Aero -->
+        <div class="setup-card">
+          <h3>Aerodynamics</h3>
+          <p class="desc">Downforce scales with speed²; drag fights top end. Front/rear balance changes aero-driven oversteer or understeer.</p>
+
+          <div class="setup-row">
+            <div class="row"><label>Front Splitter</label><span class="value">5 / 10</span></div>
+            <div class="range"><span class="fill" style="width: 50%;"></span><span class="knob" style="left: 50%;"></span></div>
+            <div class="scale"><span>0</span><span>2.5</span><span>5</span><span>7.5</span><span>10</span></div>
+          </div>
+          <div class="setup-row">
+            <div class="row"><label>Rear Wing</label><span class="value">7 / 10</span></div>
+            <div class="range"><span class="fill" style="width: 70%;"></span><span class="knob" style="left: 70%;"></span></div>
+            <div class="scale"><span>0</span><span>2.5</span><span>5</span><span>7.5</span><span>10</span></div>
+          </div>
+          <div class="setup-row">
+            <div class="row"><label>Ride Height F / R</label><span class="value">62 / 78 mm</span></div>
+            <div class="range"><span class="fill" style="width: 38%;"></span><span class="knob" style="left: 38%;"></span></div>
+            <div class="scale"><span>50</span><span>62</span><span>74</span><span>86</span><span>98</span></div>
+          </div>
+          <div class="toggle-row">
+            <div>
+              <div class="label">Track Aero Calculation</div>
+              <div class="help">Use real ride-height delta to scale Cl front/rear.</div>
+            </div>
+            <div class="toggle is-on" role="switch" aria-checked="true"></div>
+          </div>
+        </div>
+
+        <!-- Drivetrain & Brakes -->
+        <div class="setup-card">
+          <h3>Drivetrain · Brakes · Assists</h3>
+          <p class="desc">Differential, brake bias, throttle map, and ABS/TC. Assists run as torque shaping on top of the physics, never as fake input.</p>
+
+          <div class="setup-row">
+            <div class="row"><label>Differential Preload</label><span class="value">120 Nm</span></div>
+            <div class="range"><span class="fill" style="width: 40%;"></span><span class="knob" style="left: 40%;"></span></div>
+            <div class="scale"><span>0</span><span>60</span><span>120</span><span>180</span><span>240</span></div>
+          </div>
+          <div class="setup-row">
+            <div class="row"><label>Diff Power / Coast Lock</label><span class="value">65% / 35%</span></div>
+            <div class="range"><span class="fill" style="width: 65%;"></span><span class="knob" style="left: 65%;"></span></div>
+            <div class="scale"><span>0%</span><span>25</span><span>50</span><span>75</span><span>100%</span></div>
+          </div>
+          <div class="setup-row">
+            <div class="row"><label>Brake Bias</label><span class="value">F 56.5%</span></div>
+            <div class="range"><span class="fill" style="width: 56.5%;"></span><span class="knob" style="left: 56.5%;"></span></div>
+            <div class="scale"><span>50%</span><span>53</span><span>56</span><span>59</span><span>62%</span></div>
+          </div>
+          <div class="toggle-row">
+            <div>
+              <div class="label">ABS · Level 3</div>
+              <div class="help">Releases brake torque when slip ratio exceeds threshold per wheel.</div>
+            </div>
+            <div class="toggle is-on" role="switch" aria-checked="true"></div>
+          </div>
+          <div class="toggle-row">
+            <div>
+              <div class="label">Traction Control · Level 4</div>
+              <div class="help">Cuts engine torque when rear slip ratio overshoots target.</div>
+            </div>
+            <div class="toggle" role="switch" aria-checked="false"></div>
+          </div>
+        </div>
+
+        <div class="setup-card" id="tier4-geometry-card">
+          <h3>Geometry · Tier 4</h3>
+          <p class="desc">These prototype controls feed the live driving sketch: toe, caster, Ackermann steering, suspension motion ratio, and bump-stop engagement.</p>
+
+          <div class="setup-row">
+            <div class="row"><label for="front-toe" data-i18n="setup.toe.front">Front Toe</label><span class="value" id="front-toe-value" data-unit="deg">0.10° out</span></div>
+            <input class="range-input tier4-control" id="front-toe" type="range" min="-0.5" max="0.5" step="0.01" value="0.10" data-key="frontToeDeg" aria-label="Front toe in degrees, positive is toe-out" />
+            <div class="scale"><span>0.5° in</span><span>neutral</span><span>0.5° out</span></div>
+          </div>
+          <div class="setup-row">
+            <div class="row"><label for="rear-toe" data-i18n="setup.toe.rear">Rear Toe</label><span class="value" id="rear-toe-value" data-unit="deg">0.15° in</span></div>
+            <input class="range-input tier4-control" id="rear-toe" type="range" min="-0.5" max="0.5" step="0.01" value="0.15" data-key="rearToeDeg" aria-label="Rear toe in degrees, positive is toe-in" />
+            <div class="scale"><span>0.5° out</span><span>neutral</span><span>0.5° in</span></div>
+          </div>
+          <div class="setup-row">
+            <div class="row"><label for="caster" data-i18n="setup.caster">Caster</label><span class="value" id="caster-value" data-unit="deg">6.0°</span></div>
+            <input class="range-input tier4-control" id="caster" type="range" min="0" max="12" step="0.1" value="6.0" data-key="casterDeg" aria-label="Caster angle in degrees" />
+            <div class="scale"><span>0°</span><span>6°</span><span>12°</span></div>
+            <div class="help">Higher caster increases self-centering feel and adds more camber gain under steering lock.</div>
+          </div>
+          <div class="setup-row">
+            <div class="row"><label for="ackermann" data-i18n="setup.ackermann">Ackermann</label><span class="value" id="ackermann-value" data-unit="pct">60%</span></div>
+            <input class="range-input tier4-control" id="ackermann" type="range" min="0" max="100" step="1" value="60" data-key="ackermannPct" aria-label="Ackermann percentage from parallel to ideal steering geometry" />
+            <div class="scale"><span>Parallel</span><span>Balanced</span><span>Ideal</span></div>
+          </div>
+          <div class="setup-row">
+            <div class="row"><label for="mr-front" data-i18n="setup.motionRatio.front">Motion Ratio Front</label><span class="value" id="mr-front-value" data-unit="ratio">0.86</span></div>
+            <input class="range-input tier4-control" id="mr-front" type="range" min="0.50" max="1.00" step="0.01" value="0.86" data-key="motionRatioFront" aria-label="Front suspension motion ratio" />
+            <div class="scale"><span>0.50</span><span>0.75</span><span>1.00</span></div>
+          </div>
+          <div class="setup-row">
+            <div class="row"><label for="mr-rear" data-i18n="setup.motionRatio.rear">Motion Ratio Rear</label><span class="value" id="mr-rear-value" data-unit="ratio">0.82</span></div>
+            <input class="range-input tier4-control" id="mr-rear" type="range" min="0.50" max="1.00" step="0.01" value="0.82" data-key="motionRatioRear" aria-label="Rear suspension motion ratio" />
+            <div class="scale"><span>0.50</span><span>0.75</span><span>1.00</span></div>
+          </div>
+          <div class="setup-row">
+            <div class="row"><label for="bs-gap-front" data-i18n="setup.bumpStopGap.front">Bump-stop Gap Front</label><span class="value" id="bs-gap-front-value" data-unit="mm">120 mm</span></div>
+            <input class="range-input tier4-control" id="bs-gap-front" type="range" min="20" max="220" step="1" value="120" data-key="bumpStopGapFrontMm" aria-label="Front bump-stop gap in millimeters" />
+            <div class="scale"><span>20</span><span>120</span><span>220</span></div>
+          </div>
+          <div class="setup-row">
+            <div class="row"><label for="bs-gap-rear" data-i18n="setup.bumpStopGap.rear">Bump-stop Gap Rear</label><span class="value" id="bs-gap-rear-value" data-unit="mm">105 mm</span></div>
+            <input class="range-input tier4-control" id="bs-gap-rear" type="range" min="20" max="220" step="1" value="105" data-key="bumpStopGapRearMm" aria-label="Rear bump-stop gap in millimeters" />
+            <div class="scale"><span>20</span><span>120</span><span>220</span></div>
+          </div>
+          <div class="setup-row">
+            <div class="row"><label for="bs-rate-front" data-i18n="setup.bumpStopRate.front">Bump-stop Rate Front</label><span class="value" id="bs-rate-front-value" data-unit="nmm">180 N/mm</span></div>
+            <input class="range-input tier4-control" id="bs-rate-front" type="range" min="0" max="400" step="5" value="180" data-key="bumpStopRateFrontNmm" aria-label="Front bump-stop spring rate in newtons per millimeter" />
+            <div class="scale"><span>0</span><span>200</span><span>400</span></div>
+          </div>
+          <div class="setup-row">
+            <div class="row"><label for="bs-rate-rear" data-i18n="setup.bumpStopRate.rear">Bump-stop Rate Rear</label><span class="value" id="bs-rate-rear-value" data-unit="nmm">220 N/mm</span></div>
+            <input class="range-input tier4-control" id="bs-rate-rear" type="range" min="0" max="400" step="5" value="220" data-key="bumpStopRateRearNmm" aria-label="Rear bump-stop spring rate in newtons per millimeter" />
+            <div class="scale"><span>0</span><span>200</span><span>400</span></div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============== tire status / 5-point contact ============== -->
+    <section class="module">
+      <div class="module-head">
+        <div>
+          <h2>Tire Status · 5-Point Contact</h2>
+          <div class="sub">Each tire reports temperature core/inner/outer, pressure, wear, slip ratio/angle, vertical load, and which of its 5 contact probes are touching surface.</div>
+        </div>
+        <div class="seg" role="tablist" aria-label="Telemetry source">
+          <button class="is-active" type="button">Live</button>
+          <button type="button">Last Lap</button>
+          <button type="button">Best Lap</button>
+        </div>
+      </div>
+
+      <div class="tires">
+
+        <!-- left column FL + RL -->
+        <div class="tire-side">
+
+          <div class="tire">
+            <div class="tire-head"><span class="pos">FL · Front Left</span><span>Soft S2 · 25.4 psi</span></div>
+            <div class="tire-body">
+              <div class="tire-svg">
+                <svg viewBox="0 0 160 160" aria-hidden="true">
+                  <defs>
+                    <radialGradient id="heatFL" cx="50%" cy="50%" r="50%">
+                      <stop offset="0" stop-color="#ff7070"/>
+                      <stop offset="0.6" stop-color="#ffad66"/>
+                      <stop offset="1" stop-color="#3d6e9c"/>
+                    </radialGradient>
+                  </defs>
+                  <circle cx="80" cy="80" r="60" fill="#0a0d12" stroke="#1d2330" stroke-width="2"/>
+                  <ellipse cx="80" cy="80" rx="44" ry="50" fill="url(#heatFL)" opacity="0.9"/>
+                  <!-- 5-point contact -->
+                  <circle cx="80" cy="38" r="6" fill="#66f0ff"/>
+                  <circle cx="80" cy="80" r="6" fill="#66f0ff"/>
+                  <circle cx="80" cy="122" r="6" fill="#66f0ff"/>
+                  <circle cx="56" cy="80" r="5" fill="#f1c86b"/>
+                  <circle cx="104" cy="80" r="5" fill="#66f0ff"/>
+                  <text x="80" y="156" text-anchor="middle" fill="#96a8bb" font-family="Inter, sans-serif" font-size="10" letter-spacing="2">CONTACT 5/5</text>
+                </svg>
+              </div>
+              <div class="tire-stats">
+                <div class="tire-stat"><div class="label">Temp Core</div><div class="v">86°C</div><div class="bar"><span style="width: 70%;"></span></div></div>
+                <div class="tire-stat warn"><div class="label">Temp Outer</div><div class="v">102°C</div><div class="bar"><span style="width: 88%;"></span></div></div>
+                <div class="tire-stat"><div class="label">Slip Angle</div><div class="v">5.4°</div><div class="bar"><span style="width: 62%;"></span></div></div>
+                <div class="tire-stat"><div class="label">Slip Ratio</div><div class="v">0.04</div><div class="bar"><span style="width: 28%;"></span></div></div>
+                <div class="tire-stat"><div class="label">Load Fz</div><div class="v">3680 N</div><div class="bar"><span style="width: 72%;"></span></div></div>
+                <div class="tire-stat"><div class="label">Wear</div><div class="v">3.1%</div><div class="bar"><span style="width: 12%;"></span></div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="tire">
+            <div class="tire-head"><span class="pos">RL · Rear Left</span><span>Med M3 · 23.8 psi</span></div>
+            <div class="tire-body">
+              <div class="tire-svg">
+                <svg viewBox="0 0 160 160" aria-hidden="true">
+                  <defs>
+                    <radialGradient id="heatRL" cx="50%" cy="50%" r="50%">
+                      <stop offset="0" stop-color="#ff7070"/>
+                      <stop offset="0.5" stop-color="#ffad66"/>
+                      <stop offset="1" stop-color="#3d6e9c"/>
+                    </radialGradient>
+                  </defs>
+                  <circle cx="80" cy="80" r="60" fill="#0a0d12" stroke="#1d2330" stroke-width="2"/>
+                  <ellipse cx="80" cy="80" rx="46" ry="50" fill="url(#heatRL)" opacity="0.9"/>
+                  <circle cx="80" cy="38" r="6" fill="#66f0ff"/>
+                  <circle cx="80" cy="80" r="6" fill="#66f0ff"/>
+                  <circle cx="80" cy="122" r="6" fill="#66f0ff"/>
+                  <circle cx="56" cy="80" r="5" fill="#66f0ff"/>
+                  <circle cx="104" cy="80" r="5" fill="#66f0ff"/>
+                  <text x="80" y="156" text-anchor="middle" fill="#96a8bb" font-family="Inter, sans-serif" font-size="10" letter-spacing="2">CONTACT 5/5</text>
+                </svg>
+              </div>
+              <div class="tire-stats">
+                <div class="tire-stat"><div class="label">Temp Core</div><div class="v">94°C</div><div class="bar"><span style="width: 78%;"></span></div></div>
+                <div class="tire-stat"><div class="label">Temp Outer</div><div class="v">96°C</div><div class="bar"><span style="width: 80%;"></span></div></div>
+                <div class="tire-stat"><div class="label">Slip Angle</div><div class="v">3.8°</div><div class="bar"><span style="width: 42%;"></span></div></div>
+                <div class="tire-stat warn"><div class="label">Slip Ratio</div><div class="v">0.12</div><div class="bar"><span style="width: 64%;"></span></div></div>
+                <div class="tire-stat"><div class="label">Load Fz</div><div class="v">4520 N</div><div class="bar"><span style="width: 84%;"></span></div></div>
+                <div class="tire-stat"><div class="label">Wear</div><div class="v">5.6%</div><div class="bar"><span style="width: 22%;"></span></div></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- chassis center -->
+        <div class="chassis">
+          <h3>Chassis · Top View</h3>
+          <div class="chassis-stage">
+            <svg viewBox="0 0 200 320" aria-hidden="true">
+              <defs>
+                <linearGradient id="chassisBody" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#ffad66"/>
+                  <stop offset="1" stop-color="#d96a3c"/>
+                </linearGradient>
+              </defs>
+              <!-- car body -->
+              <path d="M50,30 Q100,16 150,30 L160,90 L162,200 L150,290 Q100,302 50,290 L38,200 L40,90 Z" fill="url(#chassisBody)"/>
+              <!-- canopy -->
+              <path d="M70,80 Q100,68 130,80 L132,180 Q100,188 68,180 Z" fill="#bce4ff" opacity="0.55"/>
+              <!-- weight indicator -->
+              <circle cx="100" cy="184" r="14" fill="rgba(118,203,255,0.18)" stroke="#77cfff" stroke-width="1.5"/>
+              <circle cx="100" cy="184" r="4" fill="#77cfff"/>
+              <text x="100" y="216" text-anchor="middle" fill="#96a8bb" font-family="Inter, sans-serif" font-size="9" letter-spacing="2">CG</text>
+
+              <!-- wheels w/ load color -->
+              <g>
+                <rect x="14" y="56" width="22" height="36" rx="4" fill="#66f0ff"/>
+                <text x="25" y="80" text-anchor="middle" fill="#0a0d12" font-family="Inter, sans-serif" font-size="9" font-weight="700">FL</text>
+              </g>
+              <g>
+                <rect x="164" y="56" width="22" height="36" rx="4" fill="#77cfff"/>
+                <text x="175" y="80" text-anchor="middle" fill="#0a0d12" font-family="Inter, sans-serif" font-size="9" font-weight="700">FR</text>
+              </g>
+              <g>
+                <rect x="14" y="232" width="22" height="36" rx="4" fill="#f1c86b"/>
+                <text x="25" y="256" text-anchor="middle" fill="#0a0d12" font-family="Inter, sans-serif" font-size="9" font-weight="700">RL</text>
+              </g>
+              <g>
+                <rect x="164" y="232" width="22" height="36" rx="4" fill="#ffad66"/>
+                <text x="175" y="256" text-anchor="middle" fill="#0a0d12" font-family="Inter, sans-serif" font-size="9" font-weight="700">RR</text>
+              </g>
+
+              <!-- yaw arrow -->
+              <path d="M100,118 L100,250" stroke="rgba(118,203,255,0.6)" stroke-width="1.5" stroke-dasharray="4 4"/>
+              <path d="M96,124 L100,114 L104,124" fill="none" stroke="rgba(118,203,255,0.7)" stroke-width="1.5"/>
+
+              <!-- corner force vectors -->
+              <line x1="36" y1="74" x2="50" y2="80" stroke="#66f0ff" stroke-width="2"/>
+              <line x1="164" y1="74" x2="150" y2="80" stroke="#77cfff" stroke-width="2"/>
+              <line x1="36" y1="250" x2="50" y2="244" stroke="#f1c86b" stroke-width="2"/>
+              <line x1="164" y1="250" x2="150" y2="244" stroke="#ffad66" stroke-width="2"/>
+            </svg>
+          </div>
+
+          <div class="balance-row">
+            <div class="balance-card"><div class="label">Weight Bias F/R</div><div class="v">46 / 54<small>%</small></div></div>
+            <div class="balance-card"><div class="label">Cross Weight</div><div class="v">50.2<small>%</small></div></div>
+            <div class="balance-card"><div class="label">Roll Angle</div><div class="v">2.3<small>°</small></div></div>
+            <div class="balance-card"><div class="label">Pitch</div><div class="v">-0.8<small>°</small></div></div>
+            <div class="balance-card"><div class="label">Toe F / R</div><div class="v" id="geometry-summary-toe">0.10 / 0.15<small>°</small></div></div>
+            <div class="balance-card"><div class="label">Caster / Ack</div><div class="v" id="geometry-summary-caster">6.0° / 60<small>%</small></div></div>
+          </div>
+        </div>
+
+        <!-- right column FR + RR -->
+        <div class="tire-side">
+
+          <div class="tire">
+            <div class="tire-head"><span class="pos">FR · Front Right</span><span>Soft S2 · 25.4 psi</span></div>
+            <div class="tire-body">
+              <div class="tire-svg">
+                <svg viewBox="0 0 160 160" aria-hidden="true">
+                  <defs>
+                    <radialGradient id="heatFR" cx="50%" cy="50%" r="50%">
+                      <stop offset="0" stop-color="#ffad66"/>
+                      <stop offset="0.6" stop-color="#f1c86b"/>
+                      <stop offset="1" stop-color="#3d6e9c"/>
+                    </radialGradient>
+                  </defs>
+                  <circle cx="80" cy="80" r="60" fill="#0a0d12" stroke="#1d2330" stroke-width="2"/>
+                  <ellipse cx="80" cy="80" rx="44" ry="50" fill="url(#heatFR)" opacity="0.9"/>
+                  <circle cx="80" cy="38" r="6" fill="#66f0ff"/>
+                  <circle cx="80" cy="80" r="6" fill="#66f0ff"/>
+                  <circle cx="80" cy="122" r="6" fill="#66f0ff"/>
+                  <circle cx="56" cy="80" r="5" fill="#66f0ff"/>
+                  <circle cx="104" cy="80" r="5" fill="#ff7070"/>
+                  <text x="80" y="156" text-anchor="middle" fill="#96a8bb" font-family="Inter, sans-serif" font-size="10" letter-spacing="2">CONTACT 4/5</text>
+                </svg>
+              </div>
+              <div class="tire-stats">
+                <div class="tire-stat"><div class="label">Temp Core</div><div class="v">82°C</div><div class="bar"><span style="width: 64%;"></span></div></div>
+                <div class="tire-stat"><div class="label">Temp Outer</div><div class="v">94°C</div><div class="bar"><span style="width: 78%;"></span></div></div>
+                <div class="tire-stat warn"><div class="label">Slip Angle</div><div class="v">7.2°</div><div class="bar"><span style="width: 78%;"></span></div></div>
+                <div class="tire-stat"><div class="label">Slip Ratio</div><div class="v">0.06</div><div class="bar"><span style="width: 34%;"></span></div></div>
+                <div class="tire-stat"><div class="label">Load Fz</div><div class="v">2940 N</div><div class="bar"><span style="width: 56%;"></span></div></div>
+                <div class="tire-stat"><div class="label">Wear</div><div class="v">2.7%</div><div class="bar"><span style="width: 10%;"></span></div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="tire">
+            <div class="tire-head"><span class="pos">RR · Rear Right</span><span>Med M3 · 23.8 psi</span></div>
+            <div class="tire-body">
+              <div class="tire-svg">
+                <svg viewBox="0 0 160 160" aria-hidden="true">
+                  <defs>
+                    <radialGradient id="heatRR" cx="50%" cy="50%" r="50%">
+                      <stop offset="0" stop-color="#ff7070"/>
+                      <stop offset="0.55" stop-color="#ffad66"/>
+                      <stop offset="1" stop-color="#3d6e9c"/>
+                    </radialGradient>
+                  </defs>
+                  <circle cx="80" cy="80" r="60" fill="#0a0d12" stroke="#1d2330" stroke-width="2"/>
+                  <ellipse cx="80" cy="80" rx="46" ry="50" fill="url(#heatRR)" opacity="0.9"/>
+                  <circle cx="80" cy="38" r="6" fill="#66f0ff"/>
+                  <circle cx="80" cy="80" r="6" fill="#ff7070"/>
+                  <circle cx="80" cy="122" r="6" fill="#66f0ff"/>
+                  <circle cx="56" cy="80" r="5" fill="#66f0ff"/>
+                  <circle cx="104" cy="80" r="5" fill="#f1c86b"/>
+                  <text x="80" y="156" text-anchor="middle" fill="#96a8bb" font-family="Inter, sans-serif" font-size="10" letter-spacing="2">CONTACT 4/5</text>
+                </svg>
+              </div>
+              <div class="tire-stats">
+                <div class="tire-stat warn"><div class="label">Temp Core</div><div class="v">108°C</div><div class="bar"><span style="width: 92%;"></span></div></div>
+                <div class="tire-stat warn"><div class="label">Temp Outer</div><div class="v">114°C</div><div class="bar"><span style="width: 96%;"></span></div></div>
+                <div class="tire-stat bad"><div class="label">Slip Angle</div><div class="v">9.6°</div><div class="bar"><span style="width: 96%;"></span></div></div>
+                <div class="tire-stat bad"><div class="label">Slip Ratio</div><div class="v">0.22</div><div class="bar"><span style="width: 88%;"></span></div></div>
+                <div class="tire-stat warn"><div class="label">Load Fz</div><div class="v">5180 N</div><div class="bar"><span style="width: 94%;"></span></div></div>
+                <div class="tire-stat"><div class="label">Wear</div><div class="v">7.4%</div><div class="bar"><span style="width: 32%;"></span></div></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============== surface grip table ============== -->
+    <section class="module">
+      <div class="module-head">
+        <div>
+          <h2>Per-Surface Grip</h2>
+          <div class="sub">Surface IDs come from track materials. Grip multiplies the Pacejka peak; rolling resistance and noise/dust trigger feedback effects.</div>
+        </div>
+        <div class="seg">
+          <button class="is-active" type="button">Dry</button>
+          <button type="button">Damp</button>
+          <button type="button">Wet</button>
+        </div>
+      </div>
+
+      <div class="surface-grid">
+        <div class="surface-row head">
+          <div>Surface</div>
+          <div>Grip Multiplier</div>
+          <div>Rolling Resistance</div>
+          <div>Roughness</div>
+          <div class="col-hide">Audio / FX</div>
+        </div>
+        <div class="surface-row">
+          <div class="surface-name"><span class="surface-swatch" style="background: #1d2330;"></span><span>Asphalt · Hot Lap</span></div>
+          <div><div class="meter green"><span style="width: 96%;"></span></div></div>
+          <div><div class="meter green"><span style="width: 18%;"></span></div></div>
+          <div><div class="meter"><span style="width: 22%;"></span></div></div>
+          <div class="col-hide">tire roll · subtle hum</div>
+        </div>
+        <div class="surface-row">
+          <div class="surface-name"><span class="surface-swatch" style="background: #2a3140;"></span><span>Asphalt · Off Line</span></div>
+          <div><div class="meter"><span style="width: 78%;"></span></div></div>
+          <div><div class="meter"><span style="width: 26%;"></span></div></div>
+          <div><div class="meter"><span style="width: 36%;"></span></div></div>
+          <div class="col-hide">marbles · particles</div>
+        </div>
+        <div class="surface-row">
+          <div class="surface-name"><span class="surface-swatch" style="background: #ff7070;"></span><span>Curb · Painted</span></div>
+          <div><div class="meter warn"><span style="width: 64%;"></span></div></div>
+          <div><div class="meter warn"><span style="width: 48%;"></span></div></div>
+          <div><div class="meter warn"><span style="width: 72%;"></span></div></div>
+          <div class="col-hide">rumble pulse · hi pass</div>
+        </div>
+        <div class="surface-row">
+          <div class="surface-name"><span class="surface-swatch" style="background: #6ade8f;"></span><span>Grass</span></div>
+          <div><div class="meter bad"><span style="width: 36%;"></span></div></div>
+          <div><div class="meter warn"><span style="width: 62%;"></span></div></div>
+          <div><div class="meter"><span style="width: 30%;"></span></div></div>
+          <div class="col-hide">grass swish · dust</div>
+        </div>
+        <div class="surface-row">
+          <div class="surface-name"><span class="surface-swatch" style="background: #f1c86b;"></span><span>Gravel</span></div>
+          <div><div class="meter bad"><span style="width: 24%;"></span></div></div>
+          <div><div class="meter bad"><span style="width: 88%;"></span></div></div>
+          <div><div class="meter bad"><span style="width: 90%;"></span></div></div>
+          <div class="col-hide">stone scatter · dust</div>
+        </div>
+        <div class="surface-row">
+          <div class="surface-name"><span class="surface-swatch" style="background: #3d6e9c;"></span><span>Wet Asphalt</span></div>
+          <div><div class="meter warn"><span style="width: 58%;"></span></div></div>
+          <div><div class="meter"><span style="width: 32%;"></span></div></div>
+          <div><div class="meter"><span style="width: 22%;"></span></div></div>
+          <div class="col-hide">spray · puddle splash</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============== telemetry / debug ============== -->
+    <section class="module">
+      <div class="module-head">
+        <div>
+          <h2>Debug Telemetry</h2>
+          <div class="sub">Always-on. Useful while tuning Pacejka coefficients, suspension rates, and aero. Toggle channels to overlay per-frame in-game.</div>
+        </div>
+        <div class="seg">
+          <button class="is-active" type="button">Per-Wheel Load</button>
+          <button type="button">Slip Curve</button>
+          <button type="button">Ride Height</button>
+          <button type="button">G-G</button>
+        </div>
+      </div>
+
+      <div class="debug">
+
+        <!-- big graph -->
+        <div class="telemetry-card">
+          <h3>
+            <span>Vertical Load · Last 6s</span>
+            <span style="font-size: 10px; color: var(--muted-2);">Δt = 16ms · 240Hz physics</span>
+          </h3>
+
+          <div class="graph">
+            <div class="legend">
+              <span><span class="swatch ll-fl"></span>FL</span>
+              <span><span class="swatch ll-fr"></span>FR</span>
+              <span><span class="swatch ll-rl"></span>RL</span>
+              <span><span class="swatch ll-rr"></span>RR</span>
+            </div>
+            <svg viewBox="0 0 640 200" preserveAspectRatio="none" aria-hidden="true">
+              <!-- baseline -->
+              <line x1="0" y1="160" x2="640" y2="160" stroke="rgba(255,255,255,0.08)" stroke-dasharray="4 4"/>
+              <!-- FL -->
+              <path d="M0,90 C40,80 80,70 120,82 S200,150 240,140 320,60 360,72 440,140 480,128 560,80 640,90"
+                    fill="none" stroke="#66f0ff" stroke-width="2"/>
+              <!-- FR -->
+              <path d="M0,110 C40,108 80,128 120,118 S200,86 240,90 320,140 360,150 440,80 480,72 560,118 640,108"
+                    fill="none" stroke="#77cfff" stroke-width="2"/>
+              <!-- RL -->
+              <path d="M0,80 C40,72 80,98 120,86 S200,140 240,150 320,82 360,60 440,148 480,150 560,82 640,80"
+                    fill="none" stroke="#f1c86b" stroke-width="2"/>
+              <!-- RR -->
+              <path d="M0,120 C40,128 80,108 120,118 S200,68 240,52 320,150 360,148 440,68 480,58 560,128 640,120"
+                    fill="none" stroke="#ffad66" stroke-width="2"/>
+              <!-- crosshair -->
+              <line x1="540" y1="0" x2="540" y2="200" stroke="rgba(118,203,255,0.5)" stroke-dasharray="2 4"/>
+            </svg>
+          </div>
+
+          <div class="grid-2">
+            <div class="kv"><div class="label">Mean Front Load</div><div class="v">3310 <small>N</small></div></div>
+            <div class="kv"><div class="label">Mean Rear Load</div><div class="v">4850 <small>N</small></div></div>
+            <div class="kv"><div class="label">Peak Δ Load</div><div class="v">3140 <small>N · RR</small></div></div>
+            <div class="kv"><div class="label">Wheels Airborne</div><div class="v">0 / 4</div></div>
+          </div>
+        </div>
+
+        <!-- gg circle -->
+        <div class="telemetry-card">
+          <h3><span>G-G Diagram</span><span style="font-size: 10px; color: var(--muted-2);">Lateral × Longitudinal</span></h3>
+          <div class="gg-stage">
+            <svg viewBox="0 0 240 240" aria-hidden="true">
+              <!-- friction circle -->
+              <circle cx="120" cy="120" r="100" fill="none" stroke="rgba(118,203,255,0.25)" stroke-dasharray="3 3"/>
+              <circle cx="120" cy="120" r="68" fill="none" stroke="rgba(118,203,255,0.18)"/>
+              <circle cx="120" cy="120" r="36" fill="none" stroke="rgba(118,203,255,0.12)"/>
+              <line x1="120" y1="20" x2="120" y2="220" stroke="rgba(255,255,255,0.06)"/>
+              <line x1="20" y1="120" x2="220" y2="120" stroke="rgba(255,255,255,0.06)"/>
+
+              <!-- trail -->
+              <path d="M120,120 L150,80 L182,72 L196,108 L172,156 L142,162 L118,142 L96,124 L80,98 L100,80"
+                    fill="none" stroke="rgba(255,173,102,0.5)" stroke-width="2"/>
+
+              <!-- current point -->
+              <circle cx="172" cy="156" r="6" fill="#ffad66" stroke="#0a0d12" stroke-width="2"/>
+
+              <text x="120" y="14" text-anchor="middle" fill="#96a8bb" font-family="Inter, sans-serif" font-size="9" letter-spacing="2">+ ACCEL</text>
+              <text x="120" y="232" text-anchor="middle" fill="#96a8bb" font-family="Inter, sans-serif" font-size="9" letter-spacing="2">- BRAKE</text>
+              <text x="14" y="124" text-anchor="start" fill="#96a8bb" font-family="Inter, sans-serif" font-size="9" letter-spacing="2">L</text>
+              <text x="226" y="124" text-anchor="end" fill="#96a8bb" font-family="Inter, sans-serif" font-size="9" letter-spacing="2">R</text>
+            </svg>
+          </div>
+          <div class="grid-2">
+            <div class="kv"><div class="label">Lat G</div><div class="v">1.42 <small>g</small></div></div>
+            <div class="kv"><div class="label">Long G</div><div class="v">-0.86 <small>g</small></div></div>
+            <div class="kv"><div class="label">Combined</div><div class="v">1.66 <small>g</small></div></div>
+            <div class="kv"><div class="label">Friction Used</div><div class="v">87<small>%</small></div></div>
+          </div>
+        </div>
+
+        <!-- channels -->
+        <div class="telemetry-card">
+          <h3><span>Channels</span><span style="font-size: 10px; color: var(--muted-2);">Toggle to record</span></h3>
+
+          <div class="grid-2" style="grid-template-columns: 1fr;">
+            <div class="toggle-row"><div><div class="label">Slip Ratio · per wheel</div><div class="help">k = (ωr − vx) / |vx|</div></div><div class="toggle is-on"></div></div>
+            <div class="toggle-row"><div><div class="label">Slip Angle · per wheel</div><div class="help">α = -atan2(vy, |vx|)</div></div><div class="toggle is-on"></div></div>
+            <div class="toggle-row"><div><div class="label">Vertical Load Fz</div><div class="help">Suspension reaction.</div></div><div class="toggle is-on"></div></div>
+            <div class="toggle-row"><div><div class="label">Tire Temp · core / inner / outer</div><div class="help">3-point thermal model.</div></div><div class="toggle is-on"></div></div>
+            <div class="toggle-row"><div><div class="label">Aligning Torque Mz</div><div class="help">Self-centering · drives FFB.</div></div><div class="toggle is-on"></div></div>
+            <div class="toggle-row"><div><div class="label">Engine Map · Throttle · Boost</div><div class="help">Drivetrain torque path.</div></div><div class="toggle"></div></div>
+            <div class="toggle-row"><div><div class="label">Aero Cl front / rear</div><div class="help">Ride height-aware.</div></div><div class="toggle is-on"></div></div>
+            <div class="toggle-row"><div><div class="label">Surface ID · per wheel</div><div class="help">Asphalt / curb / grass / gravel.</div></div><div class="toggle is-on"></div></div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============== compare to reference sims ============== -->
+    <section class="module">
+      <div class="module-head">
+        <div>
+          <h2>Reference Targets</h2>
+          <div class="sub">Each card maps a feature in this design back to the sim that inspired it. Used to scope our V1 physics surface honestly.</div>
+        </div>
+      </div>
+
+      <div class="compare">
+        <article class="compare-card">
+          <span class="badge">Tire</span>
+          <h4>Assetto Corsa · ACC</h4>
+          <p class="desc">5-point contact patch, dynamic flex, water draining, slip-based grip. We mirror the 5-point probe and per-tire heat zones.</p>
+          <div class="source">— Kunos · 5-Point Tyre Model</div>
+        </article>
+        <article class="compare-card">
+          <span class="badge">Tire · Carcass</span>
+          <h4>rFactor 2</h4>
+          <p class="desc">Carcass deformation, heat transfer, wear, contact patch model v2. We surface temp core/inner/outer + wear per tire.</p>
+          <div class="source">— Studio-397 · CPM v2</div>
+        </article>
+        <article class="compare-card">
+          <span class="badge">Suspension · Tire Patch</span>
+          <h4>Automobilista 2</h4>
+          <p class="desc">SETA tire patch model on the Madness Engine. Patch behavior is exposed via per-wheel slip angle and load history.</p>
+          <div class="source">— Reiza · Madness Engine</div>
+        </article>
+        <article class="compare-card">
+          <span class="badge">FFB · Loss</span>
+          <h4>Rennsport</h4>
+          <p class="desc">Force feedback that signals "about to lose control". Aligning torque Mz channel feeds an explicit grip-loss warning.</p>
+          <div class="source">— Rennsport · Beta 1.6</div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============== designer notes ============== -->
+    <section class="notes">
+      <div class="note">
+        <h4>Why a 5-point probe</h4>
+        <p>Single-point raycasts mis-handle curbs and stepped surfaces. Probing at the front, rear, center, and both edges of each contact patch matches what ACC adopted in 1.0.7 and is cheap with Jolt's shape casting.</p>
+      </div>
+      <div class="note">
+        <h4>Visuals stay friendly</h4>
+        <p>The cars are Kenney low-poly, but the language is motorsport. Setup uses real units (psi, mm, N/mm). Players can opt into assists and assists run on top of physics, never as faked input.</p>
+      </div>
+      <div class="note">
+        <h4>Telemetry first</h4>
+        <p>Debug telemetry ships in V1, not as a stretch. Vertical load, slip, aligning torque, and surface ID are needed to validate the tire and suspension model before any car feels right.</p>
+      </div>
+    </section>
+
+  </div>
+
+  <script>
+    const SETUP_STORAGE_KEY = 'aml_racing_setup';
+    const DEFAULT_SETUP = {
+      frontToeDeg: 0.10,
+      rearToeDeg: 0.15,
+      casterDeg: 6.0,
+      ackermannPct: 60,
+      motionRatioFront: 0.86,
+      motionRatioRear: 0.82,
+      bumpStopGapFrontMm: 120,
+      bumpStopGapRearMm: 105,
+      bumpStopRateFrontNmm: 180,
+      bumpStopRateRearNmm: 220,
+    };
+
+    function loadSetup() {
+      try {
+        return { ...DEFAULT_SETUP, ...(JSON.parse(localStorage.getItem(SETUP_STORAGE_KEY) || '{}')) };
+      } catch (_) {
+        return { ...DEFAULT_SETUP };
+      }
+    }
+
+    function saveSetup(setup) {
+      localStorage.setItem(SETUP_STORAGE_KEY, JSON.stringify(setup));
+    }
+
+    function formatControlValue(key, value) {
+      switch (key) {
+        case 'frontToeDeg': return `${Number(value).toFixed(2)}° ${Number(value) >= 0 ? 'out' : 'in'}`;
+        case 'rearToeDeg': return `${Math.abs(Number(value)).toFixed(2)}° ${Number(value) >= 0 ? 'in' : 'out'}`;
+        case 'casterDeg': return `${Number(value).toFixed(1)}°`;
+        case 'ackermannPct': return `${Math.round(Number(value))}%`;
+        case 'motionRatioFront':
+        case 'motionRatioRear': return Number(value).toFixed(2);
+        case 'bumpStopGapFrontMm':
+        case 'bumpStopGapRearMm': return `${Math.round(Number(value))} mm`;
+        case 'bumpStopRateFrontNmm':
+        case 'bumpStopRateRearNmm': return `${Math.round(Number(value))} N/mm`;
+        default: return String(value);
+      }
+    }
+
+    const setup = loadSetup();
+    const controls = Array.from(document.querySelectorAll('.tier4-control'));
+    const valueEls = {
+      frontToeDeg: document.getElementById('front-toe-value'),
+      rearToeDeg: document.getElementById('rear-toe-value'),
+      casterDeg: document.getElementById('caster-value'),
+      ackermannPct: document.getElementById('ackermann-value'),
+      motionRatioFront: document.getElementById('mr-front-value'),
+      motionRatioRear: document.getElementById('mr-rear-value'),
+      bumpStopGapFrontMm: document.getElementById('bs-gap-front-value'),
+      bumpStopGapRearMm: document.getElementById('bs-gap-rear-value'),
+      bumpStopRateFrontNmm: document.getElementById('bs-rate-front-value'),
+      bumpStopRateRearNmm: document.getElementById('bs-rate-rear-value'),
+    };
+
+    function renderSetup() {
+      controls.forEach((control) => {
+        const key = control.dataset.key;
+        control.value = String(setup[key]);
+        if (valueEls[key]) valueEls[key].textContent = formatControlValue(key, setup[key]);
+      });
+      document.getElementById('geometry-summary-toe').textContent = `${Number(setup.frontToeDeg).toFixed(2)} / ${Math.abs(Number(setup.rearToeDeg)).toFixed(2)}°`;
+      document.getElementById('geometry-summary-caster').textContent = `${Number(setup.casterDeg).toFixed(1)}° / ${Math.round(Number(setup.ackermannPct))}%`;
+    }
+
+    function persistAndRender() {
+      saveSetup(setup);
+      renderSetup();
+    }
+
+    // Lightweight interactivity: tabs, segmented controls, car selection, toggles.
+    document.querySelectorAll('.seg').forEach(seg => {
+      seg.addEventListener('click', e => {
+        const btn = e.target.closest('button');
+        if (!btn || !seg.contains(btn)) return;
+        seg.querySelectorAll('button').forEach(b => b.classList.remove('is-active'));
+        btn.classList.add('is-active');
+      });
+    });
+
+    document.querySelectorAll('.nav').forEach(nav => {
+      nav.addEventListener('click', e => {
+        const btn = e.target.closest('.nav-btn');
+        if (!btn) return;
+        nav.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('is-active'));
+        btn.classList.add('is-active');
+      });
+    });
+
+    document.querySelectorAll('.car-grid').forEach(grid => {
+      grid.addEventListener('click', e => {
+        const card = e.target.closest('.car-card');
+        if (!card) return;
+        grid.querySelectorAll('.car-card').forEach(c => c.classList.remove('is-active'));
+        card.classList.add('is-active');
+      });
+    });
+
+    document.querySelectorAll('.toggle').forEach(t => {
+      t.addEventListener('click', () => {
+        t.classList.toggle('is-on');
+      });
+    });
+
+    controls.forEach((control) => {
+      control.addEventListener('input', () => {
+        const rawValue = control.step && control.step.includes('.') ? Number(control.value) : Number(control.value);
+        setup[control.dataset.key] = rawValue;
+        persistAndRender();
+      });
+    });
+
+    document.getElementById('save-setup-btn').addEventListener('click', () => {
+      saveSetup(setup);
+    });
+
+    document.getElementById('go-to-track-btn').addEventListener('click', () => {
+      saveSetup(setup);
+      window.location.href = './racing-sim-working-prototype.html';
+    });
+
+    window.addEventListener('beforeunload', () => saveSetup(setup));
+
+    renderSetup();
+  </script>
+</body>
+</html>

@@ -1,5 +1,6 @@
 import type { TilePos } from './iso.js';
 import type { MapDefinition } from './map-types.js';
+import type { ResourceNode } from './resources.js';
 import { getTerrainMetadata, type TerrainKind } from './terrain.js';
 
 export interface MapValidationIssue {
@@ -16,6 +17,12 @@ export interface MapValidationResult {
 
 function inBounds(map: MapDefinition, col: number, row: number): boolean {
   return col >= 0 && row >= 0 && col < map.size.cols && row < map.size.rows;
+}
+
+export interface RefineryPlacement {
+  origin: TilePos;
+  footprint: { cols: number; rows: number };
+  buildProgress?: number;
 }
 
 export function validateMapDefinition(map: MapDefinition): MapValidationResult {
@@ -141,4 +148,31 @@ export function validateMapDefinition(map: MapDefinition): MapValidationResult {
   }
 
   return { ok: errors.length === 0, errors, warnings };
+}
+
+export function isRefineryAdjacentToGasNode(
+  map: Pick<MapDefinition, 'resources'>,
+  origin: TilePos,
+  footprint: { cols: number; rows: number },
+): boolean {
+  return map.resources.some((node) => node.kind === 'gas' && isTileAdjacentToFootprint(node.tile, origin, footprint));
+}
+
+export function canHarvestGasNode(node: Pick<ResourceNode, 'kind' | 'tile'>, refineries: readonly RefineryPlacement[]): boolean {
+  if (node.kind !== 'gas') return true;
+  return refineries.some((refinery) => {
+    const built = refinery.buildProgress === undefined || refinery.buildProgress >= 1;
+    return built && isTileAdjacentToFootprint(node.tile, refinery.origin, refinery.footprint);
+  });
+}
+
+function isTileAdjacentToFootprint(tile: TilePos, origin: TilePos, footprint: { cols: number; rows: number }): boolean {
+  const left = origin.col;
+  const right = origin.col + footprint.cols - 1;
+  const top = origin.row;
+  const bottom = origin.row + footprint.rows - 1;
+  const nearCol = tile.col >= left - 1 && tile.col <= right + 1;
+  const nearRow = tile.row >= top - 1 && tile.row <= bottom + 1;
+  const inside = tile.col >= left && tile.col <= right && tile.row >= top && tile.row <= bottom;
+  return nearCol && nearRow && !inside;
 }

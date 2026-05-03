@@ -30,4 +30,30 @@ test.describe('RTS Skirmish experiment', () => {
     await page.getByTestId('mapgen-generate').click();
     await expect(page.getByTestId('rts-map-preview')).toBeVisible({ timeout: 10_000 });
   });
+
+  test('match stage exposes sprite, gas, mute, and command-card parity surfaces', async ({ page }) => {
+    const missingSprites: string[] = [];
+    page.on('response', (response) => {
+      if (response.url().includes('/rts/towerDefense/Spritesheet/') && response.status() >= 400) {
+        missingSprites.push(response.url());
+      }
+    });
+
+    await page.goto('/experiments/rts');
+    await expect(page.getByTestId('match-setup')).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId('match-setup-start').click();
+    await expect(page.getByTestId('rts-stage')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('hud-gas')).toBeVisible();
+    await expect(page.getByTestId('train-scout')).toBeVisible();
+    await expect(page.getByTestId('train-rocket')).toBeVisible();
+    await expect(page.getByTestId('build-refinery')).toBeVisible();
+    await expect(page.getByTestId('order-patrol')).toBeVisible();
+    await expect(page.getByTestId('order-repair')).toBeVisible();
+
+    await page.getByTestId('rts-mute-toggle').click();
+    await expect(page.getByTestId('hud-audio')).toContainText('Muted');
+    await page.locator('body').press('Y');
+    await expect(page.getByTestId('rts-renderer-mode')).toBeVisible();
+    expect(missingSprites).toEqual([]);
+  });
 });

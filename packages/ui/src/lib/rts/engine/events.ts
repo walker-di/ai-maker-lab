@@ -7,6 +7,7 @@ export type EngineEventMap = {
   selectionChanged: { entityIds: number[] };
   productionStarted: { factionId: string; kind: string };
   productionCompleted: { factionId: string; kind: string; entity?: number };
+  squadLaunched: { factionId: string; size: number; waveIndex: number };
   matchEnded: { winner: string; durationMs: number };
 };
 

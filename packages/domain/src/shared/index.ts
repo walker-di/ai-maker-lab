@@ -7,6 +7,7 @@ export type WorkspacePackage = (typeof workspacePackages)[number];
 export * from './todo';
 export * from './chat';
 export * as Platformer from './platformer/index.js';
+export * as Racing from './racing/index.js';
 export * as Rts from './rts/index.js';
 export * as Marketing from './marketing/index.js';
 export * as AiModels from './ai-models/index.js';

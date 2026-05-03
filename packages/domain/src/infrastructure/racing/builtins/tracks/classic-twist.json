@@ -1,0 +1,32 @@
+{
+  "id": "classic-twist",
+  "label": "Twisty Origin",
+  "groundColor": 3367214,
+  "halfWidth": 6.0,
+  "curbWidth": 0.6,
+  "rubberWidth": 2.6,
+  "marblesWidth": 1.3,
+  "samples": 240,
+  "ctrl": [
+    [0, 60],
+    [50, 50],
+    [70, 10],
+    [60, -30],
+    [30, -60],
+    [-10, -55],
+    [-30, -25],
+    [-55, 0],
+    [-50, 35],
+    [-25, 55]
+  ],
+  "gravelZones": [
+    { "x": 70, "z": -40, "w": 22, "h": 22, "rot": 0 },
+    { "x": -55, "z": 35, "w": 22, "h": 22, "rot": 0 }
+  ],
+  "dampZones": [
+    { "x": 56, "z": -12, "w": 18, "h": 10, "rot": 0.4487989505128276 },
+    { "x": -26, "z": 44, "w": 16, "h": 8, "rot": -0.5235987755982988 }
+  ],
+  "apexes": [60, 120],
+  "propCadence": { "cones": 6, "barriers": 8, "lights": 40, "billboards": 60 }
+}

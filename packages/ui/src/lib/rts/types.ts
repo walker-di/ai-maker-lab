@@ -160,7 +160,7 @@ export const BUILDING_STATS: Readonly<Record<BuildingKind, BuildingStats>> = {
     cost: { mineral: 400, gas: 0 }, buildTimeMs: 60_000, supply: 0,
     hp: 600, armor: 2, sight: 12,
     footprint: { cols: 3, rows: 3 }, supplyProvided: 8,
-    canTrain: ['worker'], canResearch: ['armorT1', 'armorT2', 'weaponT1', 'weaponT2', 'sightRange'],
+    canTrain: ['worker', 'scout', 'rocket'], canResearch: ['armorT1', 'armorT2', 'weaponT1', 'weaponT2', 'sightRange'],
   },
   barracks: {
     cost: { mineral: 150, gas: 0 }, buildTimeMs: 30_000, supply: 0,

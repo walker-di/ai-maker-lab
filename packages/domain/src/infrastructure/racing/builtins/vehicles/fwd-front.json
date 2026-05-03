@@ -1,0 +1,24 @@
+{
+  "id": "fwd-front",
+  "label": "FWD / Front",
+  "driveLabel": "FWD",
+  "layoutLabel": "Front",
+  "color": 7852031,
+  "wheelbase": 2.62,
+  "trackWidth": 1.68,
+  "frontMassPct": 0.62,
+  "finalDrive": 4.1,
+  "gears": [
+    { "n": "R", "ratio": -3.54 },
+    { "n": "N", "ratio": 0 },
+    { "n": "1", "ratio": 3.36 },
+    { "n": "2", "ratio": 2.09 },
+    { "n": "3", "ratio": 1.47 },
+    { "n": "4", "ratio": 1.1 },
+    { "n": "5", "ratio": 0.91 },
+    { "n": "6", "ratio": 0.76 }
+  ],
+  "steerMaxDeg": 37,
+  "axleDrive": { "front": 1, "rear": 0 },
+  "diffType": "open"
+}

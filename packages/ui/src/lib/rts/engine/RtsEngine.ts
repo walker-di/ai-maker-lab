@@ -29,6 +29,8 @@ import type {
 } from './components.js';
 import { EngineEmitter } from './events.js';
 import { FixedStepLoop } from './fixed-step-loop.js';
+import { NullAudioBus, type AudioBus } from './audio-bus.js';
+import { RtsFeedbackController, type RtsFeedbackSnapshot, type RtsOrderFeedbackKind } from './fx/feedback.js';
 import { findPath } from './pathfinding.js';
 import { TileGrid } from './tile-grid.js';
 import {
@@ -59,9 +61,11 @@ export interface RtsRendererSnapshot {
     factionId?: string;
     selected?: boolean;
     hpRatio?: number;
+    buildProgress?: number;
   }[];
   fog?: FogOfWarSnapshot;
   fogFactionId?: string;
+  feedback?: RtsFeedbackSnapshot;
 }
 
 export interface RtsRenderer {
@@ -77,6 +81,9 @@ export interface RtsRenderer {
   screenToTile?(clientX: number, clientY: number): TilePos | null;
   /** Underlying canvas element (or null when not mounted). */
   getCanvas?(): HTMLCanvasElement | null;
+  /** Optional renderer debug toggle between sprite and vector terrain/entity skin. */
+  toggleSpriteMode?(): void;
+  getSpriteMode?(): 'sprite' | 'vector';
 }
 
 export interface RtsEngineConfig {
@@ -86,6 +93,7 @@ export interface RtsEngineConfig {
   rendererFactory?: () => Promise<RtsRenderer>;
   /** When `true`, skip particles/screen-shake. */
   lowJuice?: boolean;
+  audioBus?: AudioBus;
 }
 
 export interface RtsResourceState {
@@ -115,6 +123,8 @@ export class RtsEngine {
   private renderer: RtsRenderer | null = null;
   private rendererFactory?: () => Promise<RtsRenderer>;
   private readonly fogSystem: FogOfWarSystem;
+  private readonly feedback = new RtsFeedbackController();
+  private readonly audioBus: AudioBus;
   private systems: System[] = [];
   private selection = new Set<number>();
   private cameraTile = { col: 0, row: 0 };
@@ -134,6 +144,7 @@ export class RtsEngine {
     this.factions = new Map(config.match.factions.map((f) => [f.id, f]));
     this.fogSystem = new FogOfWarSystem(this.grid, this.factionIds);
     this.rendererFactory = config.rendererFactory;
+    this.audioBus = config.audioBus ?? new NullAudioBus();
     this.localFactionId =
       config.match.factions.find((f) => f.isPlayer)?.id ?? config.match.factions[0]!.id;
 
@@ -162,6 +173,7 @@ export class RtsEngine {
   dispose(): void {
     this.stop();
     this.renderer?.dispose();
+    this.audioBus.dispose();
     this.renderer = null;
     this.emitter.removeAll();
   }
@@ -192,7 +204,10 @@ export class RtsEngine {
 
   tickReal(seconds: number): void {
     if (this.finished) return;
-    this.loop.tick(seconds, () => this.runFixedStep());
+    this.feedback.step(seconds * 1000);
+    if (!this.feedback.isHitStopped()) {
+      this.loop.tick(seconds, () => this.runFixedStep());
+    }
     this.render();
   }
 
@@ -212,6 +227,15 @@ export class RtsEngine {
 
   getCanvas(): HTMLCanvasElement | null {
     return this.renderer?.getCanvas?.() ?? null;
+  }
+
+  toggleSpriteMode(): 'sprite' | 'vector' {
+    this.renderer?.toggleSpriteMode?.();
+    return this.renderer?.getSpriteMode?.() ?? 'vector';
+  }
+
+  getSpriteMode(): 'sprite' | 'vector' {
+    return this.renderer?.getSpriteMode?.() ?? 'vector';
   }
 
   /** Find the topmost entity whose tile matches `tile`, preferring units. */
@@ -238,6 +262,16 @@ export class RtsEngine {
     return buildingHit;
   }
 
+  getCursorStateForTile(tile: TilePos): string {
+    const entityId = this.pickEntityAtTile(tile);
+    if (entityId == null) return this.selection.size > 0 ? 'move' : 'default';
+    const faction = this.world.getComponent<FactionComponent>(entityId, C.faction);
+    if (faction && faction.factionId !== this.localFactionId && this.selection.size > 0) return 'attack';
+    const hp = this.world.getComponent<HealthComponent>(entityId, C.health);
+    if (faction?.factionId === this.localFactionId && hp && hp.hp < hp.maxHp) return 'repair';
+    return 'default';
+  }
+
   /** Single-click selection. Targets enemy units/buildings as attack orders. */
   handleClickAtTile(tile: TilePos, additive = false): void {
     const entityId = this.pickEntityAtTile(tile);
@@ -247,6 +281,7 @@ export class RtsEngine {
         if (!additive) this.selection.clear();
         this.selection.add(entityId);
         this.emitter.emit('selectionChanged', { entityIds: [...this.selection] });
+        this.audioBus.playSfx('select');
         return;
       }
       // Enemy entity: if we have a selection, treat as attack order.
@@ -265,6 +300,7 @@ export class RtsEngine {
   selectByIds(ids: number[]): void {
     this.selection = new Set(ids.filter((id) => this.world.isAlive(id)));
     this.emitter.emit('selectionChanged', { entityIds: [...this.selection] });
+    if (this.selection.size > 0) this.audioBus.playSfx('select');
   }
 
   selectAtTile(tile: TilePos, additive = false): void {
@@ -278,6 +314,7 @@ export class RtsEngine {
       }
     }
     this.emitter.emit('selectionChanged', { entityIds: [...this.selection] });
+    if (this.selection.size > 0) this.audioBus.playSfx('select');
   }
 
   selectInBox(a: TilePos, b: TilePos): void {
@@ -298,6 +335,7 @@ export class RtsEngine {
       }
     }
     this.emitter.emit('selectionChanged', { entityIds: [...this.selection] });
+    if (this.selection.size > 0) this.audioBus.playSfx('select');
   }
 
   orderMoveSelectionTo(target: TilePos): void {
@@ -309,13 +347,67 @@ export class RtsEngine {
       move.path = path?.slice(1) ?? [];
       move.goal = target;
     }
+    this.addOrderFeedback(target, 'move');
+    this.audioBus.playSfx('move');
   }
 
   orderAttackTarget(targetId: number): void {
+    let targetTile: TilePos | null = null;
+    const targetPos = this.world.getComponent<PositionComponent>(targetId, C.position);
+    if (targetPos) targetTile = { col: Math.floor(targetPos.col), row: Math.floor(targetPos.row) };
     for (const id of this.selection) {
       const combat = this.world.getComponent<CombatComponent>(id, C.combat);
       if (combat) combat.targetId = targetId;
     }
+    if (targetTile) this.addOrderFeedback(targetTile, 'attack');
+    this.audioBus.playSfx('attack');
+  }
+
+  orderPatrolSelectionTo(target: TilePos): void {
+    for (const id of this.selection) {
+      const pos = this.world.getComponent<PositionComponent>(id, C.position);
+      const move = this.world.getComponent<MovementComponent>(id, C.movement);
+      if (!pos || !move) continue;
+      const start = { col: Math.floor(pos.col), row: Math.floor(pos.row) };
+      const path = findPath(this.grid, start, target);
+      move.path = path?.slice(1) ?? [];
+      move.goal = target;
+      move.patrol = { a: start, b: target, next: 'a' };
+    }
+    this.addOrderFeedback(target, 'patrol');
+    this.audioBus.playSfx('move');
+  }
+
+  orderRepairTarget(targetId: number): void {
+    const targetPos = this.world.getComponent<PositionComponent>(targetId, C.position);
+    if (!targetPos) return;
+    const targetTile = { col: Math.floor(targetPos.col), row: Math.floor(targetPos.row) };
+    for (const id of this.selection) {
+      const worker = this.world.getComponent<WorkerComponent>(id, C.worker);
+      const pos = this.world.getComponent<PositionComponent>(id, C.position);
+      const move = this.world.getComponent<MovementComponent>(id, C.movement);
+      if (!worker || !pos || !move) continue;
+      worker.repairTargetId = targetId;
+      worker.state = 'movingToRepair';
+      const path = findPath(this.grid, { col: Math.floor(pos.col), row: Math.floor(pos.row) }, targetTile);
+      move.path = path?.slice(1) ?? [];
+      move.goal = targetTile;
+    }
+    this.addOrderFeedback(targetTile, 'repair');
+    this.audioBus.playSfx('build-place');
+  }
+
+  issueContextOrderAtTile(tile: TilePos, mode: 'move' | 'patrol' | 'repair' = 'move'): void {
+    if (mode === 'patrol') {
+      this.orderPatrolSelectionTo(tile);
+      return;
+    }
+    const targetEntity = this.pickEntityAtTile(tile);
+    if (mode === 'repair' && targetEntity != null) {
+      this.orderRepairTarget(targetEntity);
+      return;
+    }
+    this.orderMoveSelectionTo(tile);
   }
 
   orderHarvest(nodeId: number): void {
@@ -333,6 +425,8 @@ export class RtsEngine {
       move.path = path?.slice(1) ?? [];
       move.goal = tile;
     }
+    const targetPos = this.world.getComponent<PositionComponent>(nodeId, C.position);
+    if (targetPos) this.addOrderFeedback({ col: Math.floor(targetPos.col), row: Math.floor(targetPos.row) }, 'repair');
   }
 
   enqueueProduction(producerId: number, kind: UnitKind): boolean {
@@ -349,14 +443,31 @@ export class RtsEngine {
       supply: stats.supply,
     });
     this.emitter.emit('productionStarted', { factionId: faction.factionId, kind });
+    this.audioBus.playSfx('build-place');
     return true;
   }
 
   placeBuilding(factionId: string, kind: BuildingKind, atTile: TilePos): number | null {
     const stats = BUILDING_STATS[kind];
+    if (kind === 'refinery' && !this.isAdjacentToGasNode(atTile, stats.footprint)) return null;
     if (!this.canPlaceBuilding(atTile, stats.footprint)) return null;
     if (!this.spendIfAvailable(factionId, stats.cost, 0)) return null;
-    return this.spawnBuilding(kind, factionId, atTile, false);
+    const entity = this.spawnBuilding(kind, factionId, atTile, false);
+    this.addOrderFeedback(atTile, 'build-place');
+    this.audioBus.playSfx('build-place');
+    return entity;
+  }
+
+  enqueueProductionFromSelection(kind: UnitKind): boolean {
+    for (const id of this.selection) {
+      if (this.enqueueProduction(id, kind)) return true;
+    }
+    for (const id of this.world.query([C.productionQueue, C.faction, C.building])) {
+      const faction = this.world.getComponent<FactionComponent>(id, C.faction)!;
+      if (faction.factionId !== this.localFactionId) continue;
+      if (this.enqueueProduction(id, kind)) return true;
+    }
+    return false;
   }
 
   // ---------------------------------------------------------------------------
@@ -383,6 +494,8 @@ export class RtsEngine {
   zoomBy(factor: number): void {
     this.cameraZoom = Math.max(0.5, Math.min(2.5, this.cameraZoom * factor));
   }
+  setAudioMuted(muted: boolean): void { this.audioBus.setMuted?.(muted); }
+  async resumeAudio(): Promise<void> { await this.audioBus.resume?.(); }
 
   isFinished(): boolean { return this.finished; }
 
@@ -419,10 +532,14 @@ export class RtsEngine {
       switch (evt.type) {
         case 'death': {
           if (typeof evt.entity === 'number') {
+            const isBuilding = evt.isBuilding === true;
             this.emitter.emit('unitKilled', {
               entity: evt.entity,
               factionId: typeof evt.factionId === 'string' ? evt.factionId : 'unknown',
             });
+            this.audioBus.playSfx(isBuilding ? 'rocket-hit' : 'unit-die');
+            this.feedback.addCombatHeat(0.35);
+            if (isBuilding) this.feedback.triggerHitStop(110);
             this.recountSupply();
           }
           break;
@@ -434,12 +551,14 @@ export class RtsEngine {
               kind: evt.kind,
               entity: typeof evt.entity === 'number' ? evt.entity : undefined,
             });
+            this.audioBus.playSfx('build-complete');
             this.recountSupply();
           }
           break;
         case 'buildingCompleted':
           if (typeof evt.entity === 'number' && typeof evt.factionId === 'string' && typeof evt.kind === 'string') {
             this.emitter.emit('buildingPlaced', { entity: evt.entity, factionId: evt.factionId, kind: evt.kind });
+            this.audioBus.playSfx('build-complete');
             this.recomputeSupplyCapForFaction(evt.factionId);
           }
           break;
@@ -452,8 +571,19 @@ export class RtsEngine {
             });
           }
           break;
+        case 'projectileImpact':
+          this.feedback.addCombatHeat(typeof evt.kind === 'string' && evt.kind === 'rocket' ? 0.55 : 0.2);
+          if (evt.kind === 'rocket') {
+            this.audioBus.playSfx('rocket-hit');
+            this.feedback.triggerHitStop(70);
+          }
+          break;
       }
     }
+  }
+
+  private addOrderFeedback(tile: TilePos, kind: RtsOrderFeedbackKind): void {
+    this.feedback.addOrderRipple(tile, kind);
   }
 
   private spendIfAvailable(factionId: string, cost: ResourceCost, supply: number): boolean {
@@ -659,6 +789,20 @@ export class RtsEngine {
     return true;
   }
 
+  private isAdjacentToGasNode(at: TilePos, footprint: { cols: number; rows: number }): boolean {
+    return this.map.definition.resources.some((node) => {
+      if (node.kind !== 'gas') return false;
+      const left = at.col;
+      const right = at.col + footprint.cols - 1;
+      const top = at.row;
+      const bottom = at.row + footprint.rows - 1;
+      const nearCol = node.tile.col >= left - 1 && node.tile.col <= right + 1;
+      const nearRow = node.tile.row >= top - 1 && node.tile.row <= bottom + 1;
+      const inside = node.tile.col >= left && node.tile.col <= right && node.tile.row >= top && node.tile.row <= bottom;
+      return nearCol && nearRow && !inside;
+    });
+  }
+
   private findOpenTile(near: TilePos): TilePos {
     if (this.grid.isWalkable(near.col, near.row)) return near;
     for (let r = 1; r < 6; r++) {
@@ -728,6 +872,7 @@ export class RtsEngine {
       const renderable = this.world.getComponent<RenderableComponent>(id, C.renderable)!;
       const f = this.world.getComponent<FactionComponent>(id, C.faction);
       const hp = this.world.getComponent<HealthComponent>(id, C.health);
+      const building = this.world.getComponent<BuildingComponent>(id, C.building);
       entities.push({
         id,
         col: pos.col,
@@ -740,6 +885,7 @@ export class RtsEngine {
         factionId: f?.factionId,
         selected: this.selection.has(id),
         hpRatio: hp ? hp.hp / hp.maxHp : undefined,
+        buildProgress: building?.buildProgress,
       });
     }
     this.renderer.render({
@@ -748,6 +894,7 @@ export class RtsEngine {
       entities,
       fog: this.fogSystem.snapshots.get(this.localFactionId),
       fogFactionId: this.localFactionId,
+      feedback: this.feedback.read(),
     });
   }
 }

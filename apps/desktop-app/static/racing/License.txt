@@ -1,0 +1,10 @@
+Racing assets sourced from Kenney's free game asset packs:
+- Kenney Racing Kit (https://www.kenney.nl/assets/racing-kit)
+- Kenney Car Kit (https://www.kenney.nl/assets/car-kit)
+
+License: CC0 1.0 Universal (Public Domain)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Original ZIPs are kept under .design_sketch/assets/racing/. Only the
+extracted .glb / texture files referenced by the Three.js renderer are
+mirrored into static/racing/extracted/.

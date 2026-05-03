@@ -7,11 +7,13 @@
     onProduceUnit,
     onPlaceBuilding,
     onCancelBuilding,
+    onOrder,
   }: {
     model: RtsHudModel;
     onProduceUnit?: (kind: UnitKind) => void;
     onPlaceBuilding?: (kind: BuildingKind) => void;
     onCancelBuilding?: () => void;
+    onOrder?: (kind: 'patrol' | 'repair') => void;
   } = $props();
 
   const elapsedLabel = $derived.by(() => {
@@ -40,6 +42,10 @@
       <span class="label">Time</span>
       <span class="value">{elapsedLabel}</span>
     </div>
+    <div class="cell" data-testid="hud-audio">
+      <span class="label">Audio</span>
+      <span class="value">{model.state.muted ? 'Muted' : 'On'}</span>
+    </div>
     <div class="cell" data-testid="hud-selection">
       <span class="label">Selection</span>
       <span class="value">{model.state.selectionCount} {model.state.selectionLabel}</span>
@@ -61,12 +67,18 @@
     <div class="group">
       <span class="label">Build</span>
       <button type="button" data-testid="build-depot" onclick={() => onPlaceBuilding?.('depot')}>Depot</button>
+      <button type="button" data-testid="build-refinery" onclick={() => onPlaceBuilding?.('refinery')}>Refinery</button>
       <button type="button" data-testid="build-barracks" onclick={() => onPlaceBuilding?.('barracks')}>Barracks</button>
       <button type="button" data-testid="build-factory" onclick={() => onPlaceBuilding?.('factory')}>Factory</button>
       <button type="button" data-testid="build-turret" onclick={() => onPlaceBuilding?.('turret')}>Turret</button>
       {#if model.state.buildingMode}
         <button type="button" class="danger" onclick={() => onCancelBuilding?.()}>Cancel ({model.state.buildingMode})</button>
       {/if}
+    </div>
+    <div class="group">
+      <span class="label">Orders</span>
+      <button type="button" data-testid="order-patrol" onclick={() => onOrder?.('patrol')}>Patrol</button>
+      <button type="button" data-testid="order-repair" onclick={() => onOrder?.('repair')}>Repair</button>
     </div>
   </div>
 </div>
@@ -84,7 +96,7 @@
     letter-spacing: 0.04em;
     border-radius: 0.5rem;
   }
-  .row.top { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.5rem; }
+  .row.top { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.5rem; }
   .row.bottom { display: flex; flex-wrap: wrap; gap: 1rem; }
   .cell { display: flex; flex-direction: column; align-items: flex-start; }
   .group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }

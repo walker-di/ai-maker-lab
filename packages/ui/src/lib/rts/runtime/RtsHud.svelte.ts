@@ -14,6 +14,7 @@ export interface RtsHudState {
   elapsedMs: number;
   buildingMode: string | null;
   paused: boolean;
+  muted: boolean;
 }
 
 export class RtsHudModel {
@@ -28,6 +29,7 @@ export class RtsHudModel {
     elapsedMs: 0,
     buildingMode: null,
     paused: false,
+    muted: false,
   });
 
   setResources(mineral: number, gas: number): void {
@@ -45,6 +47,7 @@ export class RtsHudModel {
   setElapsed(ms: number): void { this.state.elapsedMs = ms; }
   setBuildingMode(kind: string | null): void { this.state.buildingMode = kind; }
   setPaused(paused: boolean): void { this.state.paused = paused; }
+  setMuted(muted: boolean): void { this.state.muted = muted; }
   setFactionId(id: string): void { this.state.factionId = id; }
 }
 

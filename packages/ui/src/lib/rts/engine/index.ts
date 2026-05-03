@@ -38,7 +38,23 @@ export {
 } from './systems.js';
 export { RtsEngine, type RtsEngineConfig, type RtsRenderer, type RtsRendererSnapshot, type RtsResourceState } from './RtsEngine.js';
 export { EngineEmitter, type EngineEventMap } from './events.js';
-export { NullAudioBus, type AudioBus } from './audio-bus.js';
+export { NullAudioBus, WebAudioBus, type AudioBus } from './audio-bus.js';
 export { FxManager, type FxKind, type FxRequest, type FxState } from './fx.js';
+export {
+  RtsFeedbackController,
+  type RtsFeedbackSnapshot,
+  type RtsOrderFeedbackKind,
+  type RtsOrderRipple,
+} from './fx/feedback.js';
 export { AiController } from './ai.js';
-export { createPixiRtsRendererFactory } from './pixi-renderer.js';
+export { createPixiRtsRendererFactory, pickTileFrame } from './pixi-renderer.js';
+export {
+  RTS_ATLAS_FRAMES,
+  RTS_ATLAS_URLS,
+  getSpriteFrame,
+  loadRtsAtlases,
+  type RtsAtlasFrame,
+  type RtsAtlasFrameMap,
+  type RtsAtlasLoadResult,
+  type RtsAtlasSheet,
+} from './sprites/atlas.js';

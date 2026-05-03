@@ -3,6 +3,7 @@ import { TUNABLES } from '../types.js';
 import { COMPONENT_KINDS as C } from './components.js';
 import type {
   CombatComponent,
+  BuildingComponent,
   FactionComponent,
   HealthComponent,
   MovementComponent,
@@ -17,6 +18,7 @@ import type {
 import type { EngineWorld, System, SystemContext } from './world.js';
 import { findPath } from './pathfinding.js';
 import type { TileGrid } from './tile-grid.js';
+import { sampleProjectileArc } from './systems/projectile-arc.js';
 
 const TILE_EPS = 0.04;
 
@@ -39,6 +41,13 @@ export class MovementSystem implements System {
         pos.col = target.col + 0.5;
         pos.row = target.row + 0.5;
         pos.altitude = this.grid.getAltitude(target.col, target.row);
+        if (move.path.length === 0 && move.patrol) {
+          const next = move.patrol.next === 'a' ? move.patrol.a : move.patrol.b;
+          move.patrol.next = move.patrol.next === 'a' ? 'b' : 'a';
+          const path = findPath(this.grid, { col: Math.floor(pos.col), row: Math.floor(pos.row) }, next);
+          move.path = path?.slice(1) ?? [];
+          move.goal = next;
+        }
         continue;
       }
       const step = unit.speed * dt;
@@ -85,6 +94,7 @@ export class CombatSystem implements System {
       const dx = targetPos.col - pos.col;
       const dy = targetPos.row - pos.row;
       const distance = Math.hypot(dx, dy);
+      if (combat.arc === 'direct' && crossesBlockingCliff(this.grid, pos, targetPos)) continue;
       if (distance > range) {
         // Out of range; move owner toward target if it's a unit.
         const move = world.getComponent<MovementComponent>(id, C.movement);
@@ -96,11 +106,26 @@ export class CombatSystem implements System {
       }
       if (combat.cooldownMs > 0) continue;
       // Fire.
+      if (targetPos.altitude > pos.altitude && Math.random() < TUNABLES.lowerToHigherMissChance) {
+        combat.cooldownMs = combat.attackPeriodMs;
+        continue;
+      }
       const damage = combat.damage * (1 + TUNABLES.altitudeDamageBonusPerLevel * Math.max(0, pos.altitude - targetPos.altitude));
       this.spawnProjectile({ col: pos.col, row: pos.row, altitude: pos.altitude }, combat.targetId, damage, combat.projectileKind, combat.arc, faction.factionId);
       combat.cooldownMs = combat.attackPeriodMs;
     }
   }
+}
+
+function crossesBlockingCliff(grid: TileGrid, from: PositionComponent, to: PositionComponent): boolean {
+  const steps = Math.max(1, Math.ceil(Math.hypot(to.col - from.col, to.row - from.row) * 2));
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const col = Math.floor(from.col + (to.col - from.col) * t);
+    const row = Math.floor(from.row + (to.row - from.row) * t);
+    if (grid.getTerrain(col, row) === 'cliff') return true;
+  }
+  return false;
 }
 
 function findNearestEnemy(world: EngineWorld, pos: PositionComponent, factionId: string, maxDist: number): number | null {
@@ -121,11 +146,24 @@ function findNearestEnemy(world: EngineWorld, pos: PositionComponent, factionId:
 
 export class ProjectileSystem implements System {
   readonly name = 'projectile';
-  update(world: EngineWorld, dt: number, _ctx: SystemContext): void {
+  update(world: EngineWorld, dt: number, ctx: SystemContext): void {
     const dtMs = dt * 1000;
     for (const id of world.query([C.projectile])) {
       const proj = world.getComponent<ProjectileComponent>(id, C.projectile)!;
       proj.elapsedMs += dtMs;
+      const pos = world.getComponent<PositionComponent>(id, C.position);
+      const targetPos = world.getComponent<PositionComponent>(proj.toEntity, C.position);
+      if (pos && targetPos) {
+        const p = sampleProjectileArc(
+          { col: proj.fromCol, row: proj.fromRow, altitude: pos.altitude },
+          { col: targetPos.col, row: targetPos.row, altitude: targetPos.altitude },
+          proj.elapsedMs / proj.totalMs,
+          proj.arc,
+        );
+        pos.col = p.col;
+        pos.row = p.row;
+        pos.altitude = p.altitude;
+      }
       if (proj.elapsedMs >= proj.totalMs) {
         if (world.isAlive(proj.toEntity)) {
           const hp = world.getComponent<HealthComponent>(proj.toEntity, C.health);
@@ -134,6 +172,7 @@ export class ProjectileSystem implements System {
             hp.hp -= reduced;
           }
         }
+        ctx.bus.emit({ type: 'projectileImpact', entity: proj.toEntity, kind: proj.kind, factionId: proj.factionId });
         world.removeEntity(id);
       }
     }
@@ -147,7 +186,7 @@ export class HealthSystem implements System {
       const hp = world.getComponent<HealthComponent>(id, C.health)!;
       if (hp.hp > 0) continue;
       const faction = world.getComponent<FactionComponent>(id, C.faction);
-      ctx.bus.emit({ type: 'death', entity: id, factionId: faction?.factionId });
+      ctx.bus.emit({ type: 'death', entity: id, factionId: faction?.factionId, isBuilding: world.hasComponent(id, C.building) });
       world.removeEntity(id);
     }
   }
@@ -182,6 +221,11 @@ export class WorkerSystem implements System {
           if (move.path.length > 0) break;
           const node = world.getComponent<ResourceNodeComponent>(worker.resourceNodeId!, C.resourceNode);
           if (!node || node.amount <= 0) {
+            worker.state = 'idle';
+            worker.resourceNodeId = undefined;
+            break;
+          }
+          if (node.kind === 'gas' && !hasCompletedRefineryNearNode(world, node, faction.factionId)) {
             worker.state = 'idle';
             worker.resourceNodeId = undefined;
             break;
@@ -233,6 +277,27 @@ export class WorkerSystem implements System {
           worker.state = 'idle';
           break;
         }
+        case 'movingToRepair': {
+          if (move.path.length > 0) break;
+          const target = worker.repairTargetId != null ? world.getComponent<HealthComponent>(worker.repairTargetId, C.health) : null;
+          if (!target || target.hp >= target.maxHp) {
+            worker.state = 'idle';
+            worker.repairTargetId = undefined;
+            break;
+          }
+          worker.state = 'repairing';
+          break;
+        }
+        case 'repairing': {
+          const target = worker.repairTargetId != null ? world.getComponent<HealthComponent>(worker.repairTargetId, C.health) : null;
+          if (!target || target.hp >= target.maxHp) {
+            worker.state = 'idle';
+            worker.repairTargetId = undefined;
+            break;
+          }
+          target.hp = Math.min(target.maxHp, target.hp + 10 * dt);
+          break;
+        }
       }
     }
   }
@@ -264,6 +329,24 @@ function findNearestResourceNode(world: EngineWorld, pos: PositionComponent): nu
     }
   }
   return bestId;
+}
+
+function hasCompletedRefineryNearNode(world: EngineWorld, node: ResourceNodeComponent, factionId: string): boolean {
+  for (const id of world.query([C.building, C.faction])) {
+    const faction = world.getComponent<FactionComponent>(id, C.faction)!;
+    if (faction.factionId !== factionId) continue;
+    const building = world.getComponent<BuildingComponent>(id, C.building)!;
+    if (building.kind !== 'refinery' || building.buildProgress < 1) continue;
+    const left = building.origin.col;
+    const right = building.origin.col + building.footprint.cols - 1;
+    const top = building.origin.row;
+    const bottom = building.origin.row + building.footprint.rows - 1;
+    const nearCol = node.origin.col >= left - 1 && node.origin.col <= right + 1;
+    const nearRow = node.origin.row >= top - 1 && node.origin.row <= bottom + 1;
+    const inside = node.origin.col >= left && node.origin.col <= right && node.origin.row >= top && node.origin.row <= bottom;
+    if (nearCol && nearRow && !inside) return true;
+  }
+  return false;
 }
 
 function findNearestDepot(world: EngineWorld, pos: PositionComponent, factionId: string): number | null {

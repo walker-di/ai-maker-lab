@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { MapDefinition } from './map-types.js';
-import { validateMapDefinition } from './validation.js';
+import { canHarvestGasNode, isRefineryAdjacentToGasNode, validateMapDefinition } from './validation.js';
 
 function flat(cols: number, rows: number, terrain: 'grass' | 'water' = 'grass'): MapDefinition {
   return {
@@ -73,5 +73,19 @@ describe('validateMapDefinition', () => {
     map.resources.push({ id: 'r', kind: 'mineral', tile: { col: 2, row: 2 }, amount: 100 });
     const result = validateMapDefinition(map);
     expect(result.errors.some((e) => e.code === 'resource.on-water')).toBe(true);
+  });
+
+  test('requires refinery placement adjacent to gas', () => {
+    const map = flat(8, 8);
+    map.resources.push({ id: 'g', kind: 'gas', tile: { col: 4, row: 4 }, amount: 100 });
+    expect(isRefineryAdjacentToGasNode(map, { col: 2, row: 3 }, { cols: 2, rows: 2 })).toBe(true);
+    expect(isRefineryAdjacentToGasNode(map, { col: 0, row: 0 }, { cols: 2, rows: 2 })).toBe(false);
+  });
+
+  test('requires a completed adjacent refinery for gas harvesting', () => {
+    const gas = { kind: 'gas' as const, tile: { col: 4, row: 4 } };
+    expect(canHarvestGasNode(gas, [])).toBe(false);
+    expect(canHarvestGasNode(gas, [{ origin: { col: 2, row: 3 }, footprint: { cols: 2, rows: 2 }, buildProgress: 0.5 }])).toBe(false);
+    expect(canHarvestGasNode(gas, [{ origin: { col: 2, row: 3 }, footprint: { cols: 2, rows: 2 }, buildProgress: 1 }])).toBe(true);
   });
 });

@@ -19,4 +19,9 @@ export {
   SurrealRtsUserMapRepository,
   SurrealRtsMatchResultRepository,
 } from './rts/index.js';
+export {
+  SurrealRacingSessionRepository,
+  SurrealLapResultRepository,
+  SurrealRacingSetupRepository,
+} from './racing/index.js';
 export * from './marketing/index.js';

@@ -14,8 +14,32 @@
     if (canvas) model.setMountTarget(canvas);
   });
 
+  function handleKeyDown(event: KeyboardEvent) {
+    const target = event.target;
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
+      return;
+    }
+    if (!model.runActive) return;
+    const key = event.key.toLowerCase();
+    if (key === 'y') {
+      event.preventDefault();
+      model.toggleRendererMode();
+    } else if (key === 'm') {
+      event.preventDefault();
+      model.setMuted();
+    } else if (key === 'p') {
+      event.preventDefault();
+      model.armOrder('patrol');
+    } else if (key === 't') {
+      event.preventDefault();
+      model.armOrder('repair');
+    }
+  }
+
   onDestroy(() => model.dispose());
 </script>
+
+<svelte:window onkeydown={handleKeyDown} />
 
 <svelte:head>
   <title>RTS Skirmish</title>
@@ -114,8 +138,22 @@
     {:else}
       <section class="flex flex-col gap-3" data-testid="rts-stage">
         <div class="flex items-center justify-between gap-3">
-          <RtsHud model={model.hud} />
+          <RtsHud
+            model={model.hud}
+            onProduceUnit={(kind) => model.produceUnit(kind)}
+            onPlaceBuilding={(kind) => model.placeBuilding(kind)}
+            onCancelBuilding={() => model.cancelBuildingMode()}
+            onOrder={(kind) => model.armOrder(kind)}
+          />
           <div class="flex items-center gap-2">
+            {#if model.runActive}
+              <span class="text-muted-foreground rounded-full border px-2 py-1 text-xs" data-testid="rts-renderer-mode">
+                {model.rendererMode} mode
+              </span>
+              <Button variant="outline" size="sm" onclick={() => model.setMuted()} data-testid="rts-mute-toggle">
+                {model.muted ? 'Unmute' : 'Mute'}
+              </Button>
+            {/if}
             <Button variant="outline" size="sm" onclick={() => model.togglePause()} disabled={!model.runActive}>
               {model.paused ? 'Resume' : 'Pause'}
             </Button>
@@ -125,16 +163,28 @@
           </div>
         </div>
         <div class="relative">
+          {#if model.toastMessage}
+            <div class="absolute right-3 top-3 z-10 rounded-full bg-orange-500/90 px-3 py-1 text-xs font-semibold text-white" data-testid="rts-toast">
+              {model.toastMessage}
+            </div>
+          {/if}
           <div
             bind:this={canvas}
             class="rts-canvas-host border-border bg-background relative flex aspect-[16/9] w-full touch-none select-none items-center justify-center overflow-hidden rounded-2xl border"
             data-testid="rts-canvas"
-            role="presentation"
+            role="application"
+            tabindex="0"
             onpointerdown={(event) => model.handlePointerDown(event)}
             onpointermove={(event) => model.handlePointerMove(event)}
             onpointerup={(event) => model.handlePointerUp(event)}
             oncontextmenu={(event) => model.handleContextMenu(event)}
-          ></div>
+          >
+            {#if model.runActive}
+              <div class="rts-custom-cursor pointer-events-none absolute left-3 top-3 text-xs" data-testid="rts-cursor">
+                cursor: {model.armedOrder ?? model.cursorState}{model.muted ? ' · audio muted' : ''}
+              </div>
+            {/if}
+          </div>
           {#if model.dragRect}
             <div
               class="pointer-events-none fixed border-2 border-sky-300/80 bg-sky-300/10"
@@ -147,6 +197,10 @@
         </div>
       </section>
     {/if}
+    <p class="text-muted-foreground text-xs">
+      Sprites use Kenney Tower Defense assets (CC0), bundled with the app under
+      <code>/rts/towerDefense/License.txt</code>. Press <kbd>Y</kbd> to toggle sprite/vector mode.
+    </p>
   </div>
 </Tooltip.Provider>
 
@@ -157,5 +211,15 @@
     height: 100%;
     object-fit: contain;
     display: block;
+  }
+  .rts-canvas-host {
+    cursor: none;
+  }
+  .rts-custom-cursor {
+    border-radius: 9999px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(10, 20, 30, 0.72);
+    color: white;
+    padding: 0.2rem 0.45rem;
   }
 </style>

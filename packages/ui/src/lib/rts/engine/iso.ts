@@ -1,15 +1,6 @@
 import type { IsoCoord, TilePos } from '../types.js';
 
-/**
- * Flat top-down orthogonal projection. `tileSize.width` and
- * `tileSize.height` are pixel dimensions of a single square tile. Altitude
- * is conveyed in screen space by lifting the rendered tile up by
- * `altitudeStep` pixels per level so cliffs and ramps read visually
- * without leaving the orthogonal grid.
- *
- * The file name is kept as `iso.ts` for git history continuity, but the
- * projection is no longer isometric.
- */
+/** 2:1 isometric projection. `tileSize` is the diamond's bounding box. */
 export interface OrthoProjectionConfig {
   tileSize: { width: number; height: number };
   altitudeStep: number;
@@ -21,12 +12,12 @@ export interface OrthoProjectionConfig {
 export class OrthoProjection {
   constructor(public readonly config: OrthoProjectionConfig) {}
 
-  /** Map a tile (and altitude) to top-left screen coordinates of the tile. */
+  /** Map a tile (and altitude) to the center of the tile diamond. */
   tileToScreen(tile: TilePos, altitude = 0): IsoCoord {
     const { tileSize, originX, originY, altitudeStep } = this.config;
     return {
-      x: originX + tile.col * tileSize.width,
-      y: originY + tile.row * tileSize.height - altitude * altitudeStep,
+      x: originX + (tile.col - tile.row) * (tileSize.width / 2),
+      y: originY + (tile.col + tile.row) * (tileSize.height / 2) - altitude * altitudeStep,
     };
   }
 
@@ -37,10 +28,11 @@ export class OrthoProjection {
    */
   screenToTile(coord: IsoCoord, altitude = 0): TilePos {
     const { tileSize, originX, originY, altitudeStep } = this.config;
-    const adjustedY = coord.y + altitude * altitudeStep;
+    const localX = (coord.x - originX) / (tileSize.width / 2);
+    const localY = (coord.y - originY + altitude * altitudeStep) / (tileSize.height / 2);
     return {
-      col: Math.floor((coord.x - originX) / tileSize.width),
-      row: Math.floor((adjustedY - originY) / tileSize.height),
+      col: Math.floor((localX + localY) / 2),
+      row: Math.floor((localY - localX) / 2),
     };
   }
 

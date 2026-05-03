@@ -123,6 +123,7 @@ export class AiController {
       this.engine.selectByIds([]);
       this.attacked = true;
       this.waveIndex++;
+      this.engine.emitter.emit('squadLaunched', { factionId: this.factionId, size: myUnits.length, waveIndex: this.waveIndex });
     }
   }
 

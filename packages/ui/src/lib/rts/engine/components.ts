@@ -81,10 +81,11 @@ export interface MovementComponent {
   path: TilePos[];
   /** Final goal tile. */
   goal?: TilePos;
+  patrol?: { a: TilePos; b: TilePos; next: 'a' | 'b' };
 }
 
 export interface WorkerComponent {
-  state: 'idle' | 'movingToResource' | 'gathering' | 'returning';
+  state: 'idle' | 'movingToResource' | 'gathering' | 'returning' | 'movingToRepair' | 'repairing';
   carryKind: ResourceKind | null;
   carryAmount: number;
   capacity: number;
@@ -92,6 +93,7 @@ export interface WorkerComponent {
   cycleElapsedMs: number;
   resourceNodeId?: number;
   depotId?: number;
+  repairTargetId?: number;
 }
 
 export interface ResourceNodeComponent {

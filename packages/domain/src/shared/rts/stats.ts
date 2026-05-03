@@ -127,7 +127,7 @@ export const BUILDING_STATS: Readonly<Record<BuildingKind, BuildingStats>> = {
     sight: 12,
     footprint: { cols: 3, rows: 3 },
     supplyProvided: 8,
-    canTrain: ['worker'],
+    canTrain: ['worker', 'scout', 'rocket'],
     canResearch: ['armorT1', 'armorT2', 'weaponT1', 'weaponT2', 'sightRange'],
   },
   barracks: {

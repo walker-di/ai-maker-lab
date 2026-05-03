@@ -22,6 +22,7 @@
 		"test:e2e": "playwright test",
 		"test:e2e:chat": "playwright test e2e/chat",
 		"test:e2e:platformer": "playwright test e2e/platformer",
+		"test:e2e:racing": "playwright test e2e/racing",
 		"test:unit": "vitest run --project unit",
 		"test": "bun run test:unit && bun run test:e2e",
 		"storybook": "storybook dev -p 6006",

@@ -7,9 +7,12 @@ type Faction = DomainRts.Faction;
 type AiDifficulty = DomainRts.AiDifficulty;
 type MatchDefinition = DomainRts.MatchDefinition;
 type MapGenerationParams = DomainRts.Generation.MapGenerationParams;
+type UnitKind = DomainRts.UnitKind;
+type BuildingKind = DomainRts.BuildingKind;
+type AudioBus = ConstructorParameters<typeof RtsEngine>[0]['audioBus'];
 
 const {
-  Engine: { RtsEngine, AiController, NullAudioBus, createPixiRtsRendererFactory },
+  Engine: { RtsEngine, AiController, createPixiRtsRendererFactory },
   Runtime: { createRtsHudModel },
 } = Rts;
 
@@ -32,6 +35,7 @@ const DEFAULT_GEN_PARAMS: MapGenerationParams = {
 
 export interface RtsPageDeps {
   transport: RtsTransport;
+  audioBus?: AudioBus;
 }
 
 export interface MatchSetupChoice {
@@ -41,7 +45,7 @@ export interface MatchSetupChoice {
   seed: number;
 }
 
-export function createRtsPageModel({ transport }: RtsPageDeps) {
+export function createRtsPageModel({ transport, audioBus }: RtsPageDeps) {
   let catalog = $state<ResolvedRtsMap[]>([]);
   let isLoading = $state(false);
   let errorMessage = $state<string | null>(null);
@@ -49,10 +53,13 @@ export function createRtsPageModel({ transport }: RtsPageDeps) {
   let paused = $state(false);
   let lastWinner = $state<string | null>(null);
   let elapsedMs = $state(0);
+  let rendererMode = $state<'sprite' | 'vector'>('vector');
+  let muted = $state(false);
   let view = $state<'lobby' | 'match' | 'mapgen'>('lobby');
   let generationParams = $state<MapGenerationParams>({ ...DEFAULT_GEN_PARAMS });
   let lastGenerated = $state<{ map: DomainRts.MapDefinition; params: MapGenerationParams } | null>(null);
   let mapgenError = $state<string | null>(null);
+  let toastMessage = $state<string | null>(null);
 
   const hud = createRtsHudModel();
 
@@ -64,6 +71,9 @@ export function createRtsPageModel({ transport }: RtsPageDeps) {
   let unsubs: Array<() => void> = [];
   let dragStart = $state<{ x: number; y: number; tile: DomainRts.TilePos } | null>(null);
   let dragCurrent = $state<{ x: number; y: number } | null>(null);
+  let cursorState = $state('default');
+  let buildingMode = $state<BuildingKind | null>(null);
+  let armedOrder = $state<'patrol' | 'repair' | null>(null);
 
   function whenMounted(): Promise<HTMLDivElement> {
     if (mountTarget) return Promise.resolve(mountTarget);
@@ -139,6 +149,7 @@ export function createRtsPageModel({ transport }: RtsPageDeps) {
         match: match as MatchDefinition,
         map,
         rendererFactory: createPixiRtsRendererFactory({ width: 960, height: 540 }),
+        audioBus,
       });
       engine = next;
 
@@ -187,9 +198,20 @@ export function createRtsPageModel({ transport }: RtsPageDeps) {
           }
         }),
       );
+      unsubs.push(
+        next.emitter.on('squadLaunched', ({ size }) => {
+          toastMessage = `Enemy squad launched (${size})`;
+          if (typeof window !== 'undefined') {
+            window.setTimeout(() => {
+              toastMessage = null;
+            }, 2500);
+          }
+        }),
+      );
 
       const target = await whenMounted();
       await next.mount(target);
+      rendererMode = next.getSpriteMode();
       next.start();
       runActive = true;
       lastWinner = null;
@@ -210,6 +232,7 @@ export function createRtsPageModel({ transport }: RtsPageDeps) {
 
   function handlePointerDown(event: PointerEvent): void {
     if (!engine) return;
+    void engine.resumeAudio();
     if (event.button === 2) return; // context menu handled separately
     const tile = engine.screenToTile(event.clientX, event.clientY);
     if (!tile) return;
@@ -219,8 +242,13 @@ export function createRtsPageModel({ transport }: RtsPageDeps) {
   }
 
   function handlePointerMove(event: PointerEvent): void {
-    if (!dragStart) return;
-    dragCurrent = { x: event.clientX, y: event.clientY };
+    if (dragStart) {
+      dragCurrent = { x: event.clientX, y: event.clientY };
+      return;
+    }
+    if (!engine) return;
+    const tile = engine.screenToTile(event.clientX, event.clientY);
+    cursorState = tile ? engine.getCursorStateForTile(tile) : 'default';
   }
 
   function handlePointerUp(event: PointerEvent): void {
@@ -233,7 +261,18 @@ export function createRtsPageModel({ transport }: RtsPageDeps) {
     if (dragged && tile) {
       engine.selectInBox(dragStart.tile, tile);
     } else if (tile) {
-      engine.handleClickAtTile(tile, event.shiftKey);
+      if (buildingMode) {
+        const placed = engine.placeBuilding(PLAYER_FACTION_ID, buildingMode, tile);
+        if (placed != null) {
+          buildingMode = null;
+          hud.setBuildingMode(null);
+        }
+      } else if (armedOrder) {
+        engine.issueContextOrderAtTile(tile, armedOrder);
+        armedOrder = null;
+      } else {
+        engine.handleClickAtTile(tile, event.shiftKey);
+      }
     }
     dragStart = null;
     dragCurrent = null;
@@ -242,6 +281,7 @@ export function createRtsPageModel({ transport }: RtsPageDeps) {
   function handleContextMenu(event: MouseEvent): void {
     event.preventDefault();
     if (!engine) return;
+    void engine.resumeAudio();
     const tile = engine.screenToTile(event.clientX, event.clientY);
     if (!tile) return;
     const targetEntity = engine.pickEntityAtTile(tile);
@@ -253,6 +293,38 @@ export function createRtsPageModel({ transport }: RtsPageDeps) {
       }
     }
     engine.orderMoveSelectionTo(tile);
+  }
+
+  function toggleRendererMode(): void {
+    if (!engine) return;
+    rendererMode = engine.toggleSpriteMode();
+  }
+
+  function setMuted(nextMuted = !muted): void {
+    muted = nextMuted;
+    engine?.setAudioMuted(muted);
+    hud.setMuted(muted);
+  }
+
+  function produceUnit(kind: UnitKind): void {
+    engine?.enqueueProductionFromSelection(kind);
+  }
+
+  function placeBuilding(kind: BuildingKind): void {
+    buildingMode = kind;
+    armedOrder = null;
+    hud.setBuildingMode(kind);
+  }
+
+  function cancelBuildingMode(): void {
+    buildingMode = null;
+    hud.setBuildingMode(null);
+  }
+
+  function armOrder(kind: 'patrol' | 'repair'): void {
+    armedOrder = kind;
+    buildingMode = null;
+    hud.setBuildingMode(null);
   }
 
   function togglePause(): void {
@@ -321,12 +393,16 @@ export function createRtsPageModel({ transport }: RtsPageDeps) {
     get paused() { return paused; },
     get lastWinner() { return lastWinner; },
     get elapsedMs() { return elapsedMs; },
+    get rendererMode() { return rendererMode; },
+    get muted() { return muted; },
+    get cursorState() { return cursorState; },
+    get armedOrder() { return armedOrder; },
     get view() { return view; },
     get hud() { return hud; },
     get generationParams() { return generationParams; },
     get lastGenerated() { return lastGenerated; },
     get mapgenError() { return mapgenError; },
-    get audio() { return new NullAudioBus(); },
+    get toastMessage() { return toastMessage; },
     get dragRect() {
       if (!dragStart || !dragCurrent) return null;
       const x = Math.min(dragStart.x, dragCurrent.x);
@@ -349,6 +425,12 @@ export function createRtsPageModel({ transport }: RtsPageDeps) {
     handlePointerMove,
     handlePointerUp,
     handleContextMenu,
+    toggleRendererMode,
+    setMuted,
+    produceUnit,
+    placeBuilding,
+    cancelBuildingMode,
+    armOrder,
     dispose,
   };
 }
