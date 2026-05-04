@@ -415,6 +415,69 @@ describe('RtsEngine order modes', () => {
     expect(events.some((state) => state.enemyActivity.status === 'imminent')).toBe(true);
   });
 
+  test('local combat alerts escalate wave pressure once and ignore enemy-only noise', () => {
+    const engine = createEngine();
+    const updates: Array<ReturnType<RtsEngine['getMissionState']>> = [];
+    engine.emitter.on('missionUpdated', ({ state }) => {
+      updates.push(state);
+    });
+
+    engine.reportSquadLaunched({
+      factionId: 'p2',
+      size: 4,
+      waveIndex: 1,
+      launchedAtMs: 0,
+      cadenceMs: 30_000,
+      targetTile: { col: 1, row: 2 },
+    });
+
+    const afterWave = engine.getMissionState();
+    expect(afterWave.phase).toBe('defense');
+    expect(afterWave.pressure).toBe('rising');
+    expect(afterWave.pressureLabel).toBe('Hostile movement detected');
+
+    const waveUpdateCount = updates.length;
+    (engine as unknown as {
+      noteCombatAlert: (payload: { tile: { col: number; row: number }; severity: 'warning' | 'danger'; kind: 'impact' | 'critical'; factionId?: string }) => void;
+    }).noteCombatAlert({
+      tile: { col: 2, row: 2 },
+      severity: 'danger',
+      kind: 'critical',
+      factionId: 'p2',
+    });
+
+    expect(engine.getMissionState().pressure).toBe('rising');
+    expect(updates).toHaveLength(waveUpdateCount);
+
+    (engine as unknown as {
+      noteCombatAlert: (payload: { tile: { col: number; row: number }; severity: 'warning' | 'danger'; kind: 'impact' | 'critical'; factionId?: string }) => void;
+    }).noteCombatAlert({
+      tile: { col: 2, row: 2 },
+      severity: 'danger',
+      kind: 'critical',
+      factionId: 'p1',
+    });
+
+    const underFire = engine.getMissionState();
+    expect(underFire.phase).toBe('defense');
+    expect(underFire.pressure).toBe('critical');
+    expect(underFire.tone).toBe('danger');
+    expect(underFire.pressureLabel).toBe('Base under heavy fire');
+    expect(updates.at(-1)?.pressure).toBe('critical');
+
+    const localAlertUpdateCount = updates.length;
+    (engine as unknown as {
+      noteCombatAlert: (payload: { tile: { col: number; row: number }; severity: 'warning' | 'danger'; kind: 'impact' | 'critical'; factionId?: string }) => void;
+    }).noteCombatAlert({
+      tile: { col: 3, row: 2 },
+      severity: 'danger',
+      kind: 'critical',
+      factionId: 'p1',
+    });
+
+    expect(updates).toHaveLength(localAlertUpdateCount);
+  });
+
   test('mission state resolves when the local side wins or loses', () => {
     const victoryEngine = createEngine();
     const victoryEvents: Array<ReturnType<RtsEngine['getMissionState']>> = [];

@@ -34,7 +34,7 @@ vi.mock('three', async (importOriginal) => {
 
 import { Group, Mesh } from 'three';
 import { RacingRenderer } from './three-renderer.js';
-import type { TrackPreset } from '../types.js';
+import type { TrackPreset, VehiclePreset } from '../types.js';
 
 const TRACK_WITH_ALL_PROP_KINDS: TrackPreset = {
 	id: 'renderer-test-track',
@@ -66,6 +66,25 @@ const EXPECTED_ASSET_URLS = [
 	'/racing/extracted/billboard.glb',
 ] as const;
 
+const TEST_VEHICLE: VehiclePreset = {
+	id: 'renderer-test-vehicle',
+	label: 'Renderer Test Vehicle',
+	driveLabel: 'RWD',
+	layoutLabel: 'Front-mid',
+	color: 0xff0000,
+	wheelbase: 2.6,
+	trackWidth: 1.6,
+	frontMassPct: 0.52,
+	finalDrive: 3.8,
+	gears: [
+		{ n: 'N', ratio: 0 },
+		{ n: '1', ratio: 3.2 },
+	],
+	steerMaxDeg: 28,
+	axleDrive: { front: 0, rear: 1 },
+	diffType: 'clutchLSD',
+};
+
 function createDeferred<T>() {
 	let resolve!: (value: T) => void;
 	let reject!: (reason?: unknown) => void;
@@ -84,6 +103,29 @@ async function flushAsyncWork(): Promise<void> {
 describe('RacingRenderer asset loading', () => {
 	beforeEach(() => {
 		loaderState.loadAsync.mockReset();
+	});
+
+	test('applies wheel steer poses with positive-left visual convention', () => {
+		const renderer = new RacingRenderer({
+			canvas: document.createElement('canvas'),
+			width: 800,
+			height: 600,
+		});
+		renderer.setVehiclePreset(TEST_VEHICLE);
+
+		renderer.setWheelPoses([
+			{
+				index: 0,
+				position: { x: -0.8, y: 0, z: 1.2 },
+				spinAngle: 0,
+				steerAngle: 0.25,
+			},
+		]);
+
+		const wheel = (renderer as unknown as { wheels: Mesh[] }).wheels[0];
+		expect(wheel?.rotation.y).toBeCloseTo(-0.25, 8);
+
+		renderer.dispose();
 	});
 
 	test('loads each prop asset once, then rebuilds scenery from the cache', async () => {

@@ -212,7 +212,8 @@ export class ProjectileSystem implements System {
         }
         ctx.bus.emit({
           type: 'projectileImpact',
-          entity: proj.toEntity,
+          entity: id,
+          toEntity: proj.toEntity,
           kind: proj.kind,
           factionId: proj.factionId,
           targetFactionId,

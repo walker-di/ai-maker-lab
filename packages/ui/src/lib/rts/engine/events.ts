@@ -1,5 +1,6 @@
 import type { TechKind, TilePos } from '../types.js';
 import type { RtsMissionState } from './mission.js';
+import type { RtsCombatSummary } from './combat-telemetry.js';
 
 export type EngineEventMap = {
   unitCreated: { entity: number; factionId: string; kind: string };
@@ -28,7 +29,18 @@ export type EngineEventMap = {
     factionId?: string;
     kind: 'impact' | 'critical';
     severity: 'warning' | 'danger';
+    /** Entity that fired the projectile, if known. */
+    sourceEntityId?: number;
+    /** Entity that was struck, if known. */
+    targetEntityId?: number;
+    /** Sector key ("col:row" divided by sectorSize) for spatial bucketing. */
+    sectorKey?: string;
   };
+  /**
+   * Fired when the active-skirmish set or any sector pressure level changes.
+   * The route can subscribe once and bind the summary directly to the HUD.
+   */
+  combatSummaryUpdated: { summary: RtsCombatSummary };
   matchEnded: { winner: string; durationMs: number };
 };
 

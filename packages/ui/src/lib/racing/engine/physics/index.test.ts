@@ -4,7 +4,9 @@ import {
   computeBumpStopForce,
   computeCasterCamber,
   computeMotionRatio,
+  computeSlipAngleRad,
   computeToeSlipOffset,
+  computeWheelHeadingBasis,
   engineTorqueAt,
   pacejkaLat,
   pacejkaLong,
@@ -69,6 +71,32 @@ describe('racing sim physics helpers', () => {
     expect(pair.leftRad).toBeGreaterThan(pair.rightRad);
     const delta = 1 / Math.tan(pair.outerRad) - 1 / Math.tan(pair.innerRad);
     expect(delta).toBeCloseTo(1.7 / 2.9, 1);
+  });
+
+  it('wheel heading basis mirrors left and right steer correctly', () => {
+    const straight = computeWheelHeadingBasis(0);
+    const left = computeWheelHeadingBasis(12 * Math.PI / 180);
+    const right = computeWheelHeadingBasis(-12 * Math.PI / 180);
+
+    expect(straight.forwardX).toBeCloseTo(0, 8);
+    expect(straight.forwardZ).toBeCloseTo(1, 8);
+    expect(straight.lateralX).toBeCloseTo(1, 8);
+    expect(straight.lateralZ).toBeCloseTo(0, 8);
+
+    expect(left.forwardX).toBeLessThan(0);
+    expect(right.forwardX).toBeGreaterThan(0);
+    expect(left.forwardX).toBeCloseTo(-right.forwardX, 8);
+    expect(left.forwardZ).toBeCloseTo(right.forwardZ, 8);
+    expect(left.lateralX).toBeCloseTo(right.lateralX, 8);
+    expect(left.lateralZ).toBeCloseTo(-right.lateralZ, 8);
+  });
+
+  it('slip angle flips sign with lateral velocity and clamps low-speed longitudinal input', () => {
+    expect(computeSlipAngleRad(20, 0)).toBeCloseTo(0, 8);
+    expect(computeSlipAngleRad(20, 2)).toBeLessThan(0);
+    expect(computeSlipAngleRad(20, -2)).toBeGreaterThan(0);
+    expect(computeSlipAngleRad(20, 2)).toBeCloseTo(-computeSlipAngleRad(20, -2), 8);
+    expect(computeSlipAngleRad(0.2, 2)).toBeCloseTo(computeSlipAngleRad(1.5, 2), 8);
   });
 
   it('motion ratio scales rates quadratically', () => {

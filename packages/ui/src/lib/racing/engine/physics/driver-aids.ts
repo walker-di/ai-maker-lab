@@ -133,6 +133,7 @@ export function classifyEsc(input: EscInput): EscResult {
 
 /**
  * Map the ESC classification onto a single-wheel corrective brake target.
+ * Wheel indices are `[FL, FR, RL, RR]`.
  * Oversteer gets the outside-front wheel; understeer gets the inside-rear.
  */
 export function computeEscBrakeTargets(input: EscBrakeTargetsInput): EscBrakeTargetsResult {
@@ -143,9 +144,9 @@ export function computeEscBrakeTargets(input: EscBrakeTargetsInput): EscBrakeTar
 
   let targetWheel: 0 | 1 | 2 | 3 | null = null;
   if (input.esc.mode === 'oversteer') {
-    targetWheel = input.esc.turnSign > 0 ? 0 : 1;
+    targetWheel = input.esc.turnSign > 0 ? 1 : 0;
   } else if (input.esc.mode === 'understeer') {
-    targetWheel = input.esc.turnSign > 0 ? 3 : 2;
+    targetWheel = input.esc.turnSign > 0 ? 2 : 3;
   }
   if (targetWheel == null) {
     return { torqueByWheel, targetWheel };

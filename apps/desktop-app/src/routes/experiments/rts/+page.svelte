@@ -8,6 +8,7 @@
 
   const model = createRtsPage();
   const mission = $derived(model.mission);
+  const combatReadout = $derived(model.combatReadout);
   const activeResearch = $derived(model.activeResearch);
 
   let canvas = $state<HTMLDivElement | undefined>(undefined);
@@ -341,8 +342,8 @@
               <strong>{model.selectionSummary.count > 0 ? model.selectionSummary.label : 'No selection'}</strong>
             </article>
             <article class="rts-macro-stat">
-              <span>Audio</span>
-              <strong>{model.muted ? 'Muted' : 'On'}</strong>
+              <span>Threat</span>
+              <strong>{combatReadout.statusLabel}</strong>
             </article>
           </div>
         </div>
@@ -376,14 +377,12 @@
                 <div class="rts-intent-card" data-testid="rts-intent-card">
                   <p class="text-xs font-semibold uppercase tracking-[0.12em] text-sky-100/80">Active intent</p>
                   <p class="mt-1 text-sm font-medium text-white">
-                    {#if model.buildingMode}
-                      Place {model.buildingMode}
-                    {:else if model.armedOrder}
-                      {model.armedOrder}
-                    {/if}
+                    {model.orderPreview?.label ?? (model.buildingMode ? `Place ${model.buildingMode}` : model.armedOrder)}
                   </p>
                   <p class="mt-1 text-xs text-slate-300">
-                    {#if model.buildingMode}
+                    {#if model.orderPreview}
+                      {model.orderPreview.detail}
+                    {:else if model.buildingMode}
                       Left-click a valid tile to build, or press Esc to cancel.
                     {:else if model.armedOrder === 'repair'}
                       Left-click a damaged friendly building.
@@ -397,11 +396,14 @@
               {/if}
               {#if model.combatAlertHint && !model.matchOutcome}
                 <div class={`rts-alert-card rts-alert-${model.combatAlertHint.severity}`} data-testid="rts-alert-card">
-                  <p class="text-xs font-semibold uppercase tracking-[0.12em] text-white/75">Combat radar</p>
+                  <div class="flex items-start justify-between gap-3">
+                    <p class="text-xs font-semibold uppercase tracking-[0.12em] text-white/75">Combat radar</p>
+                    <span class={`rts-alert-badge is-${combatReadout.tone}`}>{combatReadout.statusLabel}</span>
+                  </div>
                   <p class="mt-1 text-sm font-medium text-white">{model.combatAlertHint.title}</p>
                   <p class="mt-1 text-xs text-slate-200">{model.combatAlertHint.detail}</p>
                   <p class="mt-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/70">
-                    {model.combatAlertHint.direction}
+                    {combatReadout.directionLabel}
                   </p>
                 </div>
               {/if}
@@ -658,10 +660,36 @@
 
             <section class="border-border bg-background rounded-2xl border p-3" data-testid="rts-combat-summary">
               <div class="mb-3 flex items-center justify-between gap-2">
-                <h3 class="text-sm font-semibold">Field Report</h3>
-                <span class="text-muted-foreground text-[11px] uppercase tracking-[0.12em]">live</span>
+                <h3 class="text-sm font-semibold">Battlefield</h3>
+                <span class={`rts-readout-badge is-${combatReadout.tone}`}>{combatReadout.statusLabel}</span>
               </div>
-              <div class="grid grid-cols-2 gap-2 text-sm">
+              <p class="text-sm font-semibold text-white">{combatReadout.headline}</p>
+              <p class="text-muted-foreground mt-1 text-xs">{combatReadout.detail}</p>
+              <div class="mt-3 grid grid-cols-2 gap-2 text-sm">
+                <div class="rts-summary-stat">
+                  <strong>{combatReadout.contactLabel}</strong>
+                  <small>Contact</small>
+                </div>
+                <div class="rts-summary-stat">
+                  <strong>{combatReadout.enemyForceLabel}</strong>
+                  <small>Enemy fielded</small>
+                </div>
+                <div class="rts-summary-stat">
+                  <strong>{combatReadout.directionLabel}</strong>
+                  <small>Hotspot</small>
+                </div>
+                <div class="rts-summary-stat">
+                  <strong>{combatReadout.timerValue}</strong>
+                  <small>{combatReadout.timerLabel}</small>
+                </div>
+              </div>
+              <p class="text-muted-foreground mt-2 text-xs">{combatReadout.directionDetail}</p>
+              {#if model.combatAlertHint && !model.matchOutcome}
+                <Button class="mt-3 w-full" variant="outline" size="sm" onclick={() => model.jumpCamera(model.combatAlertHint!.tile)}>
+                  Jump to contact
+                </Button>
+              {/if}
+              <div class="mt-3 grid grid-cols-2 gap-2 text-sm">
                 <div class="rts-summary-stat">
                   <strong>{model.matchStats.enemyLosses}</strong>
                   <small>Enemy losses</small>
@@ -718,6 +746,8 @@
               productionOptions={model.productionOptions}
               researchOptions={model.researchOptions}
               completedResearch={model.researchState.researched}
+              combatReadout={combatReadout}
+              intentPreview={model.orderPreview ? { label: model.orderPreview.label, detail: model.orderPreview.detail } : null}
               onProduceUnit={(kind) => model.produceUnit(kind)}
               onResearch={(kind) => model.researchTech(kind)}
               onPlaceBuilding={(kind) => model.placeBuilding(kind)}
@@ -1221,6 +1251,41 @@
   }
   .rts-alert-warning {
     border-color: rgba(250, 204, 21, 0.28);
+  }
+  .rts-alert-badge,
+  .rts-readout-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 9999px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    padding: 0.2rem 0.55rem;
+    font-size: 0.64rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .rts-alert-badge.is-danger,
+  .rts-readout-badge.is-danger,
+  .rts-alert-badge.is-failure,
+  .rts-readout-badge.is-failure {
+    border-color: rgba(248, 113, 113, 0.34);
+    color: rgb(254, 202, 202);
+  }
+  .rts-alert-badge.is-warning,
+  .rts-readout-badge.is-warning {
+    border-color: rgba(250, 204, 21, 0.34);
+    color: rgb(253, 230, 138);
+  }
+  .rts-alert-badge.is-success,
+  .rts-readout-badge.is-success {
+    border-color: rgba(74, 222, 128, 0.32);
+    color: rgb(187, 247, 208);
+  }
+  .rts-alert-badge.is-calm,
+  .rts-readout-badge.is-calm {
+    border-color: rgba(56, 189, 248, 0.28);
+    color: rgb(186, 230, 253);
   }
   .rts-toast {
     border-radius: 0.9rem;

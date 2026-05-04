@@ -104,6 +104,20 @@ export interface RtsOrderPreview {
   to: { x: number; y: number };
   tile: DomainRts.TilePos;
   label: string;
+  detail: string;
+}
+
+export interface RtsCombatReadout {
+  tone: RtsMissionTone;
+  statusLabel: string;
+  headline: string;
+  detail: string;
+  contactLabel: string;
+  enemyForceLabel: string;
+  directionLabel: string;
+  directionDetail: string;
+  timerLabel: string;
+  timerValue: string;
 }
 
 export interface RtsProductionQueueGroup {
@@ -124,6 +138,11 @@ interface RtsThreatSample {
 export interface RtsMissionState {
   status: 'active' | 'victory' | 'defeat';
   tone: RtsMissionTone;
+  phase: EngineMissionState['phase'];
+  pressure: EngineMissionState['pressure'];
+  enemyActivityStatus: EngineMissionEnemyActivity['status'];
+  activeEnemyCount: number;
+  wavesLaunched: number;
   title: string;
   objective: string;
   directive: string;
@@ -555,6 +574,11 @@ export function createRtsPageModel({ transport, audioBus }: RtsPageDeps) {
     return {
       status,
       tone,
+      phase: mission.phase,
+      pressure: mission.pressure,
+      enemyActivityStatus: mission.enemyActivity.status,
+      activeEnemyCount: mission.enemyActivity.activeCombatUnits,
+      wavesLaunched: mission.enemyActivity.wavesLaunched,
       title: status === 'active' ? mission.objectiveTitle : status === 'victory' ? 'Mission complete' : 'Mission failed',
       objective: mission.objectiveDetail,
       directive: describeMissionDirective(mission),
@@ -590,6 +614,11 @@ export function createRtsPageModel({ transport, audioBus }: RtsPageDeps) {
       return {
         status: 'victory',
         tone: 'success',
+        phase: 'victory',
+        pressure: 'stable',
+        enemyActivityStatus: 'resolved',
+        activeEnemyCount: 0,
+        wavesLaunched: latestEnemyWave.index,
         title: 'Objective secured',
         objective: 'Enemy camp neutralized. The ridge is under your control.',
         directive: 'Consolidate the perimeter and prepare for extraction.',
@@ -612,6 +641,11 @@ export function createRtsPageModel({ transport, audioBus }: RtsPageDeps) {
       return {
         status: 'defeat',
         tone: 'failure',
+        phase: 'defeat',
+        pressure: 'critical',
+        enemyActivityStatus: 'resolved',
+        activeEnemyCount: latestEnemyWave.size,
+        wavesLaunched: latestEnemyWave.index,
         title: 'Mission failed',
         objective: 'Your HQ fell before the enemy camp could be destroyed.',
         directive: 'Stabilize the opening, absorb the first assault, then counterattack.',
@@ -661,6 +695,17 @@ export function createRtsPageModel({ transport, audioBus }: RtsPageDeps) {
     return {
       status: 'active',
       tone,
+      phase: tone === 'danger' || (waveAgeMs != null && waveAgeMs < 15_000) ? 'defense' : latestEnemyWave.index > 0 ? 'build-up' : 'opening',
+      pressure: tone === 'danger' ? 'critical' : tone === 'warning' ? (waveAgeMs != null && waveAgeMs < 15_000 ? 'high' : 'rising') : 'stable',
+      enemyActivityStatus: waveAgeMs != null && waveAgeMs < 15_000
+        ? 'inbound'
+        : nextWaveCountdownMs != null && nextWaveCountdownMs <= 10_000
+          ? 'imminent'
+          : latestEnemyWave.index > 0
+            ? 'cooldown'
+            : 'forming',
+      activeEnemyCount: waveAgeMs != null && waveAgeMs < 15_000 ? latestEnemyWave.size : 0,
+      wavesLaunched: latestEnemyWave.index,
       title: 'Destroy the enemy camp',
       objective: 'Keep your HQ alive, build up a strike force, and eliminate the enemy base.',
       directive: 'Expand early, blunt each wave, then push once their line thins.',
@@ -683,6 +728,57 @@ export function createRtsPageModel({ transport, audioBus }: RtsPageDeps) {
 
   function buildMissionState(): RtsMissionState {
     return engineMission ? buildMissionShellFromEngine(engineMission) : buildLegacyMissionState();
+  }
+
+  function formatDirectionLabel(direction: string): string {
+    if (direction === 'on-screen') return 'On screen';
+    if (direction === 'nearby') return 'Nearby';
+    return direction
+      .split('-')
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  }
+
+  function buildCombatReadout(): RtsCombatReadout {
+    const mission = buildMissionState();
+    let statusLabel = 'Perimeter stable';
+    if (mission.status === 'victory') statusLabel = 'Secured';
+    else if (mission.status === 'defeat') statusLabel = 'Broken';
+    else if (mission.pressure === 'critical' || combatAlertHint?.severity === 'danger') statusLabel = 'Under attack';
+    else if (mission.enemyActivityStatus === 'inbound' || mission.activeEnemyCount > 0) statusLabel = 'Active engagement';
+    else if (mission.enemyActivityStatus === 'imminent') statusLabel = 'Wave imminent';
+    else if (mission.pressure === 'rising') statusLabel = 'Pressure rising';
+
+    const directionLabel = combatAlertHint
+      ? formatDirectionLabel(combatAlertHint.direction)
+      : mission.status === 'active' && mission.activeEnemyCount > 0
+        ? mission.enemyActivityStatus === 'inbound'
+          ? 'Frontline'
+          : 'In sector'
+        : 'No hotspot';
+    const directionDetail = combatAlertHint
+      ? combatAlertHint.direction === 'on-screen' || combatAlertHint.direction === 'nearby'
+        ? 'Closest contact is already inside the current view.'
+        : `Closest contact is ${formatDirectionLabel(combatAlertHint.direction).toLowerCase()} of the camera.`
+      : mission.status === 'active' && mission.activeEnemyCount > 0
+        ? 'Enemy combat units are active, but no fresh radar ping is visible.'
+        : 'No immediate combat hotspot is currently flagged.';
+
+    return {
+      tone: mission.tone,
+      statusLabel,
+      headline: mission.pressureLabel,
+      detail: combatAlertHint && mission.status === 'active'
+        ? `${combatAlertHint.title} · ${combatAlertHint.detail}`
+        : mission.pressureDetail,
+      contactLabel: mission.waveLabel,
+      enemyForceLabel: mission.enemyForceValue,
+      directionLabel,
+      directionDetail,
+      timerLabel: mission.countdownLabel,
+      timerValue: mission.countdownValue,
+    };
   }
 
   function describeDirection(from: DomainRts.TilePos, to: DomainRts.TilePos): string {
@@ -725,6 +821,7 @@ export function createRtsPageModel({ transport, audioBus }: RtsPageDeps) {
         orderPreview = null;
         return;
       }
+      const direction = anchorTile ? formatDirectionLabel(describeDirection(anchorTile, hoverTile)).toLowerCase() : null;
       if (buildingMode) {
         orderPreview = {
           mode: 'build',
@@ -732,6 +829,7 @@ export function createRtsPageModel({ transport, audioBus }: RtsPageDeps) {
           to,
           tile: { ...hoverTile },
           label: `Place ${titleCase(buildingMode)}`,
+          detail: `Target tile ${hoverTile.col},${hoverTile.row}`,
         };
         return;
       }
@@ -746,8 +844,13 @@ export function createRtsPageModel({ transport, audioBus }: RtsPageDeps) {
         to,
         tile: { ...hoverTile },
         label: activeOrder === 'rally'
-          ? `Set rally point to ${hoverTile.col},${hoverTile.row}`
-          : `${titleCase(activeOrder)} to ${hoverTile.col},${hoverTile.row}`,
+          ? 'Set rally point'
+          : activeOrder === 'attackMove'
+            ? 'Attack-move'
+            : titleCase(activeOrder),
+        detail: activeOrder === 'rally'
+          ? `${direction ? `${titleCase(direction)} ` : ''}to ${hoverTile.col},${hoverTile.row}`
+          : `${direction ? `${titleCase(direction)} ` : ''}to ${hoverTile.col},${hoverTile.row}`,
       };
       return;
     }
@@ -767,6 +870,7 @@ export function createRtsPageModel({ transport, audioBus }: RtsPageDeps) {
       to,
       tile: { ...selectedRallyPoint.tile },
       label: `Rally point · ${selectedRallyPoint.producerCount} structure${selectedRallyPoint.producerCount === 1 ? '' : 's'}`,
+      detail: `Route set to ${selectedRallyPoint.tile.col},${selectedRallyPoint.tile.row}`,
     };
   }
 
@@ -822,13 +926,20 @@ export function createRtsPageModel({ transport, audioBus }: RtsPageDeps) {
       return;
     }
 
-    const direction = describeDirection(cameraTile, nextAlert.tile);
+    const onScreen =
+      nextAlert.tile.col >= viewportBounds.minCol &&
+      nextAlert.tile.col <= viewportBounds.maxCol &&
+      nextAlert.tile.row >= viewportBounds.minRow &&
+      nextAlert.tile.row <= viewportBounds.maxRow;
+    const direction = onScreen ? 'on-screen' : describeDirection(cameraTile, nextAlert.tile);
     combatAlertHint = {
       title: nextAlert.label,
       detail:
-        direction === 'nearby'
-          ? 'Combat is breaking close to the current camera.'
-          : `Contact ${direction} of the camera. Click the minimap to jump.`,
+        direction === 'on-screen'
+          ? 'Combat is already inside the current view.'
+          : direction === 'nearby'
+            ? 'Combat is breaking close to the current camera.'
+            : `Contact ${direction} of the camera. Click the minimap to jump.`,
       direction,
       severity: nextAlert.severity,
       tile: { ...nextAlert.tile },
@@ -1589,6 +1700,7 @@ export function createRtsPageModel({ transport, audioBus }: RtsPageDeps) {
     get activeResearch() { return researchQueue[0] ?? null; },
     get orderPreview() { return orderPreview; },
     get mission() { return buildMissionState(); },
+    get combatReadout() { return buildCombatReadout(); },
     get controlGroups() { return controlGroups; },
     get productionQueue() { return productionQueue; },
     get productionQueueGroups() { return productionQueueGroups; },

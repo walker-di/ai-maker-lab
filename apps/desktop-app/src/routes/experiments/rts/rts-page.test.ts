@@ -27,6 +27,7 @@ const rtsMock = vi.hoisted(() => {
 		readonly map: Record<string, unknown>;
 		elapsedMs = 0;
 		readonly emitter = new MockEmitter(this);
+		private cameraTile = { col: 0, row: 0 };
 		private mission = {
 			objectiveTitle: 'Hold the line',
 			objectiveDetail: 'Protect your HQ, absorb enemy attack waves, and destroy the hostile base.',
@@ -57,7 +58,7 @@ const rtsMock = vi.hoisted(() => {
 		}
 
 		private syncMissionClock(): void {
-			const { cadenceMs, lastWaveAtMs, status } = this.mission.enemyActivity;
+			const { cadenceMs, lastWaveAtMs } = this.mission.enemyActivity;
 			if (this.mission.phase === 'victory' || this.mission.phase === 'defeat') {
 				this.mission.enemyActivity.countdownMs = null;
 				this.setMissionStatus('resolved', this.mission.phase === 'victory' ? 'Threat neutralized' : 'Defense broken');
@@ -68,11 +69,13 @@ const rtsMock = vi.hoisted(() => {
 			} else {
 				this.mission.enemyActivity.countdownMs = null;
 			}
-			if (status !== 'inbound') {
-				if (this.mission.enemyActivity.countdownMs == null) this.setMissionStatus('forming', 'Enemy wave building');
-				else if (this.mission.enemyActivity.countdownMs <= 10_000) this.setMissionStatus('imminent', `Next wave in ${Math.ceil(this.mission.enemyActivity.countdownMs / 1000)}s`);
-				else this.setMissionStatus('cooldown', `Next wave in ${Math.ceil(this.mission.enemyActivity.countdownMs / 1000)}s`);
+			if (lastWaveAtMs != null && this.elapsedMs - lastWaveAtMs <= 12_000) {
+				this.setMissionStatus('inbound', `Wave ${Math.max(1, this.mission.enemyActivity.wavesLaunched)} is in contact`);
+				return;
 			}
+			if (this.mission.enemyActivity.countdownMs == null) this.setMissionStatus('forming', 'Enemy wave building');
+			else if (this.mission.enemyActivity.countdownMs <= 10_000) this.setMissionStatus('imminent', `Next wave in ${Math.ceil(this.mission.enemyActivity.countdownMs / 1000)}s`);
+			else this.setMissionStatus('cooldown', `Next wave in ${Math.ceil(this.mission.enemyActivity.countdownMs / 1000)}s`);
 		}
 
 		applyEvent(type: string, payload: any): void {
@@ -119,10 +122,21 @@ const rtsMock = vi.hoisted(() => {
 			return { mineral: 500, gas: 200, supplyUsed: 4, supplyCap: 12 };
 		}
 		getFog() { return undefined; }
-		getCameraTile() { return { col: 0, row: 0 }; }
-		getViewportBounds() { return { minCol: 0, maxCol: 12, minRow: 0, maxRow: 12 }; }
+		getCameraTile() { return { ...this.cameraTile }; }
+		getViewportBounds() {
+			return {
+				minCol: Math.max(0, this.cameraTile.col - 6),
+				maxCol: Math.min(23, this.cameraTile.col + 6),
+				minRow: Math.max(0, this.cameraTile.row - 6),
+				maxRow: Math.min(23, this.cameraTile.row + 6),
+			};
+		}
+		setCameraTile(tile: { col: number; row: number }) {
+			this.cameraTile = { ...tile };
+		}
 		getMinimapBlips() { return []; }
 		getSelection() { return []; }
+		getSelectionAnchorTile() { return null; }
 		getSelectionSummary() {
 			return {
 				count: 0,
@@ -365,6 +379,11 @@ describe('rts page model mission state', () => {
 			countdownValue: 'Scanning',
 		});
 		expect(model.mission.objective).toContain('Protect your HQ');
+		expect(model.combatReadout).toMatchObject({
+			statusLabel: 'Perimeter stable',
+			directionLabel: 'No hotspot',
+			timerValue: 'Scanning',
+		});
 		expect(model.toasts.some((toast) => toast.message.includes('Briefing: secure your base'))).toBe(true);
 		expect(model.eventFeed[0]).toMatchObject({ title: 'Match started', tone: 'success' });
 
@@ -383,6 +402,11 @@ describe('rts page model mission state', () => {
 			enemyForceValue: '4 active',
 		});
 		expect(model.mission.waveDetail).toBe('4 hostiles committed in the latest push.');
+		expect(model.combatReadout).toMatchObject({
+			statusLabel: 'Active engagement',
+			headline: 'Frontline under pressure',
+			enemyForceLabel: '4 active',
+		});
 		expect(model.toasts[0]?.message).toBe('Enemy wave 2 launched (4)');
 		expect(model.eventFeed[0]).toMatchObject({ title: 'Enemy wave launched', tone: 'warning' });
 
@@ -399,6 +423,146 @@ describe('rts page model mission state', () => {
 			enemyForceValue: '4 active',
 		});
 		expect(model.mission.pressureDetail).toBe('4 hostile combat units are threatening your base right now.');
+		expect(model.combatAlertHint).toMatchObject({
+			direction: 'south-east',
+			detail: 'Contact south-east of the camera. Click the minimap to jump.',
+		});
+		expect(model.combatReadout).toMatchObject({
+			statusLabel: 'Under attack',
+			directionLabel: 'South East',
+		});
+
+		model.dispose();
+	});
+
+	test('mission route derivations stay readable as a launched wave cools down and turns imminent', async () => {
+		const transport = createTransportStub();
+		const model = createRtsPageModel({ transport });
+		model.setMountTarget({} as HTMLDivElement);
+
+		await model.startMatch({ mapId: 'map-1', aiDifficulty: 'normal', fogOfWar: true, seed: 7 });
+		flushSync();
+
+		const engine = rtsMock.getLatestEngine();
+		expect(engine).not.toBeNull();
+		engine!.elapsedMs = 0;
+		engine!.emitter.emit('squadLaunched', { factionId: 'p2', size: 3, waveIndex: 1, launchedAtMs: 0, cadenceMs: 30_000 });
+		flushSync();
+
+		expect(model.mission).toMatchObject({
+			status: 'active',
+			statusLabel: 'Wave contact',
+			waveLabel: 'Wave 1 is in contact',
+			countdownValue: '00:30',
+			enemyForceValue: '3 active',
+		});
+		expect(model.mission.statusDetail).toBe('3 hostile combat units active near the frontline.');
+		expect(model.mission.directive).toBe('Hold the line, preserve production, then counter once the push breaks.');
+
+		engine!.elapsedMs = 13_000;
+		engine!.emitter.emit('combatAlert', { tile: { col: 20, row: 20 }, severity: 'warning', kind: 'impact', factionId: 'p2' });
+		flushSync();
+
+		expect(model.mission).toMatchObject({
+			status: 'active',
+			statusLabel: 'Defensive posture',
+			waveLabel: 'Next wave in 17s',
+			countdownValue: '00:17',
+			enemyForceValue: '3 active',
+		});
+		expect(model.mission.waveDetail).toBe('1 wave launched · last wave 3 hostiles.');
+
+		engine!.elapsedMs = 21_000;
+		engine!.emitter.emit('combatAlert', { tile: { col: 21, row: 20 }, severity: 'warning', kind: 'impact', factionId: 'p2' });
+		flushSync();
+
+		expect(model.mission).toMatchObject({
+			status: 'active',
+			statusLabel: 'Wave imminent',
+			waveLabel: 'Next wave in 9s',
+			countdownValue: '00:09',
+		});
+		expect(model.mission.pressureDetail).toBe('Contact window opens in 00:09. Keep units close.');
+		expect(model.mission.directive).toBe('Pull units home, queue reinforcements, and meet the next wave at your perimeter.');
+
+		model.dispose();
+	});
+
+	test('combat alerts derive deterministic pings, edge markers, and camera hints', async () => {
+		const transport = createTransportStub();
+		const model = createRtsPageModel({ transport });
+		model.setMountTarget({} as HTMLDivElement);
+
+		await model.startMatch({ mapId: 'map-1', aiDifficulty: 'normal', fogOfWar: true, seed: 7 });
+		flushSync();
+
+		const engine = rtsMock.getLatestEngine();
+		expect(engine).not.toBeNull();
+		model.jumpCamera({ col: 6, row: 6 });
+
+		engine!.emitter.emit('combatAlert', { tile: { col: 20, row: 6 }, severity: 'warning', kind: 'impact', factionId: 'p1' });
+		flushSync();
+
+		expect(model.combatPings).toHaveLength(1);
+		expect(model.combatPings[0]).toMatchObject({
+			tile: { col: 20, row: 6 },
+			severity: 'warning',
+			label: 'Incoming fire',
+			ageMs: 0,
+			durationMs: 1800,
+		});
+		expect(model.edgeAlertMarkers).toEqual([
+			expect.objectContaining({
+				severity: 'warning',
+				side: 'right',
+				offsetPercent: 50,
+				label: 'Incoming fire',
+			}),
+		]);
+		expect(model.combatAlertHint).toMatchObject({
+			title: 'Incoming fire',
+			direction: 'east',
+			severity: 'warning',
+			tile: { col: 20, row: 6 },
+		});
+		expect(model.combatAlertHint?.detail).toBe('Contact east of the camera. Click the minimap to jump.');
+
+		engine!.emitter.emit('combatAlert', { tile: { col: 7, row: 8 }, severity: 'danger', kind: 'critical', factionId: 'p1' });
+		flushSync();
+
+		expect(model.combatPings).toHaveLength(2);
+		expect(model.edgeAlertMarkers).toEqual([
+			expect.objectContaining({ severity: 'warning', side: 'right', offsetPercent: 50, label: 'Incoming fire' }),
+		]);
+		expect(model.combatAlertHint).toMatchObject({
+			title: 'Critical impact',
+			direction: 'on-screen',
+			severity: 'danger',
+			tile: { col: 7, row: 8 },
+		});
+		expect(model.combatAlertHint?.detail).toBe('Combat is already inside the current view.');
+		expect(model.eventFeed[0]).toMatchObject({
+			title: 'Contact report',
+			detail: 'Critical damage near your forces.',
+			tone: 'warning',
+		});
+
+		vi.advanceTimersByTime(1950);
+		model.jumpCamera({ col: 6, row: 6 });
+		flushSync();
+
+		expect(model.combatPings).toHaveLength(1);
+		expect(model.combatPings[0]).toMatchObject({ severity: 'danger', label: 'Critical impact' });
+		expect(model.edgeAlertMarkers).toEqual([]);
+		expect(model.combatAlertHint).toMatchObject({ title: 'Critical impact', direction: 'on-screen' });
+
+		vi.advanceTimersByTime(900);
+		model.jumpCamera({ col: 6, row: 6 });
+		flushSync();
+
+		expect(model.combatPings).toHaveLength(0);
+		expect(model.edgeAlertMarkers).toEqual([]);
+		expect(model.combatAlertHint).toBeNull();
 
 		model.dispose();
 	});

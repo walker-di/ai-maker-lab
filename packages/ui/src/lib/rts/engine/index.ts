@@ -85,6 +85,23 @@ export {
   type RtsImpactFlash,
 } from './fx/feedback.js';
 export { AiController } from './ai.js';
+export {
+  CombatTelemetry,
+  sectorKey,
+  scoreToPressureLevel,
+  SECTOR_SIZE,
+  IMPACT_MAX_AGE_MS,
+  SKIRMISH_IDLE_TIMEOUT_MS,
+  SKIRMISH_ACTIVATION_THRESHOLD,
+  SKIRMISH_MERGE_RADIUS,
+  type RtsCombatSummary,
+  type RtsActiveSkirmish,
+  type RtsSectorPressure,
+  type RtsRecentImpact,
+  type ImpactKind,
+  type ImpactSeverity,
+  type SectorPressureLevel,
+} from './combat-telemetry.js';
 export { createPixiRtsRendererFactory, pickTileFrame } from './pixi-renderer.js';
 export {
   RTS_ATLAS_FRAMES,

@@ -303,15 +303,21 @@ describe('driver aids', () => {
       esc: { active: true, mode: 'oversteer', turnSign: 1, axle: 'front', yawError: 0.6 },
       maxBrakeTorque: 2400,
     });
-    expect(oversteer.targetWheel).toBe(0);
-    expect(oversteer.torqueByWheel).toEqual([1800, 0, 0, 0]);
+    expect(oversteer.targetWheel).toBe(1);
+    expect(oversteer.torqueByWheel[0]).toBe(0);
+    expect(oversteer.torqueByWheel[1]).toBeCloseTo(1800, 8);
+    expect(oversteer.torqueByWheel[2]).toBe(0);
+    expect(oversteer.torqueByWheel[3]).toBe(0);
 
     const understeer = computeEscBrakeTargets({
       esc: { active: true, mode: 'understeer', turnSign: 1, axle: 'rear', yawError: -0.4 },
       maxBrakeTorque: 1920,
     });
-    expect(understeer.targetWheel).toBe(3);
-    expect(understeer.torqueByWheel).toEqual([0, 0, 0, 960]);
+    expect(understeer.targetWheel).toBe(2);
+    expect(understeer.torqueByWheel[0]).toBe(0);
+    expect(understeer.torqueByWheel[1]).toBe(0);
+    expect(understeer.torqueByWheel[2]).toBeCloseTo(960, 8);
+    expect(understeer.torqueByWheel[3]).toBe(0);
   });
 });
 

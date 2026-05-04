@@ -13,6 +13,11 @@ export {
   engineTorqueAt,
 } from './engine-curve.js';
 export { computeAckermannAngles, type AckermannPair } from './ackermann.js';
+export {
+  computeWheelHeadingBasis,
+  computeSlipAngleRad,
+  type WheelHeadingBasis,
+} from './wheel-kinematics.js';
 export { computeMotionRatio } from './motion-ratio.js';
 export { computeBumpStopForce } from './bump-stop.js';
 export { computeCasterCamber } from './caster-camber.js';

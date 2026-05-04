@@ -42,7 +42,9 @@ import {
   computeClutchTorque,
   computeEscBrakeTargets,
   computeSelfAligningMoment,
+  computeSlipAngleRad,
   computeTcCut,
+  computeWheelHeadingBasis,
   computeYawRestoringMoment,
   ENGINE_IDLE,
   ENGINE_REDLINE,
@@ -449,6 +451,27 @@ export class RacingEngine {
     };
   }
 
+  wheelPoses(): Array<{
+    index: number;
+    position: { x: number; y: number; z: number };
+    spinAngle: number;
+    steerAngle: number;
+  }> {
+    return this.wheels.map((wheel) => {
+      const attachLocal = new Vector3(wheel.posLocal.x, wheel.posLocal.y + 0.47, wheel.posLocal.z);
+      const attachWorld = attachLocal.clone().applyQuaternion(this.worldQuat).add(this.worldPos);
+      const downDir = new Vector3(0, -1, 0).applyQuaternion(this.worldQuat).normalize();
+      const suspensionTravel = this.susp.restLen - wheel.compression;
+      const center = attachWorld.clone().addScaledVector(downDir, suspensionTravel);
+      return {
+        index: wheel.index,
+        position: { x: center.x, y: center.y, z: center.z },
+        spinAngle: wheel.spinAngle,
+        steerAngle: wheel.steerAngle,
+      };
+    });
+  }
+
   resetCar(): void {
     const spawn = this.computeSpawnPose();
     this.worldPos.set(spawn.x, this.susp.restLen + 0.34 + 0.05, spawn.z);
@@ -571,10 +594,11 @@ export class RacingEngine {
   private applyVehiclePhysicsPreset(): void {
     const physics = this.vehicle.physics;
     this.chassisMass = physics?.massKg ?? 1240;
+    // Body axes are x=roll, y=yaw, z=pitch.
     this.chassisInertia.set(
-      physics?.inertiaPitchKgM2 ?? 1500,
-      physics?.inertiaYawKgM2 ?? 1700,
       physics?.inertiaRollKgM2 ?? 450,
+      physics?.inertiaYawKgM2 ?? 1700,
+      physics?.inertiaPitchKgM2 ?? 1500,
     );
     this.susp.kFront = physics?.springFrontNpm ?? 65000;
     this.susp.kRear = physics?.springRearNpm ?? 60000;
@@ -594,10 +618,10 @@ export class RacingEngine {
     const frontZ = this.vehicle.wheelbase * (1 - this.vehicle.frontMassPct);
     const rearZ = -this.vehicle.wheelbase * this.vehicle.frontMassPct;
     const positions = [
-      new Vector3(halfTrack, -0.30, frontZ),
       new Vector3(-halfTrack, -0.30, frontZ),
-      new Vector3(halfTrack, -0.30, rearZ),
+      new Vector3(halfTrack, -0.30, frontZ),
       new Vector3(-halfTrack, -0.30, rearZ),
+      new Vector3(halfTrack, -0.30, rearZ),
     ];
     const drive = [
       0.5 * this.vehicle.axleDrive.front,
@@ -612,7 +636,7 @@ export class RacingEngine {
         posLocal: positions[i],
         radius: 0.34,
         inertia: 1.4,
-        lateralSign: i % 2 === 0 ? 1 : -1,
+        lateralSign: positions[i].x >= 0 ? 1 : -1,
         steer: isFront,
         hand: !isFront,
         drive: drive[i] > 0,
@@ -948,8 +972,15 @@ export class RacingEngine {
       const surf = SURFACE_TABLE[w.surface];
       const mu = surf.mu * tireTempMu(w.tempC);
 
-      const wheelFwd = this.forward.clone().applyAxisAngle(this.up, w.steerAngle).normalize();
-      const wheelLat = new Vector3().crossVectors(this.up, wheelFwd).normalize();
+      const heading = computeWheelHeadingBasis(w.steerAngle);
+      const wheelFwd = this.right.clone()
+        .multiplyScalar(heading.forwardX)
+        .addScaledVector(this.forward, heading.forwardZ)
+        .normalize();
+      const wheelLat = this.right.clone()
+        .multiplyScalar(heading.lateralX)
+        .addScaledVector(this.forward, heading.lateralZ)
+        .normalize();
       const r = hit.point.clone().sub(this.worldPos);
       const vAtContact = this.velocityWS.clone().add(new Vector3().crossVectors(this.omegaWS, r));
       const vx = vAtContact.dot(wheelFwd);
@@ -957,7 +988,7 @@ export class RacingEngine {
 
       const slipEps = 1.5;
       const slipRatio = (w.omega * w.radius - vx) / (Math.abs(vx) + slipEps);
-      const slipAngle = -Math.atan2(vy, Math.max(Math.abs(vx), 1.5));
+      const slipAngle = computeSlipAngleRad(vx, vy);
       w.slipRatio = slipRatio;
       w.slipAngle = slipAngle;
 

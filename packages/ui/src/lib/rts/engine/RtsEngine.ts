@@ -48,6 +48,7 @@ import {
 import { FixedStepLoop } from './fixed-step-loop.js';
 import { NullAudioBus, type AudioBus } from './audio-bus.js';
 import { RtsFeedbackController, type RtsFeedbackSnapshot, type RtsOrderFeedbackKind } from './fx/feedback.js';
+import { CombatTelemetry, type RtsCombatSummary } from './combat-telemetry.js';
 import { findPath } from './pathfinding.js';
 import { TileGrid } from './tile-grid.js';
 import {
@@ -266,6 +267,7 @@ export class RtsEngine {
   private rendererFactory?: () => Promise<RtsRenderer>;
   private readonly fogSystem: FogOfWarSystem;
   private readonly feedback = new RtsFeedbackController();
+  private readonly telemetry: CombatTelemetry;
   private readonly audioBus: AudioBus;
   private systems: System[] = [];
   private selection = new Set<number>();
@@ -302,10 +304,14 @@ export class RtsEngine {
       this.factionTech.set(faction.id, createFactionTechState());
     }
 
+    this.telemetry = new CombatTelemetry(this.localFactionId);
     this.spawnMapEntities(config.map.definition);
     this.systems = this.buildSystems();
     const initialSpawn = config.map.definition.spawns.find((s) => s.factionId === this.localFactionId);
-    if (initialSpawn) this.cameraTile = { ...initialSpawn.tile };
+    if (initialSpawn) {
+      this.cameraTile = { ...initialSpawn.tile };
+      this.telemetry.setLocalBaseTile(initialSpawn.tile);
+    }
   }
 
   async mount(container: HTMLDivElement | HTMLCanvasElement): Promise<void> {
@@ -355,6 +361,15 @@ export class RtsEngine {
       this.loop.tick(seconds, () => this.runFixedStep());
     }
     this.render();
+  }
+
+  /**
+   * Returns a compact, route-consumable snapshot of the current combat picture.
+   * Safe to call every frame — no mutation occurs. Pair with the
+   * `combatSummaryUpdated` event for change-driven updates.
+   */
+  getCombatSummary(): RtsCombatSummary {
+    return this.telemetry.read();
   }
 
   /** For headless tests: advance one fixed step. */
@@ -1481,14 +1496,19 @@ export class RtsEngine {
     ];
   }
 
+  private lastCombatSummarySignature = '';
+
   private runFixedStep(): void {
     const dt = this.loop.stepDt;
+    const dtMs = dt * 1000;
     const ctx = { bus: this.bus, stepIndex: this.loop.totalSteps(), totalStepsMs: this.elapsedMs };
     for (const system of this.systems) system.update(this.world, dt, ctx);
     this.processEvents();
-    this.elapsedMs += dt * 1000;
+    this.telemetry.step(dtMs);
+    this.elapsedMs += dtMs;
     this.checkVictory();
     this.emitMissionUpdatedIfChanged();
+    this.emitCombatSummaryIfChanged();
   }
 
   private processEvents(): void {
@@ -1505,12 +1525,23 @@ export class RtsEngine {
             this.audioBus.playSfx(isBuilding ? 'rocket-hit' : 'unit-die');
             this.feedback.addCombatHeat(0.35);
             if (evt.tile && typeof evt.tile === 'object') {
-              this.feedback.addImpactFlash(evt.tile as TilePos, isBuilding ? 'critical' : 'tracer');
+              const tile = evt.tile as TilePos;
+              this.feedback.addImpactFlash(tile, isBuilding ? 'critical' : 'tracer');
+              const { sectorKey } = this.telemetry.recordImpact({
+                tile,
+                kind: isBuilding ? 'building-death' : 'death',
+                severity: isBuilding || factionId === this.localFactionId ? 'danger' : 'warning',
+                targetFactionId: factionId,
+                sourceFactionId: undefined,
+                targetEntityId: evt.entity,
+              });
               const alert = {
-                tile: evt.tile as TilePos,
+                tile,
                 factionId,
                 kind: 'critical' as const,
                 severity: isBuilding || factionId === this.localFactionId ? 'danger' as const : 'warning' as const,
+                targetEntityId: evt.entity as number,
+                sectorKey,
               };
               this.emitter.emit('combatAlert', alert);
               this.noteCombatAlert(alert);
@@ -1557,18 +1588,34 @@ export class RtsEngine {
           }
           break;
         case 'projectileImpact': {
-          const impactKind = typeof evt.kind === 'string' ? evt.kind : 'bullet';
+          const impactKind = typeof evt.kind === 'string' ? evt.kind as 'bullet' | 'rocket' | 'tracer' : 'bullet';
           const impactTile = evt.tile && typeof evt.tile === 'object' ? evt.tile as TilePos : null;
+          const sourceFactionId = typeof evt.factionId === 'string' ? evt.factionId : undefined;
+          const targetFactionId = typeof evt.targetFactionId === 'string' ? evt.targetFactionId : undefined;
           this.feedback.addCombatHeat(impactKind === 'rocket' ? 0.55 : 0.2);
           if (impactTile) {
             this.feedback.addImpactFlash(impactTile, impactKind === 'rocket' || impactKind === 'tracer' ? impactKind : 'bullet');
-            const targetFactionId = typeof evt.targetFactionId === 'string' ? evt.targetFactionId : undefined;
-            if (targetFactionId === this.localFactionId || impactKind === 'rocket') {
+            // Always record into telemetry (drives sector heat / skirmishes)
+            const isLocalHit = targetFactionId === this.localFactionId;
+            const severity = impactKind === 'rocket' || isLocalHit ? 'danger' as const : 'warning' as const;
+            const { sectorKey } = this.telemetry.recordImpact({
+              tile: impactTile,
+              kind: impactKind,
+              severity,
+              targetFactionId,
+              sourceFactionId,
+              sourceEntityId: typeof evt.entity === 'number' ? evt.entity as number : undefined,
+              targetEntityId: typeof evt.toEntity === 'number' ? evt.toEntity as number : undefined,
+            });
+            if (isLocalHit || impactKind === 'rocket') {
               const alert = {
                 tile: impactTile,
                 factionId: targetFactionId,
                 kind: impactKind === 'rocket' ? 'critical' as const : 'impact' as const,
-                severity: impactKind === 'rocket' || targetFactionId === this.localFactionId ? 'danger' as const : 'warning' as const,
+                severity,
+                sourceEntityId: typeof evt.entity === 'number' ? evt.entity as number : undefined,
+                targetEntityId: typeof evt.toEntity === 'number' ? evt.toEntity as number : undefined,
+                sectorKey,
               };
               this.emitter.emit('combatAlert', alert);
               this.noteCombatAlert(alert);
@@ -1586,6 +1633,20 @@ export class RtsEngine {
 
   private addOrderFeedback(tile: TilePos, kind: RtsOrderFeedbackKind): void {
     this.feedback.addOrderRipple(tile, kind);
+  }
+
+  private emitCombatSummaryIfChanged(): void {
+    const summary = this.telemetry.read();
+    // Use a lightweight signature: skirmish IDs + hot-sector keys + heat bucket
+    const sig = [
+      summary.activeSkirmishes.map((s) => `${s.id}:${s.impactCount}:${s.intensity}`).join(','),
+      summary.hotSectors.map((s) => `${s.sectorKey}:${s.pressureLevel}`).join(','),
+      Math.round(summary.globalCombatHeat * 10),
+      summary.localBaseUnderFire ? '1' : '0',
+    ].join('|');
+    if (sig === this.lastCombatSummarySignature) return;
+    this.lastCombatSummarySignature = sig;
+    this.emitter.emit('combatSummaryUpdated', { summary });
   }
 
   private spendIfAvailable(factionId: string, cost: ResourceCost, supply: number): boolean {

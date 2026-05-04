@@ -12,6 +12,7 @@
 		"test:e2e": "playwright test",
 		"test:browser": "vitest run --project browser",
 		"test:browser:racing": "vitest run --project browser src/lib/racing/engine/three-renderer.browser.test.ts",
+		"test:logic:racing:controls": "bun test src/lib/racing/engine/input.test.ts src/lib/racing/engine/physics/index.test.ts src/lib/racing/engine/RacingEngine.test.ts",
 		"test:logic:racing:engine": "bun test src/lib/racing/engine/RacingEngine.test.ts src/lib/racing/engine/tracks/ribbon-geometry.test.ts",
 		"test:logic:racing:physics": "bun test src/lib/racing/engine/physics/contributors.test.ts src/lib/racing/engine/physics/index.test.ts src/lib/racing/engine/physics/module-edge-cases.test.ts",
 		"test:logic:racing": "bun run test:logic:racing:engine && bun run test:logic:racing:physics",

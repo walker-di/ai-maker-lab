@@ -10,9 +10,10 @@ async function readHudSpeed(page: Page): Promise<number> {
 async function focusStageAndShiftToFirst(page: Page): Promise<void> {
 	const canvasHost = page.getByTestId('racing-canvas');
 	await expect(canvasHost).toBeVisible({ timeout: 15_000 });
-	await canvasHost.click();
-	for (let attempt = 0; attempt < 3; attempt++) {
-		await canvasHost.press(']');
+	await expect(page.getByTestId('racing-loading')).toHaveCount(0, { timeout: 15_000 });
+	for (let attempt = 0; attempt < 4; attempt++) {
+		await canvasHost.click();
+		await page.keyboard.press(']');
 		const gearText = await page.getByTestId('hud-gear').textContent();
 		if (gearText?.match(/\b1\b/)) return;
 	}
@@ -73,6 +74,38 @@ async function readRuntimeAidState(page: Page): Promise<{
 			tcActive: state.tcActive,
 			escActive: state.escActive,
 			tcCutPct: state.tcCutPct,
+		};
+	});
+}
+
+async function readRuntimeSteeringState(page: Page): Promise<{
+	steer: number;
+	leftLoadPct: number;
+	yawRateRad: number;
+	wheels: [number, number, number, number];
+} | null> {
+	return page.evaluate(() => {
+		const model = (window as Window & {
+			__racing?: {
+				hud?: {
+					state?: {
+						input: { steer: number };
+						leftLoadPct: number;
+						yawRateRad: number;
+						wheels: Array<{ fz: number }>;
+					};
+				};
+			};
+		}).__racing;
+		const state = model?.hud?.state;
+		if (!state || state.wheels.length < 4) {
+			return null;
+		}
+		return {
+			steer: state.input.steer,
+			leftLoadPct: state.leftLoadPct,
+			yawRateRad: state.yawRateRad,
+			wheels: [state.wheels[0].fz, state.wheels[1].fz, state.wheels[2].fz, state.wheels[3].fz],
 		};
 	});
 }
@@ -235,6 +268,49 @@ test.describe('Racing Sim experiment', () => {
 
 		await focusStageAndShiftToFirst(page);
 		await accelerateToSpeed(page, 0);
+	});
+
+	test('left and right steering inputs keep route-level yaw and load transfer aligned', async ({ page }) => {
+		await page.goto('/experiments/racing');
+		await focusStageAndShiftToFirst(page);
+		await accelerateToSpeed(page, 15);
+
+		await page.keyboard.down('ArrowLeft');
+		await expect.poll(async () => (await readRuntimeSteeringState(page))?.steer ?? 0, {
+			timeout: 5_000,
+			message: 'ArrowLeft should produce positive steering in the live route state',
+		}).toBeGreaterThan(0.2);
+		await expect.poll(async () => (await readRuntimeSteeringState(page))?.leftLoadPct ?? 50, {
+			timeout: 5_000,
+			message: 'left steering should shift load to the right-side tires in the live route state',
+		}).toBeLessThan(49);
+		await expect.poll(async () => (await readRuntimeSteeringState(page))?.yawRateRad ?? 0, {
+			timeout: 5_000,
+			message: 'left steering should yaw left in the live route state',
+		}).toBeLessThan(-0.01);
+		const leftTurn = await readRuntimeSteeringState(page);
+		await page.keyboard.up('ArrowLeft');
+
+		await page.keyboard.down('ArrowRight');
+		await expect.poll(async () => (await readRuntimeSteeringState(page))?.steer ?? 0, {
+			timeout: 5_000,
+			message: 'ArrowRight should produce negative steering in the live route state',
+		}).toBeLessThan(-0.2);
+		await expect.poll(async () => (await readRuntimeSteeringState(page))?.leftLoadPct ?? 50, {
+			timeout: 5_000,
+			message: 'right steering should shift load to the left-side tires in the live route state',
+		}).toBeGreaterThan(51);
+		await expect.poll(async () => (await readRuntimeSteeringState(page))?.yawRateRad ?? 0, {
+			timeout: 5_000,
+			message: 'right steering should yaw right in the live route state',
+		}).toBeGreaterThan(0.01);
+		const rightTurn = await readRuntimeSteeringState(page);
+		await page.keyboard.up('ArrowRight');
+
+		expect(leftTurn).not.toBeNull();
+		expect(rightTurn).not.toBeNull();
+		expect((leftTurn?.wheels[1] ?? 0) + (leftTurn?.wheels[3] ?? 0)).toBeGreaterThan((leftTurn?.wheels[0] ?? 0) + (leftTurn?.wheels[2] ?? 0));
+		expect((rightTurn?.wheels[0] ?? 0) + (rightTurn?.wheels[2] ?? 0)).toBeGreaterThan((rightTurn?.wheels[1] ?? 0) + (rightTurn?.wheels[3] ?? 0));
 	});
 
 	test('braking after accelerating slows the car and surfaces a brake-lock state', async ({ page }) => {

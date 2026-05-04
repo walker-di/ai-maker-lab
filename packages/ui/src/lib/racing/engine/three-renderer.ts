@@ -131,10 +131,10 @@ export class RacingRenderer {
     const frontZ = preset.wheelbase * (1 - preset.frontMassPct);
     const rearZ = -preset.wheelbase * preset.frontMassPct;
     const offsets = [
-      { x: halfTrack, z: frontZ },
       { x: -halfTrack, z: frontZ },
-      { x: halfTrack, z: rearZ },
+      { x: halfTrack, z: frontZ },
       { x: -halfTrack, z: rearZ },
+      { x: halfTrack, z: rearZ },
     ];
     for (const o of offsets) {
       const wheel = new Mesh(
@@ -163,7 +163,8 @@ export class RacingRenderer {
       const mesh = this.wheels[w.index];
       if (!mesh) continue;
       mesh.position.set(w.position.x, w.position.y, w.position.z);
-      mesh.rotation.set(0, w.steerAngle, Math.PI / 2 + w.spinAngle);
+      // Match the engine convention: positive steer is a left turn.
+      mesh.rotation.set(0, -w.steerAngle, Math.PI / 2 + w.spinAngle);
     }
   }
 

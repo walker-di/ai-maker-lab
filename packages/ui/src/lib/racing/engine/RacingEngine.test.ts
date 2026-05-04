@@ -68,6 +68,16 @@ function stepFor(engine: RacingEngine, totalSeconds: number, dt = 1 / 240): void
   for (let i = 0; i < steps; i++) engine.step(dt);
 }
 
+function holdSteerAtSpeed(engine: RacingEngine, steerSmoothed: number, speedMs: number, totalSeconds: number, dt = 1 / 240) {
+  engine.velocityWS.copy(engine.forward.clone().multiplyScalar(speedMs));
+  const steps = Math.ceil(totalSeconds / dt);
+  for (let i = 0; i < steps; i++) {
+    engine.input.state.steerSmoothed = steerSmoothed;
+    engine.step(dt);
+  }
+  return engine.snapshot();
+}
+
 function escTorqueByWheel(engine: RacingEngine, input: {
   speedKmh: number;
   speedMs: number;
@@ -236,7 +246,7 @@ describe('RacingEngine integration', () => {
       sideslipDeg: 12,
     });
 
-    expect(torques).toEqual([2400, 0, 0, 0]);
+    expect(torques).toEqual([0, 2400, 0, 0]);
     expect(engine.snapshot().aids.escActive).toBe(true);
   });
 
@@ -252,7 +262,7 @@ describe('RacingEngine integration', () => {
       sideslipDeg: 4,
     });
 
-    expect(torques).toEqual([0, 0, 0, 1920]);
+    expect(torques).toEqual([0, 0, 1920, 0]);
 
     const internals = engine as unknown as {
       driverAids: { escTorqueByWheel: number[]; escTorqueTargetByWheel: number[] };
@@ -266,6 +276,61 @@ describe('RacingEngine integration', () => {
     expect(internals.wheels.every((wheel) => wheel.escTorque === 0)).toBe(true);
   });
 
+  it('loads the outside tires when steering left', () => {
+    const engine = createEngine();
+
+    stepFor(engine, 1);
+    const snapshot = holdSteerAtSpeed(engine, 0.7, 20, 1);
+
+    const leftLoad = snapshot.wheels[0].fz + snapshot.wheels[2].fz;
+    const rightLoad = snapshot.wheels[1].fz + snapshot.wheels[3].fz;
+
+    expect(rightLoad).toBeGreaterThan(leftLoad);
+    expect(snapshot.leftLoadPct).toBeLessThan(50);
+    expect(snapshot.rollDeg).toBeGreaterThan(0);
+  });
+
+  it('loads the outside tires when steering right', () => {
+    const engine = createEngine();
+
+    stepFor(engine, 1);
+    const snapshot = holdSteerAtSpeed(engine, -0.7, 20, 1);
+
+    const leftLoad = snapshot.wheels[0].fz + snapshot.wheels[2].fz;
+    const rightLoad = snapshot.wheels[1].fz + snapshot.wheels[3].fz;
+
+    expect(leftLoad).toBeGreaterThan(rightLoad);
+    expect(snapshot.leftLoadPct).toBeGreaterThan(50);
+    expect(snapshot.rollDeg).toBeLessThan(0);
+  });
+
+  it('mirrors steering-response signs across left and right turns', () => {
+    const leftTurnEngine = createEngine();
+    const rightTurnEngine = createEngine();
+
+    stepFor(leftTurnEngine, 1);
+    stepFor(rightTurnEngine, 1);
+
+    const leftTurn = holdSteerAtSpeed(leftTurnEngine, 0.7, 20, 1);
+    const rightTurn = holdSteerAtSpeed(rightTurnEngine, -0.7, 20, 1);
+
+    expect(leftTurn.leftLoadPct).toBeLessThan(50);
+    expect(rightTurn.leftLoadPct).toBeGreaterThan(50);
+    expect(leftTurn.rollDeg).toBeGreaterThan(0);
+    expect(rightTurn.rollDeg).toBeLessThan(0);
+    expect(leftTurn.yawRateRad).toBeLessThan(0);
+    expect(rightTurn.yawRateRad).toBeGreaterThan(0);
+    expect(leftTurn.accelLatG).toBeLessThan(0);
+    expect(rightTurn.accelLatG).toBeGreaterThan(0);
+    expect(leftTurn.sideslipDeg).toBeGreaterThan(0);
+    expect(rightTurn.sideslipDeg).toBeLessThan(0);
+
+    expect(leftTurn.rollDeg).toBeCloseTo(-rightTurn.rollDeg, 1);
+    expect(leftTurn.yawRateRad).toBeCloseTo(-rightTurn.yawRateRad, 1);
+    expect(leftTurn.accelLatG).toBeCloseTo(-rightTurn.accelLatG, 1);
+    expect(leftTurn.sideslipDeg).toBeCloseTo(-rightTurn.sideslipDeg, 1);
+  });
+
   it('reports roll and pitch from the chassis orientation', () => {
     const engine = createEngine();
     engine.worldQuat.copy(new Quaternion().setFromEuler(new Euler(4 * (Math.PI / 180), 0, 6 * (Math.PI / 180), 'XYZ')));
@@ -277,6 +342,37 @@ describe('RacingEngine integration', () => {
     expect(Math.abs(snapshot.pitchDeg)).toBeGreaterThan(1);
   });
 
+  it('maps authored inertia onto chassis body axes', () => {
+    const vehicle = makeVehicle();
+    vehicle.physics = {
+      inertiaRollKgM2: 410,
+      inertiaYawKgM2: 1620,
+      inertiaPitchKgM2: 1480,
+    };
+    const engine = new RacingEngine({ vehicle, track: makeTrack() });
+    engines.push(engine);
+
+    const internals = engine as unknown as {
+      chassisInertia: { x: number; y: number; z: number };
+    };
+
+    expect(internals.chassisInertia.x).toBe(410);
+    expect(internals.chassisInertia.y).toBe(1620);
+    expect(internals.chassisInertia.z).toBe(1480);
+  });
+
+  it('keeps wheel indices in FL FR RL RR order', () => {
+    const engine = createEngine();
+
+    const internals = engine as unknown as {
+      wheels: Array<{ posLocal: { x: number; z: number }; lateralSign: number }>;
+    };
+
+    expect(internals.wheels.map((wheel) => Math.sign(wheel.posLocal.x))).toEqual([-1, 1, -1, 1]);
+    expect(internals.wheels.map((wheel) => Math.sign(wheel.posLocal.z))).toEqual([1, 1, -1, -1]);
+    expect(internals.wheels.map((wheel) => wheel.lateralSign)).toEqual([-1, 1, -1, 1]);
+  });
+
   it('honors explicit authored surface zones', () => {
     const track: TrackPreset = {
       ...makeTrack(),
@@ -284,12 +380,13 @@ describe('RacingEngine integration', () => {
     };
     const engine = new RacingEngine({ vehicle: makeVehicle(), track });
     engines.push(engine);
-    engine.resetCar();
 
-    stepFor(engine, 0.1);
+    const internals = engine as unknown as {
+      surfaceLookup: { surfaceAt: (x: number, z: number) => string };
+    };
 
-    const snapshot = engine.snapshot();
-    expect(snapshot.wheels.some((wheel) => wheel.surface === 'GRAVEL')).toBe(true);
+    expect(internals.surfaceLookup.surfaceAt(0, 0)).toBe('GRAVEL');
+    expect(internals.surfaceLookup.surfaceAt(25, 25)).not.toBe('GRAVEL');
   });
 
   it('emits lap start and finish events across repeated start-line crossings', () => {

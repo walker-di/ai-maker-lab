@@ -4,6 +4,24 @@ export type RtsHudOrderKind = 'attackMove' | 'patrol' | 'repair' | 'rally';
 export type RtsHudUtilityKind = 'stop' | 'hold' | 'army';
 export type RtsHudResearchKind = TechKind;
 
+export interface RtsHudCombatReadout {
+  tone: 'calm' | 'warning' | 'danger' | 'success' | 'failure';
+  statusLabel: string;
+  headline: string;
+  detail: string;
+  contactLabel: string;
+  enemyForceLabel: string;
+  directionLabel: string;
+  directionDetail: string;
+  timerLabel: string;
+  timerValue: string;
+}
+
+export interface RtsHudIntentPreview {
+  label: string;
+  detail: string;
+}
+
 export interface RtsHudActionMeta<K extends string> {
   kind: K;
   label: string;

@@ -15,6 +15,8 @@
     RTS_HUD_RESEARCH_ACTIONS,
     RTS_HUD_TRAIN_ACTIONS,
     RTS_HUD_UTILITY_ACTIONS,
+    type RtsHudCombatReadout,
+    type RtsHudIntentPreview,
     type RtsHudModel,
     type RtsHudOrderKind,
     type RtsHudResearchKind,
@@ -34,6 +36,8 @@
     productionOptions = [],
     researchOptions = [],
     completedResearch = [],
+    combatReadout = null,
+    intentPreview = null,
   }: {
     model: RtsHudModel;
     onProduceUnit?: (kind: UnitKind) => void;
@@ -47,6 +51,8 @@
     productionOptions?: RtsProductionOptionSummary[];
     researchOptions?: RtsResearchOptionSummary[];
     completedResearch?: TechKind[];
+    combatReadout?: RtsHudCombatReadout | null;
+    intentPreview?: RtsHudIntentPreview | null;
   } = $props();
 
   function optionFor(kind: UnitKind): RtsProductionOptionSummary | undefined {
@@ -237,6 +243,44 @@
           <span class="meta-label">Focus</span>
           <span class="meta-value">{model.state.selectionCount > 0 ? (model.state.selectionLabel || 'Mixed') : 'Awaiting command'}</span>
         </div>
+        {#if combatReadout}
+          <div class={`combat-snapshot is-${combatReadout.tone}`} data-testid="hud-combat-snapshot">
+            <div class="combat-snapshot-head">
+              <span class="meta-label">Battlefield</span>
+              <strong>{combatReadout.statusLabel}</strong>
+            </div>
+            <p class="combat-snapshot-copy">{combatReadout.headline}</p>
+            <p class="combat-snapshot-detail">{combatReadout.detail}</p>
+            <div class="combat-snapshot-grid">
+              <div>
+                <span class="meta-label">Contact</span>
+                <span class="meta-value">{combatReadout.contactLabel}</span>
+              </div>
+              <div>
+                <span class="meta-label">Enemy</span>
+                <span class="meta-value">{combatReadout.enemyForceLabel}</span>
+              </div>
+              <div>
+                <span class="meta-label">Hotspot</span>
+                <span class="meta-value">{combatReadout.directionLabel}</span>
+              </div>
+              <div>
+                <span class="meta-label">{combatReadout.timerLabel}</span>
+                <span class="meta-value">{combatReadout.timerValue}</span>
+              </div>
+            </div>
+            <p class="combat-snapshot-direction">{combatReadout.directionDetail}</p>
+          </div>
+        {/if}
+        {#if intentPreview}
+          <div class="intent-preview" data-testid="hud-intent-preview">
+            <div class="combat-snapshot-head">
+              <span class="meta-label">Queued intent</span>
+              <strong>{intentPreview.label}</strong>
+            </div>
+            <p class="combat-snapshot-detail">{intentPreview.detail}</p>
+          </div>
+        {/if}
       </div>
 
       <div class="status-pills">
@@ -599,6 +643,68 @@
     text-align: right;
   }
 
+  .combat-snapshot,
+  .intent-preview {
+    display: grid;
+    gap: 0.45rem;
+    padding: 0.65rem 0.7rem;
+    border-radius: 0.7rem;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    background: rgba(8, 14, 24, 0.42);
+  }
+
+  .combat-snapshot.is-warning {
+    border-color: rgba(250, 204, 21, 0.24);
+    background: rgba(71, 52, 10, 0.18);
+  }
+
+  .combat-snapshot.is-danger,
+  .combat-snapshot.is-failure {
+    border-color: rgba(248, 113, 113, 0.28);
+    background: rgba(82, 24, 24, 0.18);
+  }
+
+  .combat-snapshot.is-success {
+    border-color: rgba(74, 222, 128, 0.24);
+    background: rgba(17, 68, 45, 0.16);
+  }
+
+  .combat-snapshot-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .combat-snapshot-head strong {
+    color: #fff6d8;
+    font-size: 0.84rem;
+  }
+
+  .combat-snapshot-copy {
+    color: #f8fbff;
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+
+  .combat-snapshot-detail,
+  .combat-snapshot-direction {
+    color: #b9c7dc;
+    font-size: 0.72rem;
+    line-height: 1.4;
+  }
+
+  .combat-snapshot-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.45rem 0.75rem;
+  }
+
+  .combat-snapshot-grid > div {
+    display: grid;
+    gap: 0.12rem;
+  }
+
   .status-pills {
     display: flex;
     flex-wrap: wrap;
@@ -852,7 +958,8 @@
     .status-strip,
     .command-layout,
     .command-grid,
-    .compact-grid {
+    .compact-grid,
+    .combat-snapshot-grid {
       grid-template-columns: 1fr;
     }
   }

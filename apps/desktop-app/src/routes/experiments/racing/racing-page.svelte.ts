@@ -355,6 +355,7 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 				w: engine.worldQuat.w,
 			},
 		});
+		renderer.setWheelPoses(engine.wheelPoses());
 		const pose = engine.cameraPose();
 		renderer.setCameraPose(pose.position, pose.target, pose.up);
 		renderer.render();
