@@ -9,6 +9,7 @@
   const platformerHref = '/experiments/platformer';
   const platformerEditorHref = '/experiments/platformer/editor';
   const rtsHref = '/experiments/rts';
+  const racingHref = '/experiments/racing';
   const agentRegistryHref = '/agents';
   const marketingHref = '/marketing';
   const settingsHref = '/settings';
@@ -66,6 +67,15 @@
   </svg>
 {/snippet}
 
+{#snippet racingIcon()}
+  <svg aria-hidden="true" viewBox="0 0 24 24" class="h-6 w-6 fill-none stroke-current stroke-[1.75]">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.5h2l1.5-3.75A2 2 0 0 1 8.36 8.5h7.28a2 2 0 0 1 1.86 1.25L19 13.5h2v3h-2v1.5h-2.5v-1.5h-9V18H5v-1.5H3v-3Z" />
+    <circle cx="7.75" cy="16" r="1.25" />
+    <circle cx="16.25" cy="16" r="1.25" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="M7 13.5h10" />
+  </svg>
+{/snippet}
+
 <svelte:head>
   <title>{m.lab_home_title()}</title>
 </svelte:head>
@@ -120,6 +130,13 @@
         description={m.lab_experiment_rts_description()}
         ctaLabel={m.lab_open_experiment()}
         icon={rtsIcon}
+      />
+      <CategoryCard
+        href={racingHref}
+        label={m.lab_experiment_racing_label()}
+        description={m.lab_experiment_racing_description()}
+        ctaLabel={m.lab_open_experiment()}
+        icon={racingIcon}
       />
     </div>
   </section>

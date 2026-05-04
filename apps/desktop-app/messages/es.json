@@ -43,6 +43,8 @@
 	"lab_experiment_platformer_editor_description": "Pinta tiles, coloca entidades y guarda mapas de usuario.",
 	"lab_experiment_rts_label": "Escaramuza RTS",
 	"lab_experiment_rts_description": "Estrategia en tiempo real isométrica con mapas procedurales y una IA con guion.",
+	"lab_experiment_racing_label": "Simulador de Carreras",
+	"lab_experiment_racing_description": "Conducción realista con neumáticos Pacejka, barras estabilizadoras, anti-buceo, modelos térmicos y cronometraje de vueltas.",
 	"lab_settings_label": "Configuracion",
 	"lab_settings_description": "Administra las claves de API de los proveedores y otras opciones globales.",
 	"lab_category_system": "Sistema",

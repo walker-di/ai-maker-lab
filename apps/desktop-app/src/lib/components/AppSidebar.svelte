@@ -8,6 +8,7 @@
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
 	import GamepadIcon from '@lucide/svelte/icons/gamepad-2';
 	import SwordsIcon from '@lucide/svelte/icons/swords';
+	import CarIcon from '@lucide/svelte/icons/car';
 	import PencilRulerIcon from '@lucide/svelte/icons/pencil-ruler';
 	import ClapperboardIcon from '@lucide/svelte/icons/clapperboard';
 	import { m } from '$lib/paraglide/messages.js';
@@ -63,6 +64,12 @@
 			href: '/experiments/rts',
 			icon: SwordsIcon,
 			match: (p) => p.startsWith('/experiments/rts'),
+		},
+		{
+			title: m.lab_experiment_racing_label(),
+			href: '/experiments/racing',
+			icon: CarIcon,
+			match: (p) => p.startsWith('/experiments/racing'),
 		},
 		{
 			title: 'AI Storyboard Maker',

@@ -67,8 +67,6 @@ test.describe('Racing Sim experiment', () => {
 	test('home page exposes a link to the racing route', async ({ page }) => {
 		await page.goto('/');
 		const link = page.locator('a[href="/experiments/racing"]').first();
-		// Link is optional; if it doesn't exist yet, skip rather than fail.
-		test.skip((await link.count()) === 0, 'Home page does not yet link to /experiments/racing');
 		await expect(link).toBeVisible();
 	});
 });
