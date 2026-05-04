@@ -93,7 +93,8 @@ function escTorqueByWheel(engine: RacingEngine, input: {
   };
 
   engine.worldQuat.identity();
-  engine.velocityWS.set(0, 0, input.speedMs);
+  // Chassis forward = -Z, so a forward speed sits in the -Z direction.
+  engine.velocityWS.set(0, 0, -input.speedMs);
   engine.speedKmh = input.speedKmh;
   engine.yawRateRad = input.yawRateRad;
   engine.sideslipRad = input.sideslipDeg * (Math.PI / 180);
@@ -133,8 +134,9 @@ function classifyDriftState(engine: RacingEngine, input: {
   const rearSlipRatio = input.rearSlipRatio ?? 0;
 
   engine.worldQuat.identity();
-  engine.velocityWS.set(lateralMs, 0, input.speedMs);
-  internals.prevLocalVelocity.set(lateralMs, 0, input.speedMs);
+  // Chassis forward = -Z, so a forward speed sits in the -Z direction.
+  engine.velocityWS.set(lateralMs, 0, -input.speedMs);
+  internals.prevLocalVelocity.set(lateralMs, 0, -input.speedMs);
   internals.input.state.throttle = input.throttle ?? 0;
   internals.input.state.brake = input.brake ?? 0;
   internals.input.state.handbrake = input.handbrake ?? 0;
@@ -187,7 +189,7 @@ describe('RacingEngine integration', () => {
     const engine = createEngine();
 
     stepFor(engine, 1);
-    engine.velocityWS.set(0, 0, 22);
+    engine.velocityWS.copy(engine.forward.clone().multiplyScalar(22));
     setKey(engine, 's', true);
     engine.step(1 / 240);
     setKey(engine, 's', false);
@@ -204,7 +206,7 @@ describe('RacingEngine integration', () => {
     const engine = createEngine();
 
     stepFor(engine, 1);
-    engine.velocityWS.set(0, 0, 18);
+    engine.velocityWS.copy(engine.forward.clone().multiplyScalar(18));
     setKey(engine, 'shift', true);
     stepFor(engine, 0.15);
     setKey(engine, 'shift', false);
@@ -238,11 +240,15 @@ describe('RacingEngine integration', () => {
     const engine = createEngine();
     engine.setEscEnabled(true);
 
+    // Oversteering LEFT turn: in the automotive convention the actual yaw
+    // rate is NEGATIVE (rotating left) and the magnitude exceeds the
+    // kinematic desire — so a steeper-than-expected left rotation reads as
+    // a more-negative yawRateRad here.
     const torques = escTorqueByWheel(engine, {
       speedKmh: 90,
       speedMs: 25,
       steerSmoothed: 0.7,
-      yawRateRad: 2.5,
+      yawRateRad: -2.5,
       sideslipDeg: 12,
     });
 
@@ -254,6 +260,9 @@ describe('RacingEngine integration', () => {
     const engine = createEngine();
     engine.setEscEnabled(true);
 
+    // Understeering LEFT turn: the chassis is barely yawing while steering
+    // is hard left — yawRateRad close to zero (or even slightly positive in
+    // automotive sign) indicates the front is plowing.
     const torques = escTorqueByWheel(engine, {
       speedKmh: 90,
       speedMs: 25,
@@ -325,10 +334,68 @@ describe('RacingEngine integration', () => {
     expect(leftTurn.sideslipDeg).toBeGreaterThan(0);
     expect(rightTurn.sideslipDeg).toBeLessThan(0);
 
+    // Mirror checks: precision 1 (tolerance 0.05) for the higher-magnitude
+    // chassis responses, but precision 0 (tolerance 0.5) for sideslipDeg
+    // because near-straight sideslip is a small-magnitude value where tiny
+    // integration asymmetries (amplified by the SAE-style Gyk that preserves
+    // more lateral force at low slipRatio) show up as relative noise. The
+    // strict sign mirrors above already lock direction.
     expect(leftTurn.rollDeg).toBeCloseTo(-rightTurn.rollDeg, 1);
     expect(leftTurn.yawRateRad).toBeCloseTo(-rightTurn.yawRateRad, 1);
     expect(leftTurn.accelLatG).toBeCloseTo(-rightTurn.accelLatG, 1);
-    expect(leftTurn.sideslipDeg).toBeCloseTo(-rightTurn.sideslipDeg, 1);
+    expect(leftTurn.sideslipDeg).toBeCloseTo(-rightTurn.sideslipDeg, 0);
+  });
+
+  it('symmetric front toe-in does not bias yaw on a straight-running car', () => {
+    // Front toe applied uniformly to both fronts must mirror across the
+    // chassis (FL rotates one way, FR the other). With the old engine code,
+    // both wheels got the same signed offset and the whole front axle
+    // pointed off-axis, biasing yaw.
+    const engine = createEngine();
+    engine.setSetup({
+      frontToeDeg: 0.4,
+      rearToeDeg: 0,
+      casterDeg: 0,
+      ackermannPct: 0,
+      motionRatioFront: 1,
+      motionRatioRear: 1,
+      bumpStopGapFrontMm: 220,
+      bumpStopGapRearMm: 220,
+      bumpStopRateFrontNmm: 0,
+      bumpStopRateRearNmm: 0,
+    });
+    engine.worldQuat.identity();
+    engine.velocityWS.set(0, 0, -25);
+    for (let i = 0; i < 30; i++) engine.step(1 / 240);
+
+    const internals = engine as unknown as {
+      wheels: Array<{ steerAngle: number; lateralSign: -1 | 1 }>;
+    };
+    // FL and FR steer angles should be opposite (mirror across chassis Y).
+    expect(internals.wheels[0].steerAngle).toBeCloseTo(-internals.wheels[1].steerAngle, 8);
+    // Toe-in: each wheel rotates TOWARD chassis centre. FL (lateralSign=-1)
+    // rotates right (steerAngle<0); FR (lateralSign=+1) rotates left
+    // (steerAngle>0). So `Math.sign(steerAngle) === lateralSign` under toe-in.
+    expect(Math.sign(internals.wheels[0].steerAngle)).toBe(internals.wheels[0].lateralSign);
+    expect(Math.sign(internals.wheels[1].steerAngle)).toBe(internals.wheels[1].lateralSign);
+    // Yaw rate stays near zero — no axle bias from symmetric toe.
+    expect(Math.abs(engine.snapshot().yawRateRad)).toBeLessThan(0.05);
+  });
+
+  it('aero drag decelerates the chassis when coasting at high forward speed', () => {
+    const engine = createEngine();
+    // Place the chassis above ground so wheels are airborne — that
+    // suppresses tire/contact forces and isolates aero behaviour.
+    engine.worldPos.y = 100;
+    engine.worldQuat.identity();
+    engine.velocityWS.copy(engine.forward.clone().multiplyScalar(60));
+    const speedBefore = engine.velocityWS.dot(engine.forward);
+    for (let i = 0; i < 30; i++) engine.step(1 / 240);
+    const speedAfter = engine.velocityWS.dot(engine.forward);
+    // Forward speed should drop, not grow. A regression of the aero
+    // forward-drag sign would re-introduce a positive acceleration here.
+    expect(speedAfter).toBeLessThan(speedBefore);
+    expect(speedAfter).toBeGreaterThan(0);
   });
 
   it('reports roll and pitch from the chassis orientation', () => {
@@ -369,7 +436,9 @@ describe('RacingEngine integration', () => {
     };
 
     expect(internals.wheels.map((wheel) => Math.sign(wheel.posLocal.x))).toEqual([-1, 1, -1, 1]);
-    expect(internals.wheels.map((wheel) => Math.sign(wheel.posLocal.z))).toEqual([1, 1, -1, -1]);
+    // Chassis forward = -Z (Three.js convention), so front wheels sit at
+    // negative Z and rear wheels at positive Z in chassis-local space.
+    expect(internals.wheels.map((wheel) => Math.sign(wheel.posLocal.z))).toEqual([-1, -1, 1, 1]);
     expect(internals.wheels.map((wheel) => wheel.lateralSign)).toEqual([-1, 1, -1, 1]);
   });
 

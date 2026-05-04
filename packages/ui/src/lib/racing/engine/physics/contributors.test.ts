@@ -144,6 +144,19 @@ describe('self-aligning moment', () => {
     const past = Math.abs(computeSelfAligningMoment({ slipAngleRad: 30 * DEG, fySlip: 4000 }));
     expect(past).toBeLessThan(peak * 0.2);
   });
+
+  it('shares sign with fySlip so it reduces (not amplifies) the contact-patch yaw lever', () => {
+    // The contact-patch r×F at a front wheel forward of COM produces a chassis-up
+    // yaw component opposite in sign to Fy_lat. Mz must share the sign of Fy_lat
+    // so adding it brings the effective lever arm from `d_front` down to
+    // `d_front − trail` (i.e. self-aligning). The previous code negated this.
+    const posFy = computeSelfAligningMoment({ slipAngleRad: 5 * DEG, fySlip: 4000 });
+    const negFy = computeSelfAligningMoment({ slipAngleRad: 5 * DEG, fySlip: -4000 });
+    expect(posFy).toBeGreaterThan(0);
+    expect(negFy).toBeLessThan(0);
+    // Magnitude is bounded by `trail0 * |fySlip|` (= 0.042 * 4000 = 168 N·m at α=0).
+    expect(Math.abs(posFy)).toBeLessThan(0.042 * 4000);
+  });
 });
 
 describe('drivetrain', () => {

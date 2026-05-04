@@ -32,7 +32,7 @@ class FakeEventTarget {
 
 describe('RacingInput', () => {
   it('maps ArrowLeft to positive steering and ArrowRight to negative steering', () => {
-    const input = new RacingInput({ activeRate: 20, centreRate: 20 });
+    const input = new RacingInput({ activeRate: 20, centreRate: 20, counterRate: 20 });
     const target = new FakeEventTarget();
     input.attach(target as unknown as EventTarget);
 
@@ -49,8 +49,8 @@ describe('RacingInput', () => {
   });
 
   it('treats arrow keys and WASD steering as the same direction', () => {
-    const arrowInput = new RacingInput({ activeRate: 20, centreRate: 20 });
-    const wasdInput = new RacingInput({ activeRate: 20, centreRate: 20 });
+    const arrowInput = new RacingInput({ activeRate: 20, centreRate: 20, counterRate: 20 });
+    const wasdInput = new RacingInput({ activeRate: 20, centreRate: 20, counterRate: 20 });
     const arrowTarget = new FakeEventTarget();
     const wasdTarget = new FakeEventTarget();
     arrowInput.attach(arrowTarget as unknown as EventTarget);
@@ -66,7 +66,7 @@ describe('RacingInput', () => {
   });
 
   it('cancels steering when left and right arrows are both held', () => {
-    const input = new RacingInput({ activeRate: 20, centreRate: 20 });
+    const input = new RacingInput({ activeRate: 20, centreRate: 20, counterRate: 20 });
     const target = new FakeEventTarget();
     input.attach(target as unknown as EventTarget);
 
@@ -76,5 +76,50 @@ describe('RacingInput', () => {
 
     expect(input.state.steerCmd).toBe(0);
     expect(input.state.steerSmoothed).toBe(0);
+  });
+
+  it('uses the faster counterRate when the driver flips steer direction (catching a slide)', () => {
+    // activeRate 2 rad/s vs counterRate 10 rad/s. With identical hold times,
+    // an opposing-direction input must move steerCmd substantially faster
+    // than a same-direction input.
+    const opposing = new RacingInput({
+      activeRate: 2,
+      counterRate: 10,
+      centreRate: 2,
+    });
+    const opposingTarget = new FakeEventTarget();
+    opposing.attach(opposingTarget as unknown as EventTarget);
+
+    // Build up positive steer command (left).
+    opposingTarget.keydown('ArrowLeft');
+    opposing.update(0.5, 0);
+    const startCmd = opposing.state.steerCmd;
+    expect(startCmd).toBeGreaterThan(0);
+
+    // Flip to right (countersteer); for one short tick the counter rate
+    // should drive steerCmd far more aggressively than the active rate.
+    opposingTarget.keyup('ArrowLeft');
+    opposingTarget.keydown('ArrowRight');
+    opposing.update(0.1, 0);
+    const counterStep = startCmd - opposing.state.steerCmd;
+
+    // Reference: same delta but with counterRate equal to activeRate (no
+    // boost). The opposing case should move at least 3x further per tick.
+    const reference = new RacingInput({
+      activeRate: 2,
+      counterRate: 2,
+      centreRate: 2,
+    });
+    const referenceTarget = new FakeEventTarget();
+    reference.attach(referenceTarget as unknown as EventTarget);
+    referenceTarget.keydown('ArrowLeft');
+    reference.update(0.5, 0);
+    const refStart = reference.state.steerCmd;
+    referenceTarget.keyup('ArrowLeft');
+    referenceTarget.keydown('ArrowRight');
+    reference.update(0.1, 0);
+    const refStep = refStart - reference.state.steerCmd;
+
+    expect(counterStep).toBeGreaterThan(refStep * 3);
   });
 });

@@ -417,6 +417,10 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 				brakeTempC: w.brakeTempC,
 				bumpStopPct: w.bumpStopPct,
 				airborne: w.fz < 1,
+				brakeTorqueApplied: w.brakeTorqueApplied,
+				absScale: w.absScale,
+				absActive: w.absActive,
+				yawContribution: w.yawContribution,
 			})),
 		);
 		hud.pushTelemetry(

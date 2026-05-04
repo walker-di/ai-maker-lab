@@ -53,6 +53,11 @@ export {
 } from './aero.js';
 export { computeSelfAligningMoment, type MzInput } from './mz.js';
 export {
+  applyCorneringBrakeControl,
+  type CbcOptions,
+  type WheelQuad,
+} from './brake-balance.js';
+export {
   computeClutchTorque,
   applyDiffCoupling,
   stepEngineOmega,

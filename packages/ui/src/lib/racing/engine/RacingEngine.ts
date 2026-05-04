@@ -29,6 +29,7 @@ import { SurfaceLookup } from './tracks/surface-lookup.js';
 import { sampleCentripetal, type SampledPoint } from './tracks/catmull-rom.js';
 import {
   applyAbs,
+  applyCorneringBrakeControl,
   applyDiffCoupling,
   brakeFadeFactor,
   classifyEsc,
@@ -44,6 +45,7 @@ import {
   computeSelfAligningMoment,
   computeSlipAngleRad,
   computeTcCut,
+  computeToeSlipOffset,
   computeWheelHeadingBasis,
   computeYawRestoringMoment,
   ENGINE_IDLE,
@@ -146,10 +148,22 @@ interface WheelState {
   absActive: boolean;
   escTorque: number;
 
+  /** Effective brake torque applied this step (after ABS scale + bias + fade + CBC). */
+  brakeTorqueApplied: number;
+  /** ABS release scale this step (1 = no cut, 0.2 = release window). */
+  absScale: number;
+  /** This wheel's contribution to chassis-up yaw torque this step (N·m). */
+  yawContribution: number;
+
   // ARB pre-pass scratch.
   _preCompression: number;
   _preContact: boolean;
   _arbDfz: number;
+
+  // Inter-pass scratch for the split brake stage.
+  _fxFinal: number;
+  _frx: number;
+  _vx: number;
 }
 
 interface DriverAidsState {
@@ -222,6 +236,10 @@ export interface RacingEngineSnapshot {
     tempC: number;
     brakeTempC: number;
     bumpStopPct: number;
+    brakeTorqueApplied: number;
+    absScale: number;
+    absActive: boolean;
+    yawContribution: number;
   }>;
   lap: { lastMs: number | null; bestMs: number | null; t0: number | null };
 }
@@ -243,7 +261,11 @@ export class RacingEngine {
   readonly worldQuat = new Quaternion();
   readonly velocityWS = new Vector3();
   readonly omegaWS = new Vector3();
-  private readonly forward = new Vector3(0, 0, 1);
+  // Three.js standard convention: chassis forward = -Z, right = +X, up = +Y.
+  // The chase camera is at chassis - heading * 7.5 looking down +heading, which
+  // in Three.js puts world +X on the right of the screen — matching chassis
+  // right and keeping ArrowLeft = visual left turn.
+  private readonly forward = new Vector3(0, 0, -1);
   private readonly right = new Vector3(1, 0, 0);
   private readonly up = new Vector3(0, 1, 0);
 
@@ -429,7 +451,7 @@ export class RacingEngine {
    * exposing Three.js Vector3 to the route layer — callers just provide `dt`.
    */
   updateCamera(dt: number): void {
-    const forward = new Vector3(0, 0, 1).applyQuaternion(this.worldQuat);
+    const forward = new Vector3(0, 0, -1).applyQuaternion(this.worldQuat);
     this.cameras.step({
       carPosition: this.worldPos,
       carForward: forward,
@@ -489,7 +511,10 @@ export class RacingEngine {
       w.spinAngle = 0;
       w.absRelease = 0;
       w.absActive = false;
+      w.absScale = 1;
       w.escTorque = 0;
+      w.brakeTorqueApplied = 0;
+      w.yawContribution = 0;
       w.tempC = TIRE_AMBIENT_C;
       w.brakeTempC = TIRE_AMBIENT_C;
       w.brakeFade = 1;
@@ -571,6 +596,10 @@ export class RacingEngine {
         tempC: w.tempC,
         brakeTempC: w.brakeTempC,
         bumpStopPct: w.bumpStopPct,
+        brakeTorqueApplied: w.brakeTorqueApplied,
+        absScale: w.absScale,
+        absActive: w.absActive,
+        yawContribution: w.yawContribution,
       })),
       lap: { lastMs: this.lap.lastMs, bestMs: this.lap.bestMs, t0: this.lap.t0 },
     };
@@ -615,8 +644,10 @@ export class RacingEngine {
   private buildWheels(): void {
     this.wheels.length = 0;
     const halfTrack = this.vehicle.trackWidth * 0.5;
-    const frontZ = this.vehicle.wheelbase * (1 - this.vehicle.frontMassPct);
-    const rearZ = -this.vehicle.wheelbase * this.vehicle.frontMassPct;
+    // Chassis forward = -Z, so front wheels sit at negative Z and rear wheels
+    // at positive Z in chassis-local space.
+    const frontZ = -this.vehicle.wheelbase * (1 - this.vehicle.frontMassPct);
+    const rearZ = this.vehicle.wheelbase * this.vehicle.frontMassPct;
     const positions = [
       new Vector3(-halfTrack, -0.30, frontZ),
       new Vector3(halfTrack, -0.30, frontZ),
@@ -671,9 +702,15 @@ export class RacingEngine {
         absRelease: 0,
         absActive: false,
         escTorque: 0,
+        brakeTorqueApplied: 0,
+        absScale: 1,
+        yawContribution: 0,
         _preCompression: 0,
         _preContact: false,
         _arbDfz: 0,
+        _fxFinal: 0,
+        _frx: 0,
+        _vx: 0,
       });
     }
   }
@@ -713,12 +750,14 @@ export class RacingEngine {
       return { x: first.x, z: first.z, quat: new Quaternion() };
     }
     tangent.normalize();
-    const quat = new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), tangent);
+    // Reference forward is -Z (Three.js convention); align that with the
+    // track tangent so the car spawns pointing along the centerline.
+    const quat = new Quaternion().setFromUnitVectors(new Vector3(0, 0, -1), tangent);
     return { x: first.x, z: first.z, quat };
   }
 
   private updateBasis(): void {
-    this.forward.set(0, 0, 1).applyQuaternion(this.worldQuat);
+    this.forward.set(0, 0, -1).applyQuaternion(this.worldQuat);
     this.right.set(1, 0, 0).applyQuaternion(this.worldQuat);
     this.up.set(0, 1, 0).applyQuaternion(this.worldQuat);
     this.speedKmh = Math.abs(this.velocityWS.dot(this.forward)) * 3.6;
@@ -815,7 +854,14 @@ export class RacingEngine {
       speedKmh: this.speedKmh,
       steerSmoothed: this.input.state.steerSmoothed,
       absLocalVz,
-      yawRateRad: this.yawRateRad,
+      // `this.yawRateRad` is exported in the automotive sign convention
+      // (positive = right turn) so the public telemetry stays unchanged.
+      // `desiredYawRad` is computed in the geometric convention here
+      // (positive = left, matching `steerSmoothed`). Negate the actual yaw
+      // rate so the two share a frame inside `classifyEsc` — without this
+      // a normal left turn was always classified as understeer and any
+      // genuine oversteer was missed.
+      yawRateRad: -this.yawRateRad,
       desiredYawRad,
       sideslipDeg: this.sideslipRad * DEG,
       oversteerThreshold: aids.escOversteerThreshold,
@@ -908,12 +954,21 @@ export class RacingEngine {
       const w = this.wheels[i];
       const isFront = i < 2;
 
+      // Toe must mirror across chassis sides — toe-in means each front wheel
+      // rotates toward chassis centre, so FL gets a negative steer offset and
+      // FR a positive one. `computeToeSlipOffset` returns the correctly
+      // mirrored offset for the given axle and `lateralSign`.
+      const toeOffset = computeToeSlipOffset(
+        w.toeDeg,
+        w.lateralSign,
+        isFront ? 'front' : 'rear',
+      );
       if (w.steer) {
         w.baseSteerAngle = i === 0 ? ackermann.leftRad : ackermann.rightRad;
-        w.steerAngle = w.baseSteerAngle + w.toeDeg * RAD;
+        w.steerAngle = w.baseSteerAngle + toeOffset;
       } else {
         w.baseSteerAngle = 0;
-        w.steerAngle = w.toeDeg * RAD;
+        w.steerAngle = toeOffset;
       }
 
       const localPos = new Vector3(w.posLocal.x, w.posLocal.y + 0.47, w.posLocal.z);
@@ -938,6 +993,9 @@ export class RacingEngine {
         w.compression = 0;
         w.bumpStopForce = 0;
         w.bumpStopPct = 0;
+        w.brakeTorqueApplied = 0;
+        w.absScale = 1;
+        w.yawContribution = 0;
         w.tempC = stepTireTemperature({ tempC: w.tempC, slidePower: 0, contactSpeed: speed, dt });
         w.brakeTempC = stepBrakeTemperature({ brakeTempC: w.brakeTempC, brakeTorque: 0, omega: 0, contactSpeed: speed, dt });
         w.omega *= Math.exp(-0.5 * dt);
@@ -992,11 +1050,15 @@ export class RacingEngine {
       w.slipRatio = slipRatio;
       w.slipAngle = slipAngle;
 
-      const fall = 0.11;
+      const fall = 0.04;
       let Fx = pacejkaLong(slipRatio, fz, mu);
       let Fy = pacejkaLat(slipAngle, fz, mu, fall);
-      const Gyk = 1 / (1 + 1.8 * Math.abs(slipRatio));
-      Fy *= Gyk;
+      // SAE-style combined-slip weighting: cos(arctan(k * slipRatio)) keeps a
+      // realistic share of lateral grip while a wheel spins, with a floor so
+      // a fully spinning rear can still push sideways enough to hold a drift.
+      const COMBINED_SLIP_K = 1.0;
+      const Gyk = Math.cos(Math.atan(COMBINED_SLIP_K * slipRatio));
+      Fy *= Math.max(0.35, Gyk);
 
       w.mz = computeSelfAligningMoment({ slipAngleRad: slipAngle, fySlip: Fy });
 
@@ -1054,11 +1116,39 @@ export class RacingEngine {
         .addScaledVector(wheelFwd, Fx)
         .addScaledVector(wheelLat, Fy);
       totalForce.add(force);
-      totalTorque.add(new Vector3().crossVectors(r, force));
+      const wheelTorque = new Vector3().crossVectors(r, force);
+      totalTorque.add(wheelTorque);
       // Self-aligning moment about chassis up.
       totalTorque.add(this.up.clone().multiplyScalar(w.mz));
+      // Diagnostic: this wheel's contribution to the chassis-up yaw axis.
+      w.yawContribution = wheelTorque.dot(this.up) + w.mz;
 
-      // Wheel angular velocity.
+      // Stash for the brake-stage second pass.
+      w._fxFinal = Fx;
+      w._frx = Frx;
+      w._vx = vx;
+    }
+
+    this.appliedForce.copy(totalForce);
+    this.appliedTorque.copy(totalTorque);
+
+    // Brake-stage second pass: needs all four `fz` values up-front so we can
+    // run cornering brake control (CBC) and stop the inside wheel from
+    // tripping ABS first under hard combined brake + steer.
+    const cbc = applyCorneringBrakeControl([
+      this.wheels[0].fz,
+      this.wheels[1].fz,
+      this.wheels[2].fz,
+      this.wheels[3].fz,
+    ]);
+    for (let i = 0; i < this.wheels.length; i++) {
+      const w = this.wheels[i];
+      const isFront = i < 2;
+      if (!w.contact) continue;
+      const Fx = w._fxFinal;
+      const Frx = w._frx;
+      const vx = w._vx;
+
       let netTorque = 0;
       if (w.drive) netTorque += this.driveTorqueByWheel[i];
       netTorque -= (Fx - Frx) * w.radius;
@@ -1070,7 +1160,7 @@ export class RacingEngine {
         enabled: aids.absEnabled,
         driverBrake: this.driverBrake,
         vx,
-        slipRatio,
+        slipRatio: w.slipRatio,
         threshold: aids.absThreshold,
         release: w.absRelease,
         releaseTime: aids.absReleaseTime,
@@ -1078,15 +1168,18 @@ export class RacingEngine {
       });
       w.absRelease = abs.release;
       w.absActive = abs.active;
+      w.absScale = abs.scale;
       if (abs.active) {
         aids.absActive = true;
         aids.absEventCount++;
       }
-      const brakeTorqueRaw = this.driverBrake * maxBrakeTorque * biasFactor * fade * abs.scale;
+      const brakeTorqueRaw =
+        this.driverBrake * maxBrakeTorque * biasFactor * fade * abs.scale * cbc[i];
       const handbrakeTorque = w.hand ? this.input.state.handbrake * 4200 : 0;
       const escBrakeTorque = aids.escTorqueByWheel[i] || 0;
       w.escTorque = escBrakeTorque;
       const brakeTorque = brakeTorqueRaw + handbrakeTorque + escBrakeTorque;
+      w.brakeTorqueApplied = brakeTorque;
       w.brakeTempC = stepBrakeTemperature({
         brakeTempC: w.brakeTempC,
         brakeTorque,
@@ -1103,9 +1196,6 @@ export class RacingEngine {
       w.omega *= Math.exp(-0.05 * dt);
       w.spinAngle += w.omega * dt;
     }
-
-    this.appliedForce.copy(totalForce);
-    this.appliedTorque.copy(totalTorque);
   }
 
   private runDiffCoupling(dt: number): void {
@@ -1137,10 +1227,14 @@ export class RacingEngine {
       speed,
       cyYaw: this.cyYaw,
     });
-    // Convert local-frame drag back to world.
+    // Convert local-frame drag back to world. `computeAeroDrag` returns force
+    // components along the chassis +X (right) and chassis +Z axes. In our
+    // Three.js convention chassis-forward = world -Z (i.e. `this.forward`
+    // points along chassis -Z), so the +Z drag must be applied along
+    // `-this.forward` to land in the correct world direction.
     const dragWS = new Vector3()
       .addScaledVector(this.right, drag.fxDragWS)
-      .addScaledVector(this.forward, drag.fzDragWS);
+      .addScaledVector(this.forward, -drag.fzDragWS);
     this.appliedForce.add(dragWS);
     this.appliedTorque.add(this.up.clone().multiplyScalar(yawMoment));
   }
@@ -1213,15 +1307,20 @@ export class RacingEngine {
     const dt = Math.max(this.lastStepDt, 1e-6);
     const localAccel = localVel.clone().sub(this.prevLocalVelocity).divideScalar(dt);
     this.accelLatG = localAccel.x / 9.81;
-    this.accelLongG = localAccel.z / 9.81;
+    // Chassis forward = -Z (Three.js convention). The chassis-local Z axis
+    // therefore points OUT the back of the car, so we negate `localAccel.z`
+    // and `localVel.z` projections to preserve the standard automotive
+    // telemetry signs: accelLongG > 0 = forward acceleration, yawRateRad > 0
+    // = right turn, sideslipDeg > 0 = velocity to chassis-right of forward.
+    this.accelLongG = -localAccel.z / 9.81;
     this.prevLocalVelocity.copy(localVel);
     if (Math.abs(localVel.z) > 0.5 || Math.abs(localVel.x) > 0.5) {
       this.sideslipRad =
-        Math.atan2(localVel.x, Math.max(0.001, Math.abs(localVel.z))) * Math.sign(localVel.z || 1);
+        Math.atan2(localVel.x, Math.max(0.001, Math.abs(localVel.z))) * Math.sign(-localVel.z || 1);
     } else {
       this.sideslipRad = 0;
     }
-    this.yawRateRad = this.omegaWS.dot(this.up);
+    this.yawRateRad = -this.omegaWS.dot(this.up);
 
     const rearOmega = (this.wheels[2].omega + this.wheels[3].omega) * 0.5;
     const rearRollSpeed = rearOmega * this.wheels[2].radius;

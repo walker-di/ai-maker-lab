@@ -9,6 +9,7 @@
   import DriftPanel from './components/DriftPanel.svelte';
   import DebugTrace from './components/DebugTrace.svelte';
   import GgPlot from './components/GgPlot.svelte';
+  import BrakeBalancePanel from './components/BrakeBalancePanel.svelte';
 
   let { model }: { model: RacingHudModel } = $props();
 
@@ -87,6 +88,7 @@
         <div class="debug-row"><span>Cam</span><span>{model.state.cameraMode}</span></div>
       </div>
     </div>
+    <BrakeBalancePanel wheels={model.state.wheels} />
   {/if}
 
   <div class="hud-bottom" data-testid="hud-bottom">

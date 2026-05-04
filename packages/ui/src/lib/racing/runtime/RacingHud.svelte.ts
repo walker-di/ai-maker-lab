@@ -12,6 +12,10 @@ export interface RacingHudWheelState {
   brakeTempC: number;
   bumpStopPct: number;
   airborne: boolean;
+  brakeTorqueApplied: number;
+  absScale: number;
+  absActive: boolean;
+  yawContribution: number;
 }
 
 export interface RacingHudInputState {
@@ -128,10 +132,10 @@ export class RacingHudModel {
     input: { throttle: 0, brake: 0, steer: 0, handbrake: 0 },
     lap: { bestMs: null, lastMs: null, currentMs: null },
     wheels: [
-      { index: 0, fz: 0, slipRatio: 0, slipAngle: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false },
-      { index: 1, fz: 0, slipRatio: 0, slipAngle: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false },
-      { index: 2, fz: 0, slipRatio: 0, slipAngle: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false },
-      { index: 3, fz: 0, slipRatio: 0, slipAngle: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false },
+      { index: 0, fz: 0, slipRatio: 0, slipAngle: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false, brakeTorqueApplied: 0, absScale: 1, absActive: false, yawContribution: 0 },
+      { index: 1, fz: 0, slipRatio: 0, slipAngle: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false, brakeTorqueApplied: 0, absScale: 1, absActive: false, yawContribution: 0 },
+      { index: 2, fz: 0, slipRatio: 0, slipAngle: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false, brakeTorqueApplied: 0, absScale: 1, absActive: false, yawContribution: 0 },
+      { index: 3, fz: 0, slipRatio: 0, slipAngle: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false, brakeTorqueApplied: 0, absScale: 1, absActive: false, yawContribution: 0 },
     ],
     traceSamples: [],
     ggTrail: [],

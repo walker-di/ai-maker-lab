@@ -9,15 +9,28 @@ async function readHudSpeed(page: Page): Promise<number> {
 
 async function focusStageAndShiftToFirst(page: Page): Promise<void> {
 	const canvasHost = page.getByTestId('racing-canvas');
+	const gearHud = page.getByTestId('hud-gear');
 	await expect(canvasHost).toBeVisible({ timeout: 15_000 });
 	await expect(page.getByTestId('racing-loading')).toHaveCount(0, { timeout: 15_000 });
-	for (let attempt = 0; attempt < 4; attempt++) {
-		await canvasHost.click();
-		await page.keyboard.press(']');
-		const gearText = await page.getByTestId('hud-gear').textContent();
+	await canvasHost.click();
+
+	for (let attempt = 0; attempt < 8; attempt++) {
+		const gearText = await gearHud.textContent();
 		if (gearText?.match(/\b1\b/)) return;
+		if (gearText?.match(/\bN\b/)) {
+			await page.keyboard.press(']');
+			continue;
+		}
+		if (gearText?.match(/\bR\b/)) {
+			await page.keyboard.press(']');
+			continue;
+		}
+
+		const gearNumber = Number.parseInt(gearText?.match(/\d+/)?.[0] ?? '', 10);
+		await page.keyboard.press(Number.isFinite(gearNumber) && gearNumber > 1 ? '[' : ']');
 	}
-	await expect(page.getByTestId('hud-gear')).toContainText(/\b1\b/);
+
+	await expect(gearHud).toContainText(/\b1\b/);
 }
 
 async function accelerateToSpeed(page: Page, minSpeedKmh: number): Promise<number> {
@@ -78,21 +91,52 @@ async function readRuntimeAidState(page: Page): Promise<{
 	});
 }
 
-async function readRuntimeSteeringState(page: Page): Promise<{
-	steer: number;
+interface RuntimePhysicsState {
+	speedKmh: number;
+	input: { throttle: number; brake: number; steer: number; handbrake: number };
 	leftLoadPct: number;
+	frontLoadPct: number;
+	rollDeg: number;
+	pitchDeg: number;
 	yawRateRad: number;
-	wheels: [number, number, number, number];
-} | null> {
+	sideslipDeg: number;
+	accelLatG: number;
+	accelLongG: number;
+	tcCutPct: number;
+	absActive: boolean;
+	tcActive: boolean;
+	escActive: boolean;
+	driftState: string;
+	wheels: Array<{ fz: number; slipRatio: number; slipAngle: number; surface: string | null }>;
+}
+
+async function readRuntimePhysicsState(page: Page): Promise<RuntimePhysicsState | null> {
 	return page.evaluate(() => {
 		const model = (window as Window & {
 			__racing?: {
 				hud?: {
 					state?: {
-						input: { steer: number };
+						speedKmh: number;
+						input: { throttle: number; brake: number; steer: number; handbrake: number };
 						leftLoadPct: number;
+						frontLoadPct: number;
+						rollDeg: number;
+						pitchDeg: number;
 						yawRateRad: number;
-						wheels: Array<{ fz: number }>;
+						sideslipDeg: number;
+						accelLatG: number;
+						accelLongG: number;
+						tcCutPct: number;
+						absActive: boolean;
+						tcActive: boolean;
+						escActive: boolean;
+						driftState: string;
+						wheels: Array<{
+							fz: number;
+							slipRatio: number;
+							slipAngle: number;
+							surface: string | null;
+						}>;
 					};
 				};
 			};
@@ -102,12 +146,50 @@ async function readRuntimeSteeringState(page: Page): Promise<{
 			return null;
 		}
 		return {
-			steer: state.input.steer,
+			speedKmh: state.speedKmh,
+			input: { ...state.input },
 			leftLoadPct: state.leftLoadPct,
+			frontLoadPct: state.frontLoadPct,
+			rollDeg: state.rollDeg,
+			pitchDeg: state.pitchDeg,
 			yawRateRad: state.yawRateRad,
-			wheels: [state.wheels[0].fz, state.wheels[1].fz, state.wheels[2].fz, state.wheels[3].fz],
+			sideslipDeg: state.sideslipDeg,
+			accelLatG: state.accelLatG,
+			accelLongG: state.accelLongG,
+			tcCutPct: state.tcCutPct,
+			absActive: state.absActive,
+			tcActive: state.tcActive,
+			escActive: state.escActive,
+			driftState: state.driftState,
+			wheels: state.wheels.slice(0, 4).map((w) => ({
+				fz: w.fz,
+				slipRatio: w.slipRatio,
+				slipAngle: w.slipAngle,
+				surface: w.surface,
+			})),
 		};
 	});
+}
+
+async function readRuntimeSteeringState(page: Page): Promise<{
+	steer: number;
+	leftLoadPct: number;
+	yawRateRad: number;
+	wheels: [number, number, number, number];
+} | null> {
+	const state = await readRuntimePhysicsState(page);
+	if (!state) return null;
+	return {
+		steer: state.input.steer,
+		leftLoadPct: state.leftLoadPct,
+		yawRateRad: state.yawRateRad,
+		wheels: [
+			state.wheels[0].fz,
+			state.wheels[1].fz,
+			state.wheels[2].fz,
+			state.wheels[3].fz,
+		],
+	};
 }
 
 async function readRuntimeSetupState(page: Page): Promise<{
@@ -286,7 +368,7 @@ test.describe('Racing Sim experiment', () => {
 		}).toBeLessThan(49);
 		await expect.poll(async () => (await readRuntimeSteeringState(page))?.yawRateRad ?? 0, {
 			timeout: 5_000,
-			message: 'left steering should yaw left in the live route state',
+			message: 'left steering should yaw left (negative yaw rate, SAE convention) in the live route state',
 		}).toBeLessThan(-0.01);
 		const leftTurn = await readRuntimeSteeringState(page);
 		await page.keyboard.up('ArrowLeft');
@@ -302,7 +384,7 @@ test.describe('Racing Sim experiment', () => {
 		}).toBeGreaterThan(51);
 		await expect.poll(async () => (await readRuntimeSteeringState(page))?.yawRateRad ?? 0, {
 			timeout: 5_000,
-			message: 'right steering should yaw right in the live route state',
+			message: 'right steering should yaw right (positive yaw rate, SAE convention) in the live route state',
 		}).toBeGreaterThan(0.01);
 		const rightTurn = await readRuntimeSteeringState(page);
 		await page.keyboard.up('ArrowRight');
@@ -542,5 +624,225 @@ test.describe('Racing Sim experiment', () => {
 	test('home page exposes a link to the racing route', async ({ page }) => {
 		await page.goto('/');
 		await expect(page.locator('a[href="/experiments/racing"]').first()).toBeVisible();
+	});
+});
+
+test.describe('Racing Sim browser physics regressions', () => {
+	test.beforeEach(async ({ page }) => {
+		await patchEmptyRacingTableErrors(page);
+	});
+
+	test('left turn loads outside (right) tires, rolls toward the outside, and lat-G points outward', async ({ page }) => {
+		await page.goto('/experiments/racing');
+		await focusStageAndShiftToFirst(page);
+		await accelerateToSpeed(page, 15);
+
+		await page.keyboard.down('w');
+		await page.keyboard.down('ArrowLeft');
+
+		await expect.poll(async () => (await readRuntimePhysicsState(page))?.leftLoadPct ?? 50, {
+			timeout: 6_000,
+			message: 'left turn should transfer vertical load to the right (outside) tires',
+		}).toBeLessThan(49);
+		await expect.poll(async () => (await readRuntimePhysicsState(page))?.rollDeg ?? 0, {
+			timeout: 6_000,
+			message: 'left turn should roll the chassis toward the outside (positive roll = right side dips)',
+		}).toBeGreaterThan(0.1);
+
+		const turnState = await readRuntimePhysicsState(page);
+		await page.keyboard.up('ArrowLeft');
+		await page.keyboard.up('w');
+
+		expect(turnState).not.toBeNull();
+		if (!turnState) return;
+
+		const rightAxleFz = turnState.wheels[1].fz + turnState.wheels[3].fz;
+		const leftAxleFz = turnState.wheels[0].fz + turnState.wheels[2].fz;
+		expect(rightAxleFz).toBeGreaterThan(leftAxleFz);
+		expect(turnState.yawRateRad).toBeLessThan(-0.01);
+		expect(turnState.accelLatG).toBeLessThan(0);
+	});
+
+	test('right turn mirrors lateral load, roll, yaw, and lat-G to the opposite side', async ({ page }) => {
+		await page.goto('/experiments/racing');
+		await focusStageAndShiftToFirst(page);
+		await accelerateToSpeed(page, 15);
+
+		await page.keyboard.down('w');
+		await page.keyboard.down('ArrowRight');
+
+		await expect.poll(async () => (await readRuntimePhysicsState(page))?.leftLoadPct ?? 50, {
+			timeout: 6_000,
+			message: 'right turn should transfer vertical load to the left (outside) tires',
+		}).toBeGreaterThan(51);
+		await expect.poll(async () => (await readRuntimePhysicsState(page))?.rollDeg ?? 0, {
+			timeout: 6_000,
+			message: 'right turn should roll the chassis toward the outside (negative roll = left side dips)',
+		}).toBeLessThan(-0.1);
+
+		const turnState = await readRuntimePhysicsState(page);
+		await page.keyboard.up('ArrowRight');
+		await page.keyboard.up('w');
+
+		expect(turnState).not.toBeNull();
+		if (!turnState) return;
+
+		const leftAxleFz = turnState.wheels[0].fz + turnState.wheels[2].fz;
+		const rightAxleFz = turnState.wheels[1].fz + turnState.wheels[3].fz;
+		expect(leftAxleFz).toBeGreaterThan(rightAxleFz);
+		expect(turnState.yawRateRad).toBeGreaterThan(0.01);
+		expect(turnState.accelLatG).toBeGreaterThan(0);
+	});
+
+	test('hard braking from speed transfers vertical load to the front axle', async ({ page }) => {
+		await page.goto('/experiments/racing');
+		await focusStageAndShiftToFirst(page);
+		await accelerateToSpeed(page, 25);
+
+		const baseline = await readRuntimePhysicsState(page);
+		expect(baseline).not.toBeNull();
+		if (!baseline) return;
+		const baselineFront = baseline.frontLoadPct;
+		const baselineFrontMinusRear = (baseline.wheels[0].fz + baseline.wheels[1].fz)
+			- (baseline.wheels[2].fz + baseline.wheels[3].fz);
+
+		await page.keyboard.down('s');
+		await expect.poll(async () => (await readRuntimePhysicsState(page))?.frontLoadPct ?? 50, {
+			timeout: 6_000,
+			message: 'hard braking should transfer vertical load forward (frontLoadPct rises above the rolling baseline)',
+		}).toBeGreaterThan(baselineFront + 1);
+		// Compare the front-minus-rear delta against the rolling baseline so
+		// the assertion survives transient suspension bounce that drops total
+		// chassis weight on the tires for a frame.
+		await expect.poll(async () => {
+			const live = await readRuntimePhysicsState(page);
+			if (!live) return -Infinity;
+			return (live.wheels[0].fz + live.wheels[1].fz)
+				- (live.wheels[2].fz + live.wheels[3].fz);
+		}, {
+			timeout: 6_000,
+			message: 'front-minus-rear axle force should grow under braking versus the rolling baseline',
+		}).toBeGreaterThan(baselineFrontMinusRear + 50);
+
+		const brakingState = await readRuntimePhysicsState(page);
+		await page.keyboard.up('s');
+
+		expect(brakingState).not.toBeNull();
+		if (!brakingState) return;
+
+		expect(brakingState.accelLongG).toBeLessThan(0);
+	});
+
+	test('first-gear throttle on a RWD car puts more drive slip on the rear axle than the front', async ({ page }) => {
+		await page.goto('/experiments/racing?vehicle=rwd-front-mid');
+		await focusStageAndShiftToFirst(page);
+
+		await page.keyboard.down('w');
+		await expect.poll(async () => readHudSpeed(page), {
+			timeout: 10_000,
+			message: 'throttle should accelerate the car off the line in first gear',
+		}).toBeGreaterThan(2);
+
+		await expect.poll(async () => {
+			const state = await readRuntimePhysicsState(page);
+			if (!state) return 0;
+			return (state.wheels[2].slipRatio + state.wheels[3].slipRatio) * 0.5;
+		}, {
+			timeout: 6_000,
+			message: 'driven rear tires should accumulate positive drive slip under throttle',
+		}).toBeGreaterThan(0);
+
+		const liveState = await readRuntimePhysicsState(page);
+		await page.keyboard.up('w');
+
+		expect(liveState).not.toBeNull();
+		if (!liveState) return;
+		const rearSlip = (liveState.wheels[2].slipRatio + liveState.wheels[3].slipRatio) * 0.5;
+		const frontSlip = (liveState.wheels[0].slipRatio + liveState.wheels[1].slipRatio) * 0.5;
+		expect(rearSlip).toBeGreaterThan(frontSlip);
+	});
+
+	test('ABS activates under heavy braking from speed when the aid is enabled', async ({ page }) => {
+		await page.goto('/experiments/racing');
+		await expect.poll(async () => (await readRuntimePhysicsState(page))?.absActive ?? null, {
+			timeout: 5_000,
+			message: 'ABS should not be active before braking starts',
+		}).toBe(false);
+
+		await focusStageAndShiftToFirst(page);
+		await accelerateToSpeed(page, 25);
+
+		await page.keyboard.down('s');
+		await expect.poll(async () => (await readRuntimePhysicsState(page))?.absActive ?? false, {
+			timeout: 6_000,
+			message: 'ABS should activate while braking hard from speed with the aid enabled',
+		}).toBe(true);
+		await page.keyboard.up('s');
+	});
+
+	test('a developing rear slide can be caught with countersteer + lift (controllability invariant)', async ({ page }) => {
+		// Use the RWD front-mid vehicle (rear-biased mass) and disable TC for
+		// the duration of the test so the rear slip can actually grow — TC is
+		// otherwise correctly suppressing throttle-on slides at low speed.
+		// The runtime aid toggle is the only state we change; the underlying
+		// physics + input model is what we are exercising.
+		await page.goto('/experiments/racing?vehicle=rwd-front-mid');
+		await aidToggle(page, 'TC').click();
+		await expect.poll(async () => (await readRuntimeAidState(page))?.tcEnabled ?? null, {
+			timeout: 5_000,
+			message: 'TC should be disabled before provoking the slide',
+		}).toBe(false);
+
+		await focusStageAndShiftToFirst(page);
+		await accelerateToSpeed(page, 20);
+
+		// Provoke a slide: throttle + hard left + handbrake stab. Sample
+		// sideslipDeg over the next ~3 seconds and capture the peak. Pre-fix
+		// tire model (aggressive Gyk + cliff falloff) produced a snap to a
+		// huge sideslip with no recovery slope; post-fix the slide is mild
+		// but real and the driver is supposed to be able to bring it back.
+		await page.keyboard.down('w');
+		await page.keyboard.down('ArrowLeft');
+		await page.keyboard.down('Shift');
+
+		let peakSideslip = 0;
+		const slideEnd = Date.now() + 3_000;
+		while (Date.now() < slideEnd) {
+			const state = await readRuntimePhysicsState(page);
+			if (state) peakSideslip = Math.max(peakSideslip, Math.abs(state.sideslipDeg));
+			await page.waitForTimeout(80);
+		}
+		expect(peakSideslip).toBeGreaterThan(2);
+
+		// Lift handbrake + throttle + initial steer, then countersteer. The
+		// new opposing-direction counter steer rate makes the input keep up
+		// with the developing yaw, and the tire model retains enough rear
+		// lateral grip while the rear is sliding for the chassis to recover.
+		await page.keyboard.up('Shift');
+		await page.keyboard.up('ArrowLeft');
+		await page.keyboard.up('w');
+		await page.keyboard.down('ArrowRight');
+
+		// Recovery invariant: applying lift + countersteer should pull the
+		// sideslip back below half of its peak (and below 1.5° absolute) —
+		// i.e. the slide is being caught, not running away.
+		const recoveryTarget = Math.min(peakSideslip * 0.5, 1.5);
+		await expect.poll(async () => {
+			const state = await readRuntimePhysicsState(page);
+			return Math.abs(state?.sideslipDeg ?? 999);
+		}, {
+			timeout: 6_000,
+			message: `countersteer + lift should pull sideslip back below ${recoveryTarget.toFixed(2)}° (peak was ${peakSideslip.toFixed(2)}°)`,
+		}).toBeLessThan(recoveryTarget);
+
+		const recoveredState = await readRuntimePhysicsState(page);
+		await page.keyboard.up('ArrowRight');
+
+		expect(recoveredState).not.toBeNull();
+		if (!recoveredState) return;
+		// Spin-out guard: a car that flat-spun would scrub off most of its
+		// forward speed and end up nearly stationary. Recovery should leave
+		// the chassis still rolling forward.
+		expect(recoveredState.speedKmh).toBeGreaterThan(3);
 	});
 });

@@ -42,7 +42,10 @@ export class CameraRig {
 
   step(input: CameraInputs): void {
     const heading = new Vector3(input.carForward.x, 0, input.carForward.z);
-    if (heading.lengthSq() < 1e-6) heading.set(0, 0, 1);
+    // Fallback heading uses the chassis forward convention (-Z) so the chase
+    // camera lands behind the car at +Z when the chassis quaternion is
+    // momentarily degenerate.
+    if (heading.lengthSq() < 1e-6) heading.set(0, 0, -1);
     else heading.normalize();
     const worldUp = new Vector3(0, 1, 0);
 

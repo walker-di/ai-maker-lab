@@ -4,9 +4,15 @@
  *   - Shift: handbrake
  *   - Q/E: shift down/up
  *
- * Steering is rate-limited and self-centres slightly slower than active
- * input (with caster-assist factored in) — the prototype's tuning lands on
- * `2.5 rad/s` active and `3.5 rad/s` self-centring with caster=0.
+ * Steering is rate-limited with three regimes: an active rate when the driver
+ * pushes the input further in the current direction, a faster counter rate
+ * when the driver flips sign (i.e. catching a slide with countersteer), and a
+ * self-centring rate when input is released (scaled by caster).
+ *
+ * Defaults: active 4.5 rad/s, counter 8.0 rad/s, self-centre 6.0 rad/s. The
+ * counter rate matters most for drift recovery — a real driver moves the
+ * wheel ~600–1000 deg/s when catching the rear, and 8 rad/s ≈ 460 deg/s
+ * lands close enough on keyboard.
  */
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -22,10 +28,12 @@ export interface RacingInputState {
 }
 
 export interface RacingInputOptions {
-  /** Active steer rate (1/s). Default 2.5 — matches the prototype tuning. */
+  /** Active steer rate (1/s) when pushing further in the same direction. Default 4.5. */
   activeRate?: number;
-  /** Self-centre rate (1/s) with no caster assist. Default 3.5. */
+  /** Self-centre rate (1/s) with no caster assist. Default 6.0. */
   centreRate?: number;
+  /** Counter steer rate (1/s) when the input flips sign (catching a slide). Default 8.0. */
+  counterRate?: number;
   /** Caster degree from the runtime setup, used to scale self-centring. */
   casterDeg?: () => number;
 }
@@ -49,8 +57,9 @@ export class RacingInput {
 
   constructor(opts: RacingInputOptions = {}) {
     this.opts = {
-      activeRate: opts.activeRate ?? 2.5,
-      centreRate: opts.centreRate ?? 3.5,
+      activeRate: opts.activeRate ?? 4.5,
+      centreRate: opts.centreRate ?? 6.0,
+      counterRate: opts.counterRate ?? 8.0,
       casterDeg: opts.casterDeg ?? (() => 0),
     };
     this.onKeyDown = (e) => {
@@ -101,7 +110,14 @@ export class RacingInput {
     this.state.handbrake = handbrake;
 
     const target = steerInput;
-    const rate = this.opts.activeRate * dt;
+    // When the driver flips sign (e.g. arrow-right pressed while steerCmd is
+    // still positive from a left input), use the faster counter rate so a
+    // slide can actually be caught. Otherwise use the active rate.
+    const opposing = target !== 0
+      && this.state.steerCmd !== 0
+      && Math.sign(target) !== Math.sign(this.state.steerCmd);
+    const baseRate = opposing ? this.opts.counterRate : this.opts.activeRate;
+    const rate = baseRate * dt;
     const delta = clamp(target - this.state.steerCmd, -rate, rate);
     this.state.steerCmd = clamp(this.state.steerCmd + delta, -1, 1);
 

@@ -128,8 +128,10 @@ export class RacingRenderer {
     this.chassis.add(body);
 
     const halfTrack = preset.trackWidth * 0.5;
-    const frontZ = preset.wheelbase * (1 - preset.frontMassPct);
-    const rearZ = -preset.wheelbase * preset.frontMassPct;
+    // Match the engine convention: chassis forward = -Z, so the front wheels
+    // sit at negative Z relative to the chassis origin.
+    const frontZ = -preset.wheelbase * (1 - preset.frontMassPct);
+    const rearZ = preset.wheelbase * preset.frontMassPct;
     const offsets = [
       { x: -halfTrack, z: frontZ },
       { x: halfTrack, z: frontZ },
