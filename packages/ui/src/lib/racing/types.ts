@@ -10,6 +10,8 @@
  * same change. Both files must stay structurally compatible.
  */
 
+import type { Pacejka56AxleParams } from './engine/physics/pacejka.js';
+
 export type DriveLayout = 'rwd' | 'fwd' | 'awd';
 
 export type DiffType = 'welded' | 'open' | 'clutchLSD';
@@ -81,6 +83,37 @@ export interface VehiclePhysicsPreset {
   diffCapacityNm?: number;
   diffPowerRamp?: number;
   diffCoastRamp?: number;
+  /**
+   * Per-axle Pacejka MF 5.6 coefficient overrides. Omitted fields fall back
+   * to `DEFAULT_PACEJKA56_FRONT` / `DEFAULT_PACEJKA56_REAR`. Authoring data
+   * can use this to make individual cars feel distinct (peak grip, slip
+   * stiffness, combined-slip cosine shape, etc.).
+   */
+  tireFront?: Partial<Pacejka56AxleParams>;
+  /** Per-axle Pacejka MF 5.6 overrides for the rear tires. See `tireFront`. */
+  tireRear?: Partial<Pacejka56AxleParams>;
+  /** Pneumatic trail at zero slip (m). Default 0.042. */
+  pneumaticTrail0M?: number;
+  /** Slip angle (deg) where pneumatic trail decays to 1/e. Default 15. */
+  pneumaticTrailDecayDeg?: number;
+  /** Mechanical trail generated per degree of caster (m/deg). Default 0.006. */
+  casterTrailScaleMPerDeg?: number;
+  /** Cap for caster-derived mechanical trail (m). Default 0.065. */
+  mechanicalTrailMaxM?: number;
+  /** Effective scrub radius (m) for the front axle. Default 0.015. */
+  scrubRadiusM?: number;
+  /**
+   * Reference torque magnitude (N·m) that maps the front-axle aligning Mz
+   * onto the [-1, 1] keyboard self-centre feedback signal. Larger values
+   * make the steering feel "lighter" because the front Mz only fills a
+   * small fraction of the assist authority. Default 220.
+   */
+  steeringAlignTorqueMaxNm?: number;
+  /**
+   * Multiplier on the keyboard self-centre rate scaling with the magnitude
+   * of the aligning feedback signal. Default 1 (full feedback authority).
+   */
+  steeringAlignCentreRateScale?: number;
 }
 
 export interface VehiclePreset {

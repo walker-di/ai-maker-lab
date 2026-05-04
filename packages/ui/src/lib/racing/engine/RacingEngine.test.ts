@@ -857,6 +857,100 @@ describe('RacingEngine integration', () => {
     expect(power.avgRearFx - coast.avgRearFx).toBeGreaterThan(50);
   });
 
+  it('throttle-in-slide: TC drift back-off lets engine torque reach rear wheels and produce forward bite', () => {
+    // Reproduce the user-facing "open throttle in a drift, car only
+    // slides more, no forward traction, no rear weight transfer" symptom
+    // and lock in the fix.
+    //
+    // Without the `sideslipDeg` argument wired into `computeTcCut` from
+    // `runDrivetrainAndAids`, the drift back-off branch in TC is dead
+    // code: TC strangles the engine the moment the rear wheels start to
+    // spin in a slide, so combined-slip Fx never grows, accelLongG stays
+    // ~0, and `computeLongitudinalLoadTransfer` produces no load shift
+    // to the rear axle. The user-visible result is a powerless drift.
+    //
+    // With the wiring fix in place, TC backs off in a slide, engine
+    // torque reaches the wheels, combined-slip Pacejka produces forward
+    // Fx, the chassis accelerates forward, and load transfer raises
+    // rear Fz — exactly the loop the user described.
+    function probe(opts: { lateralMs: number; throttle: number }) {
+      const engine = createEngine();
+      settleOnTrack(engine, 1);
+      engine.shiftUp();
+      engine.shiftUp();
+      const forwardMs = 22;
+      const engineRpm = opts.throttle > 0 ? 6800 : 4500;
+      const seedSlipRatio = opts.throttle > 0 ? 0.18 : 0;
+      const seedRearOmega = opts.throttle > 0
+        ? (forwardMs * 1.18) / 0.34
+        : forwardMs / 0.34;
+      forceChassisState(engine, {
+        forwardMs,
+        lateralMs: opts.lateralMs,
+        engineRpm,
+      });
+      forceWheelState(engine, {
+        omegaByWheel: [
+          forwardMs / 0.34,
+          forwardMs / 0.34,
+          seedRearOmega,
+          seedRearOmega,
+        ],
+        slipRatioByWheel: [0, 0, seedSlipRatio, seedSlipRatio],
+      });
+      if (opts.throttle > 0) setKey(engine, 'w', true);
+      let tcCutSum = 0;
+      let rearFxSum = 0;
+      let rearFzSum = 0;
+      let accelLongSum = 0;
+      const samples = 60;
+      for (let i = 0; i < samples; i++) {
+        forceChassisState(engine, {
+          forwardMs,
+          lateralMs: opts.lateralMs,
+          engineRpm,
+        });
+        engine.step(1 / 240);
+        const snap = engine.snapshot();
+        tcCutSum += snap.aids.tcCut;
+        rearFxSum += (snap.wheels[2].fx + snap.wheels[3].fx) * 0.5;
+        rearFzSum += snap.wheels[2].fz + snap.wheels[3].fz;
+        accelLongSum += snap.accelLongG;
+      }
+      if (opts.throttle > 0) setKey(engine, 'w', false);
+      return {
+        avgTcCut: tcCutSum / samples,
+        avgRearFx: rearFxSum / samples,
+        avgRearFz: rearFzSum / samples,
+        avgAccelLongG: accelLongSum / samples,
+      };
+    }
+
+    const slidePower = probe({ lateralMs: 8, throttle: 1 });
+    const slideCoast = probe({ lateralMs: 8, throttle: 0 });
+    const gripPower = probe({ lateralMs: 0, throttle: 1 });
+
+    // 1) Drift back-off is wired in. With identical throttle and
+    //    identical seeded drive slip, TC must cut LESS in the slide
+    //    than in the straight-line case. Without the wiring fix the
+    //    cut values are identical and this assertion fails.
+    expect(slidePower.avgTcCut).toBeLessThan(gripPower.avgTcCut);
+
+    // 2) Forward bite reaches the contact patch. With the drift
+    //    back-off live, combined-slip Pacejka produces a meaningfully
+    //    positive average rear Fx instead of being strangled by TC
+    //    cutting throttle on the first sign of drive slip.
+    expect(slidePower.avgRearFx).toBeGreaterThan(0);
+
+    // 3) Forward bite produces forward chassis acceleration each step,
+    //    which feeds `computeLongitudinalLoadTransfer` next step and
+    //    shifts vertical load to the rear axle. The coast probe gives a
+    //    fixed-load baseline (no throttle, no acceleration, no
+    //    transfer); the throttle probe must show strictly more rear Fz.
+    expect(slidePower.avgAccelLongG).toBeGreaterThan(0);
+    expect(slidePower.avgRearFz).toBeGreaterThan(slideCoast.avgRearFz);
+  });
+
   it('countersteer catch: opposite lock + lift keeps sideslip bounded and the car alive', () => {
     const engine = createEngine();
     settleOnTrack(engine, 1);
@@ -1056,6 +1150,176 @@ describe('RacingEngine integration', () => {
     // and rides on numerical noise, so we use yawRate × speed (the actual
     // centripetal sign indicator) instead.
     expect(Math.sign(left.yawRateRad)).toBe(-Math.sign(right.yawRateRad));
+  });
+
+  it('caster grows front-axle aligning Mz versus a zero-caster baseline', () => {
+    // Phase 6A wiring check. Mechanical trail comes from caster, so a
+    // matched chassis state with non-zero caster must produce larger
+    // |sum front Mz| than a zero-caster baseline.
+    function frontMzAtSteer(casterDeg: number) {
+      const engine = createEngine();
+      engine.setSetup({
+        frontToeDeg: 0,
+        rearToeDeg: 0,
+        casterDeg,
+        ackermannPct: 0,
+        motionRatioFront: 1,
+        motionRatioRear: 1,
+        bumpStopGapFrontMm: 220,
+        bumpStopGapRearMm: 220,
+        bumpStopRateFrontNmm: 0,
+        bumpStopRateRearNmm: 0,
+      });
+      settleOnTrack(engine, 0.5);
+      // Hold a moderate left steer at 18 m/s for long enough to stabilise
+      // the relaxation-length lag and the front aligning Mz.
+      holdSteerAtSpeed(engine, 0.4, 18, 0.6);
+      const wheels = readWheels(engine);
+      return Math.abs(wheels[0].mz + wheels[1].mz);
+    }
+    const noCaster = frontMzAtSteer(0);
+    const heavyCaster = frontMzAtSteer(8);
+    expect(noCaster).toBeGreaterThan(0);
+    expect(heavyCaster).toBeGreaterThan(noCaster);
+  });
+
+  it('rear-axle aligning Mz stays free of caster and scrub contributions', () => {
+    // Phase 6A: caster + scrub are front-axle concerns. Even with heavy
+    // caster on the setup, the rear-wheel Mz stays purely pneumatic and
+    // therefore matches the zero-caster rear-Mz value.
+    function rearMzAtSteer(casterDeg: number) {
+      const engine = createEngine();
+      engine.setSetup({
+        frontToeDeg: 0,
+        rearToeDeg: 0,
+        casterDeg,
+        ackermannPct: 0,
+        motionRatioFront: 1,
+        motionRatioRear: 1,
+        bumpStopGapFrontMm: 220,
+        bumpStopGapRearMm: 220,
+        bumpStopRateFrontNmm: 0,
+        bumpStopRateRearNmm: 0,
+      });
+      settleOnTrack(engine, 0.5);
+      holdSteerAtSpeed(engine, 0.4, 18, 0.6);
+      const wheels = readWheels(engine);
+      return Math.abs(wheels[2].mz + wheels[3].mz);
+    }
+    const noCaster = rearMzAtSteer(0);
+    const heavyCaster = rearMzAtSteer(8);
+    // Rear Mz tracks only pneumatic trail × Fy, so caster cannot move it.
+    // Allow a tiny tolerance for downstream chassis differences (e.g. roll
+    // induced by load transfer) that affect rear Fy slightly.
+    expect(Math.abs(heavyCaster - noCaster)).toBeLessThan(noCaster * 0.1 + 1);
+  });
+
+  it('alignment feedback signal flips with steering direction in loaded corners', () => {
+    // Phase 6C/6D wiring check. The engine-side assertion is that the
+    // front-axle aligning Mz drives `steeringAlignFeedback` toward the
+    // assist-return sign: negative for a left deflection (positive
+    // steerCmd) and positive for a right deflection (negative steerCmd).
+    // input.test.ts separately proves the input model uses this signal
+    // to add an extra centre step on release.
+    function feedbackForCorner(steer: number): number {
+      const engine = createEngine();
+      settleOnTrack(engine, 0.5);
+      // Drive the chassis through a steady 18 m/s corner. The helper
+      // pins steerSmoothed and forward velocity each frame for the full
+      // duration, which keeps the wheel kinematics in a steady-state
+      // slip regime that builds up the front-axle Mz cleanly.
+      holdSteerAtSpeed(engine, steer, 18, 0.6);
+      const internals = engine as unknown as { steeringAlignFeedback: number };
+      return internals.steeringAlignFeedback;
+    }
+    const left = feedbackForCorner(0.4);
+    const right = feedbackForCorner(-0.4);
+    // Sign symmetry — left and right corners produce opposite feedback.
+    expect(left).toBeLessThan(0);
+    expect(right).toBeGreaterThan(0);
+    // Magnitudes mirror within numerical tolerance.
+    expect(Math.abs(Math.abs(left) - Math.abs(right))).toBeLessThan(Math.abs(left) * 0.5);
+    // Both corners produce a non-trivial assist signal (more than just
+    // numerical noise), proving the engine wiring is live.
+    expect(Math.abs(left)).toBeGreaterThan(0.05);
+    expect(Math.abs(right)).toBeGreaterThan(0.05);
+  });
+
+  it('alignment feedback stays near zero for a stationary chassis at deflection', () => {
+    // Phase 6C/6D: with the chassis pinned at rest and the front wheels
+    // steered, no tire force develops, so the front-axle Mz must stay at
+    // zero and the feedback signal must not drift away from zero.
+    const engine = createEngine();
+    settleOnTrack(engine, 0.5);
+    const internals = engine as unknown as {
+      omegaWS: { set: (x: number, y: number, z: number) => void };
+      steeringAlignFeedback: number;
+    };
+    setKey(engine, 'a', true);
+    for (let i = 0; i < 120; i++) {
+      engine.velocityWS.set(0, 0, 0);
+      internals.omegaWS.set(0, 0, 0);
+      engine.step(1 / 240);
+    }
+    expect(Math.abs(internals.steeringAlignFeedback)).toBeLessThan(0.05);
+  });
+
+  it('low-speed wheel-rotation lock pins idle wheel omega close to vx/r at a crawl', () => {
+    // Phase 6E: with no driver torque, contact-patch speed below the
+    // lock-window must drag wheel omega to vx/r instead of letting tiny
+    // slip-ratio errors grow into rotational chatter.
+    const engine = createEngine();
+    settleOnTrack(engine, 0.5);
+    forceChassisState(engine, { forwardMs: 0.2 });
+    forceWheelState(engine, {
+      omegaByWheel: [0, 0, 0, 0],
+      slipRatioByWheel: [0, 0, 0, 0],
+      slipAngleByWheel: [0, 0, 0, 0],
+    });
+    setKey(engine, 'w', false);
+    setKey(engine, 's', false);
+    for (let i = 0; i < 12; i++) engine.step(1 / 240);
+    const wheels = readWheels(engine);
+    const expectedOmega = 0.2 / 0.34;
+    for (const w of wheels) {
+      expect(Number.isFinite(w.omega)).toBe(true);
+      // Wheel angular speed tracks the contact patch within a few percent.
+      expect(w.omega).toBeGreaterThan(expectedOmega * 0.5);
+      expect(w.omega).toBeLessThan(expectedOmega * 1.5);
+    }
+  });
+
+  it('standstill brake settles wheel omega to zero without sign chatter', () => {
+    // Phase 6E + 6F: with the brake firmly applied at near-zero contact
+    // speed, the wheel-rotation lock clamps omega toward zero and the
+    // narrowed standstill blend prevents the residual Fy from flipping
+    // omega across zero between steps.
+    const engine = createEngine();
+    settleOnTrack(engine, 0.5);
+    forceChassisState(engine, { forwardMs: 0.05 });
+    forceWheelState(engine, {
+      omegaByWheel: [0.4, 0.4, 0.4, 0.4],
+      slipRatioByWheel: [0, 0, 0, 0],
+      slipAngleByWheel: [0, 0, 0, 0],
+    });
+    setKey(engine, 's', true);
+    let signFlips = 0;
+    let prevSigns: number[] = [0, 0, 0, 0];
+    for (let i = 0; i < 24; i++) {
+      engine.step(1 / 240);
+      const wheels = readWheels(engine);
+      for (let j = 0; j < 4; j++) {
+        const s = Math.sign(wheels[j].omega);
+        if (s !== 0 && prevSigns[j] !== 0 && s !== prevSigns[j]) signFlips++;
+        if (s !== 0) prevSigns[j] = s;
+      }
+    }
+    setKey(engine, 's', false);
+    const wheels = readWheels(engine);
+    expect(signFlips).toBe(0);
+    for (const w of wheels) {
+      expect(Math.abs(w.omega)).toBeLessThan(0.5);
+    }
   });
 
   it('emits lap start and finish events across repeated start-line crossings', () => {

@@ -21,6 +21,35 @@ export interface AxleDriveShare {
   rear: number;
 }
 
+/**
+ * Subset of Pacejka MF 5.6 axle coefficients. The structural shape mirrors
+ * the `Pacejka56AxleParams` type used by the UI tire model so authored
+ * presets can drop in directly without taking a UI dependency from the
+ * domain package. Every field is optional — omitted entries fall back to
+ * the runtime defaults inside `packages/ui/src/lib/racing/engine/physics/pacejka.ts`.
+ */
+export interface TirePacejkaParamsOverride {
+  fz0?: number;
+  pCx1?: number;
+  pDx1?: number;
+  pDx2?: number;
+  pKx1?: number;
+  pKx2?: number;
+  pEx1?: number;
+  pEx2?: number;
+  pCy1?: number;
+  pDy1?: number;
+  pDy2?: number;
+  pKy1?: number;
+  pKy2?: number;
+  pEy1?: number;
+  pEy2?: number;
+  rBx1?: number;
+  rCx1?: number;
+  rBy1?: number;
+  rCy1?: number;
+}
+
 export interface VehiclePhysicsPreset {
   /** Total chassis mass used by the rigid-body integrator. */
   massKg?: number;
@@ -86,6 +115,33 @@ export interface VehiclePhysicsPreset {
   diffPowerRamp?: number;
   /** Salisbury LSD coast-side ramp coefficient (0..1). */
   diffCoastRamp?: number;
+  /**
+   * Per-axle Pacejka MF 5.6 coefficient overrides for the front tires.
+   * Omitted fields fall back to the runtime sport / race tire defaults.
+   */
+  tireFront?: TirePacejkaParamsOverride;
+  /** Per-axle Pacejka MF 5.6 overrides for the rear tires. */
+  tireRear?: TirePacejkaParamsOverride;
+  /** Pneumatic trail at zero slip (m). Default 0.042. */
+  pneumaticTrail0M?: number;
+  /** Slip angle (deg) where pneumatic trail decays to 1/e. Default 15. */
+  pneumaticTrailDecayDeg?: number;
+  /** Mechanical trail generated per degree of caster (m/deg). Default 0.006. */
+  casterTrailScaleMPerDeg?: number;
+  /** Cap for caster-derived mechanical trail (m). Default 0.065. */
+  mechanicalTrailMaxM?: number;
+  /** Effective scrub radius (m) for the front axle. Default 0.015. */
+  scrubRadiusM?: number;
+  /**
+   * Reference torque magnitude (N·m) that maps the front-axle aligning Mz
+   * onto the [-1, 1] keyboard self-centre feedback signal. Default 220.
+   */
+  steeringAlignTorqueMaxNm?: number;
+  /**
+   * Multiplier on the keyboard self-centre rate scaling with the magnitude
+   * of the aligning feedback signal. Default 1.
+   */
+  steeringAlignCentreRateScale?: number;
 }
 
 export interface VehiclePreset {

@@ -95,6 +95,8 @@ export function validateVehiclePreset(input: unknown): ValidationResult {
       'clutchMaxTorqueNm',
       'clutchStickThresholdRadPerSec',
       'diffCapacityNm',
+      'pneumaticTrailDecayDeg',
+      'steeringAlignTorqueMaxNm',
     ] as const;
     for (const key of finitePositiveFields) {
       const value = physics[key];
@@ -108,11 +110,38 @@ export function validateVehiclePreset(input: unknown): ValidationResult {
     ) {
       pushError(errors, 'physics.brakeBiasFront', 'invalid', 'brakeBiasFront must be in [0, 1]');
     }
-    const nonNegativeFields = ['clAreaFrontM2', 'clAreaRearM2', 'diffPreloadNm'] as const;
+    const nonNegativeFields = [
+      'clAreaFrontM2',
+      'clAreaRearM2',
+      'diffPreloadNm',
+      'pneumaticTrail0M',
+      'casterTrailScaleMPerDeg',
+      'mechanicalTrailMaxM',
+      'scrubRadiusM',
+      'steeringAlignCentreRateScale',
+    ] as const;
     for (const key of nonNegativeFields) {
       const value = physics[key];
       if (value !== undefined && (!isFiniteNumber(value) || value < 0)) {
         pushError(errors, `physics.${key}`, 'invalid', `${key} must be >= 0 when provided`);
+      }
+    }
+    for (const tireKey of ['tireFront', 'tireRear'] as const) {
+      const tire = physics[tireKey];
+      if (tire === undefined) continue;
+      if (typeof tire !== 'object' || tire === null) {
+        pushError(errors, `physics.${tireKey}`, 'invalid', `${tireKey} must be an object when provided`);
+        continue;
+      }
+      for (const [k, v] of Object.entries(tire)) {
+        if (v !== undefined && !isFiniteNumber(v)) {
+          pushError(
+            errors,
+            `physics.${tireKey}.${k}`,
+            'invalid',
+            `${tireKey}.${k} must be a finite number when provided`,
+          );
+        }
       }
     }
     if (

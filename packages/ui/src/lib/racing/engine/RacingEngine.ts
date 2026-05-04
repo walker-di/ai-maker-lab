@@ -30,11 +30,13 @@ import { sampleCentripetal, type SampledPoint } from './tracks/catmull-rom.js';
 import {
   applyAbs,
   applyCorneringBrakeControl,
+  applyLowSpeedWheelRotationLock,
   brakeFadeFactor,
   classifyEsc,
   computeAckermannAngles,
   computeAeroDownforce,
   computeAeroDrag,
+  computeAligningMoment,
   computeAntiPitchVertical,
   computeAxleArb,
   computeBumpStopForce,
@@ -44,7 +46,6 @@ import {
   computeFrontRollStiffnessShare,
   computeLateralLoadTransfer,
   computeLongitudinalLoadTransfer,
-  computeSelfAligningMoment,
   computeTcCut,
   computeToeSlipOffset,
   computeWheelHeadingBasis,
@@ -143,6 +144,27 @@ const LATERAL_ACCEL_CLAMP_MS2 = 2.5 * 9.81;
 // needed. Defaults match the Phase 1 plan and a typical sports tire.
 const TIRE_RELAXATION_LENGTH_LONG_M = 0.4;
 const TIRE_RELAXATION_LENGTH_LAT_M = 0.55;
+
+// Steering self-aligning geometry defaults. Each preset can override these
+// fields per car; values match the Phase 6 plan and a typical road sports
+// car geometry. The aligning moment helper consumes them per-wheel.
+const DEFAULT_PNEUMATIC_TRAIL_0_M = 0.042;
+const DEFAULT_PNEUMATIC_TRAIL_DECAY_DEG = 15;
+const DEFAULT_CASTER_TRAIL_SCALE_M_PER_DEG = 0.006;
+const DEFAULT_MECHANICAL_TRAIL_MAX_M = 0.065;
+const DEFAULT_SCRUB_RADIUS_M = 0.015;
+const DEFAULT_STEERING_ALIGN_TORQUE_MAX_NM = 220;
+const DEFAULT_STEERING_ALIGN_CENTRE_RATE_SCALE = 1;
+const STEERING_ALIGN_FILTER_HZ = 20;
+
+// Low-speed wheel-rotation lock thresholds. Values mirror the Phase 6E
+// plan defaults and match `applyLowSpeedWheelRotationLock`'s helper
+// defaults. The engine duplicates them here so callers can verify behaviour
+// against constants rather than literal numbers.
+const LOW_SPEED_WHEEL_LOCK_MPS = 0.4;
+const LOW_SPEED_WHEEL_BLEND_MPS = 0.8;
+const LOW_SPEED_DRIVE_UNLOCK_NM = 35;
+const LOW_SPEED_BRAKE_LOCK_NM = 50;
 
 const SURFACE_TABLE: Record<SurfaceId, { mu: number; roll: number }> = {
   RUBBER: { mu: 1.08, roll: 0.013 },
@@ -408,6 +430,27 @@ export class RacingEngine {
   private chassisMass = 1240;
   private readonly chassisInertia = new Vector3(1500, 1700, 450);
 
+  /**
+   * Steering self-aligning geometry resolved from the active vehicle preset.
+   * Per-wheel `Mz` is built from these knobs in the wheel pass and the
+   * front-axle aligning torque drives the keyboard self-centre signal.
+   */
+  private alignGeometry = {
+    pneumaticTrail0M: DEFAULT_PNEUMATIC_TRAIL_0_M,
+    pneumaticTrailDecayDeg: DEFAULT_PNEUMATIC_TRAIL_DECAY_DEG,
+    casterTrailScaleMPerDeg: DEFAULT_CASTER_TRAIL_SCALE_M_PER_DEG,
+    mechanicalTrailMaxM: DEFAULT_MECHANICAL_TRAIL_MAX_M,
+    scrubRadiusM: DEFAULT_SCRUB_RADIUS_M,
+    steeringAlignTorqueMaxNm: DEFAULT_STEERING_ALIGN_TORQUE_MAX_NM,
+    steeringAlignCentreRateScale: DEFAULT_STEERING_ALIGN_CENTRE_RATE_SCALE,
+  };
+  /**
+   * Low-pass filtered front-axle aligning feedback in `[-1, 1]`. Negative
+   * during a left turn (positive `steerCmd`) so the input model treats it
+   * as "assist the return" once the driver releases the steering key.
+   */
+  private steeringAlignFeedback = 0;
+
   // Mass distribution / CG geometry used by the rigid-body load-transfer
   // helpers. Sprung mass is derived as `chassisMass - unsprung sum` so total
   // chassis mass is always authoritative and presets can not silently
@@ -495,7 +538,10 @@ export class RacingEngine {
     escActive: false,
   };
 
-  readonly input = new RacingInput({ casterDeg: () => this.setup.casterDeg });
+  readonly input = new RacingInput({
+    alignFeedback: () =>
+      this.steeringAlignFeedback * this.alignGeometry.steeringAlignCentreRateScale,
+  });
 
   private surfaceLookup: SurfaceLookup | null = null;
   private centerline: SampledPoint[] = [];
@@ -668,6 +714,7 @@ export class RacingEngine {
     this.transmissionOmega = ENGINE_IDLE_OMEGA;
     this.engineDriveTorqueNm = 0;
     this.engineDragTorqueNm = 0;
+    this.steeringAlignFeedback = 0;
     this.gearIndex = 1; // Neutral
     for (const w of this.wheels) {
       w.omega = 0;
@@ -850,6 +897,20 @@ export class RacingEngine {
     this.unsprungCgHeightM = physics?.unsprungCgHeightM ?? DEFAULT_UNSPRUNG_CG_HEIGHT_M;
     this.unsprungMassFrontKg = physics?.unsprungMassFrontKg ?? DEFAULT_UNSPRUNG_MASS_PER_AXLE_KG;
     this.unsprungMassRearKg = physics?.unsprungMassRearKg ?? DEFAULT_UNSPRUNG_MASS_PER_AXLE_KG;
+    this.alignGeometry = {
+      pneumaticTrail0M: physics?.pneumaticTrail0M ?? DEFAULT_PNEUMATIC_TRAIL_0_M,
+      pneumaticTrailDecayDeg:
+        physics?.pneumaticTrailDecayDeg ?? DEFAULT_PNEUMATIC_TRAIL_DECAY_DEG,
+      casterTrailScaleMPerDeg:
+        physics?.casterTrailScaleMPerDeg ?? DEFAULT_CASTER_TRAIL_SCALE_M_PER_DEG,
+      mechanicalTrailMaxM: physics?.mechanicalTrailMaxM ?? DEFAULT_MECHANICAL_TRAIL_MAX_M,
+      scrubRadiusM: physics?.scrubRadiusM ?? DEFAULT_SCRUB_RADIUS_M,
+      steeringAlignTorqueMaxNm:
+        physics?.steeringAlignTorqueMaxNm ?? DEFAULT_STEERING_ALIGN_TORQUE_MAX_NM,
+      steeringAlignCentreRateScale:
+        physics?.steeringAlignCentreRateScale ?? DEFAULT_STEERING_ALIGN_CENTRE_RATE_SCALE,
+    };
+    this.steeringAlignFeedback = 0;
     const defaults = makeDefaultDrivetrainParams(this.vehicle.diffType);
     this.drivetrainParams = {
       engineInertia: physics?.engineInertiaKgM2 ?? defaults.engineInertia,
@@ -1069,6 +1130,14 @@ export class RacingEngine {
       maxDriveSlip,
       threshold: aids.tcThreshold,
       window: aids.tcWindow,
+      // Feed the prior step's sideslip into TC so the drift back-off in
+      // `computeTcCut` actually triggers during a deliberate slide.
+      // Without this the TC `driftScale` defaults to 1 and full TC
+      // authority cuts engine torque the moment rear wheels start to
+      // spin, which kills the throttle-in-slide forward bite that drives
+      // load transfer to the rear axle. `classifyEsc` below already
+      // consumes the same value the same way.
+      sideslipDeg: this.sideslipRad * DEG,
     });
     aids.tcCut = tc.cut;
     aids.driveSlip = tc.driveSlip;
@@ -1239,6 +1308,9 @@ export class RacingEngine {
 
     const totalForce = new Vector3();
     const totalTorque = new Vector3();
+
+    let frontAlignMz = 0;
+    let frontAlignLoad = 0;
 
     for (let i = 0; i < this.wheels.length; i++) {
       const w = this.wheels[i];
@@ -1414,7 +1486,29 @@ export class RacingEngine {
       let Fx = tire.fx;
       let Fy = tire.fy;
 
-      w.mz = computeSelfAligningMoment({ slipAngleRad: slipAngle, fySlip: Fy });
+      // Phase 6A aligning moment: pneumatic trail decays with slip, caster
+      // adds mechanical trail at the front, and scrub-radius couples the
+      // longitudinal force into yaw. Caster and scrub are front-axle
+      // concerns — rear wheels report a pneumatic-only Mz.
+      const alignCasterDeg = w.steer ? this.setup.casterDeg : 0;
+      const alignScrubRadius = w.steer ? this.alignGeometry.scrubRadiusM : 0;
+      const alignResult = computeAligningMoment({
+        slipAngleRad: slipAngle,
+        fySlip: Fy,
+        fx: Fx,
+        casterDeg: alignCasterDeg,
+        pneumaticTrail0M: this.alignGeometry.pneumaticTrail0M,
+        pneumaticTrailDecayDeg: this.alignGeometry.pneumaticTrailDecayDeg,
+        casterTrailScaleMPerDeg: this.alignGeometry.casterTrailScaleMPerDeg,
+        mechanicalTrailMaxM: this.alignGeometry.mechanicalTrailMaxM,
+        scrubRadiusM: alignScrubRadius,
+        scrubSign: w.lateralSign,
+      });
+      w.mz = alignResult.mz;
+      if (isFront) {
+        frontAlignMz += alignResult.mz;
+        frontAlignLoad += fz;
+      }
 
       const rollRad = this.rollDeg * RAD;
       const casterCamberRad = w.steer
@@ -1440,9 +1534,19 @@ export class RacingEngine {
         dt,
       });
 
-      const lowSpeedScale = clamp(speed / 1.5, 0, 1);
-      Fy *= lowSpeedScale;
-      Fx *= 0.4 + 0.6 * lowSpeedScale;
+      // Phase 6F removed the broad `lowSpeedScale` fade. Dynamic slip with
+      // relaxation lag (Phase 1) + the post-drivetrain wheel-rotation lock
+      // (Phase 6E) now handle low-speed behaviour without the artificial
+      // ramp. We keep a narrow Fy-only standstill blend in the bottom
+      // 0.2 m/s of total chassis speed so a stray atan2-driven sideslip
+      // sample at exact rest cannot inject a tire-side lateral kick;
+      // longitudinal force passes through at full authority so launch
+      // grip is whatever Pacejka and the contact patch can actually
+      // produce.
+      const STANDSTILL_FY_FLOOR_MPS = 0.2;
+      if (speed < STANDSTILL_FY_FLOOR_MPS) {
+        Fy *= clamp(speed / STANDSTILL_FY_FLOOR_MPS, 0, 1);
+      }
 
       // Phase 2 removed the isotropic `hypot(Fx, Fy) <= tireD(mu, fz)`
       // friction-circle clamp. Combined-slip MF saturates naturally — the
@@ -1482,6 +1586,22 @@ export class RacingEngine {
       w._frx = Frx;
       w._vx = vx;
     }
+
+    // Phase 6C front-axle aligning feedback. Sum the front-wheel Mz and
+    // divide by the configured authority, then low-pass at ~20 Hz. Sign:
+    // in this engine a left turn (positive `steerCmd`) produces negative
+    // front `fySlip` and therefore negative pneumatic Mz, so the same
+    // negative sign already reaches the input model as "assist return for
+    // positive `steerCmd`". A right turn flips both signs symmetrically.
+    // The front-load gate forces the signal back to zero at standstill or
+    // when the front wheels lose contact with the surface.
+    const FRONT_LOAD_GATE_N = 200;
+    const alignNorm =
+      frontAlignLoad > FRONT_LOAD_GATE_N && this.alignGeometry.steeringAlignTorqueMaxNm > 0
+        ? clamp(frontAlignMz / this.alignGeometry.steeringAlignTorqueMaxNm, -1, 1)
+        : 0;
+    const alignAlpha = 1 - Math.exp(-STEERING_ALIGN_FILTER_HZ * dt);
+    this.steeringAlignFeedback += (alignNorm - this.steeringAlignFeedback) * alignAlpha;
 
     this.appliedForce.copy(totalForce);
     this.appliedTorque.copy(totalTorque);
@@ -1597,6 +1717,28 @@ export class RacingEngine {
     for (let i = 0; i < this.wheels.length; i++) {
       const w = this.wheels[i];
       let omega = result.wheelOmegas[i];
+      // Phase 6E low-speed wheel-rotation lock. Below the lock-speed window
+      // the contact patch barely moves, so tiny slip-ratio errors can
+      // otherwise grow into forward/backward chatter (the legacy
+      // `slipEps = 1.5` cliff was masking exactly this). The lock pins the
+      // wheel angular velocity to `vx / r` while drive torque stays small
+      // and clamps it to zero when the brake is firmly applied; both
+      // unlock automatically once real torque is present. Airborne wheels
+      // skip the lock entirely (no contact patch).
+      if (w.contact) {
+        const lock = applyLowSpeedWheelRotationLock({
+          vx: w._vx,
+          omega,
+          radius: w.radius,
+          driveTorqueNm: this.driveTorqueByWheel[i] ?? 0,
+          brakeTorqueNm: w.brakeTorqueApplied,
+          lockSpeedMps: LOW_SPEED_WHEEL_LOCK_MPS,
+          blendSpeedMps: LOW_SPEED_WHEEL_BLEND_MPS,
+          driveUnlockTorqueNm: LOW_SPEED_DRIVE_UNLOCK_NM,
+          brakeLockTorqueNm: LOW_SPEED_BRAKE_LOCK_NM,
+        });
+        omega = lock.omega;
+      }
       // Small per-step damping. Stronger for airborne wheels so a
       // freely-spinning wheel does not pin the engine to redline forever
       // through the locked-clutch kinematic coupling.

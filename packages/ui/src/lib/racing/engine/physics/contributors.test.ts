@@ -830,6 +830,92 @@ describe('driver aids', () => {
     expect(r.cut).toBeGreaterThan(0);
     expect(r.cut).toBeLessThanOrEqual(0.88);
   });
+  it('TC drift back-off: omitted sideslip behaves the same as zero (regression guard)', () => {
+    const omitted = computeTcCut({
+      enabled: true,
+      driverThrottle: 1,
+      speedKmh: 30,
+      maxDriveSlip: 0.25,
+      threshold: 0.12,
+      window: 0.18,
+    });
+    const explicitZero = computeTcCut({
+      enabled: true,
+      driverThrottle: 1,
+      speedKmh: 30,
+      maxDriveSlip: 0.25,
+      threshold: 0.12,
+      window: 0.18,
+      sideslipDeg: 0,
+    });
+    expect(omitted.cut).toBeCloseTo(explicitZero.cut, 12);
+  });
+  it('TC drift back-off reduces cut when sideslip is moderate', () => {
+    const grip = computeTcCut({
+      enabled: true,
+      driverThrottle: 1,
+      speedKmh: 30,
+      maxDriveSlip: 0.25,
+      threshold: 0.12,
+      window: 0.18,
+      sideslipDeg: 0,
+    });
+    const slide = computeTcCut({
+      enabled: true,
+      driverThrottle: 1,
+      speedKmh: 30,
+      maxDriveSlip: 0.25,
+      threshold: 0.12,
+      window: 0.18,
+      sideslipDeg: 20,
+    });
+    expect(slide.cut).toBeLessThan(grip.cut);
+    expect(slide.cut).toBeGreaterThan(0);
+  });
+  it('TC drift back-off floors at TC_DRIFT_FLOOR past full back-off angle', () => {
+    const grip = computeTcCut({
+      enabled: true,
+      driverThrottle: 1,
+      speedKmh: 30,
+      maxDriveSlip: 0.25,
+      threshold: 0.12,
+      window: 0.18,
+      sideslipDeg: 0,
+    });
+    const fullDrift = computeTcCut({
+      enabled: true,
+      driverThrottle: 1,
+      speedKmh: 30,
+      maxDriveSlip: 0.25,
+      threshold: 0.12,
+      window: 0.18,
+      sideslipDeg: 25,
+    });
+    const beyond = computeTcCut({
+      enabled: true,
+      driverThrottle: 1,
+      speedKmh: 30,
+      maxDriveSlip: 0.25,
+      threshold: 0.12,
+      window: 0.18,
+      sideslipDeg: 60,
+    });
+    // Floor multiplier is 0.2; cut should approach `grip.cut * 0.2`.
+    expect(fullDrift.cut).toBeCloseTo(grip.cut * 0.2, 6);
+    // Sign symmetric: negative sideslip behaves the same as positive.
+    const negative = computeTcCut({
+      enabled: true,
+      driverThrottle: 1,
+      speedKmh: 30,
+      maxDriveSlip: 0.25,
+      threshold: 0.12,
+      window: 0.18,
+      sideslipDeg: -25,
+    });
+    expect(negative.cut).toBeCloseTo(fullDrift.cut, 12);
+    // Past the back-off angle the cut stays clamped at the floor.
+    expect(beyond.cut).toBeCloseTo(fullDrift.cut, 12);
+  });
   it('ESC classifies oversteer when yaw error matches turn direction', () => {
     const r = classifyEsc({
       enabled: true,
