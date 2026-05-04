@@ -37,6 +37,11 @@
     "brakeTorqueMaxNm": 4700,
     "brakeBiasFront": 0.6,
     "cdAreaM2": 0.74,
-    "yawAeroCoeff": 0.12
+    "yawAeroCoeff": 0.12,
+    "cgHeightM": 0.52,
+    "sprungCgHeightM": 0.55,
+    "unsprungCgHeightM": 0.32,
+    "unsprungMassFrontKg": 88,
+    "unsprungMassRearKg": 90
   }
 }

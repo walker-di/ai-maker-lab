@@ -88,6 +88,41 @@
         <div class="debug-row"><span>Cam</span><span>{model.state.cameraMode}</span></div>
       </div>
     </div>
+    <div class="panel drivetrain-card" data-testid="hud-drivetrain">
+      <span class="label">Drivetrain</span>
+      <div class="debug-grid">
+        <div class="debug-row"><span>Engine</span><span>{Math.round(model.state.drivetrain.engineOmega * (60 / (2 * Math.PI)))} rpm</span></div>
+        <div class="debug-row"><span>Trans</span><span>{(model.state.drivetrain.transmissionOmega * (60 / (2 * Math.PI))).toFixed(0)} rpm</span></div>
+        <div class="debug-row"><span>Clutch</span><span>{model.state.drivetrain.clutchMode} · {model.state.drivetrain.clutchTorqueNm.toFixed(0)} Nm</span></div>
+        <div class="debug-row"><span>Drive T</span><span>{model.state.drivetrain.engineDriveTorqueNm.toFixed(0)} Nm</span></div>
+        <div class="debug-row"><span>Drag T</span><span>{model.state.drivetrain.engineDragTorqueNm.toFixed(0)} Nm</span></div>
+        <div class="debug-row"><span>FL/FR drv</span><span>{model.state.wheels[0].driveTorqueNm.toFixed(0)} / {model.state.wheels[1].driveTorqueNm.toFixed(0)}</span></div>
+        <div class="debug-row"><span>RL/RR drv</span><span>{model.state.wheels[2].driveTorqueNm.toFixed(0)} / {model.state.wheels[3].driveTorqueNm.toFixed(0)}</span></div>
+      </div>
+    </div>
+    <div class="panel aero-card" data-testid="hud-aero">
+      <span class="label">Aero</span>
+      <div class="debug-grid">
+        <div class="debug-row"><span>DF Front</span><span>{model.state.aero.frontDownforceN.toFixed(0)} N</span></div>
+        <div class="debug-row"><span>DF Rear</span><span>{model.state.aero.rearDownforceN.toFixed(0)} N</span></div>
+        <div class="debug-row"><span>Total DF</span><span>{(model.state.aero.frontDownforceN + model.state.aero.rearDownforceN).toFixed(0)} N</span></div>
+        <div class="debug-row"><span>Drag</span><span>{model.state.aero.dragN.toFixed(0)} N</span></div>
+      </div>
+    </div>
+    <div class="panel tire-card" data-testid="hud-tire-utilization">
+      <span class="label">Tire utilization</span>
+      <div class="debug-grid">
+        {#each model.state.wheels as wheel (wheel.index)}
+          {@const pct = Math.max(0, Math.min(1.2, wheel.tireUtilization))}
+          {@const corner = ['FL', 'FR', 'RL', 'RR'][wheel.index] ?? `W${wheel.index}`}
+          <div class="debug-row tire-row">
+            <span>{corner}</span>
+            <span class="tire-bar"><span class="tire-fill" class:hot={pct > 0.95} style="--pct: {Math.min(pct, 1.2) / 1.2}"></span></span>
+            <span class="tire-num">{(pct * 100).toFixed(0)}%</span>
+          </div>
+        {/each}
+      </div>
+    </div>
     <BrakeBalancePanel wheels={model.state.wheels} />
   {/if}
 
@@ -172,6 +207,61 @@
     width: 220px;
     display: grid;
     gap: 8px;
+  }
+  .drivetrain-card {
+    position: absolute;
+    bottom: 230px;
+    left: 14px;
+    padding: 12px;
+    width: 240px;
+    display: grid;
+    gap: 8px;
+  }
+  .aero-card {
+    position: absolute;
+    bottom: 100px;
+    left: 14px;
+    padding: 12px;
+    width: 200px;
+    display: grid;
+    gap: 8px;
+  }
+  .tire-card {
+    position: absolute;
+    bottom: 100px;
+    left: 230px;
+    padding: 12px;
+    width: 240px;
+    display: grid;
+    gap: 8px;
+  }
+  .tire-row {
+    align-items: center;
+    grid-template-columns: 32px 1fr 44px;
+    display: grid !important;
+    gap: 8px;
+  }
+  .tire-bar {
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(119, 207, 255, 0.12);
+    overflow: hidden;
+    display: block;
+  }
+  .tire-fill {
+    display: block;
+    height: 100%;
+    width: calc(var(--pct, 0) * 100%);
+    background: linear-gradient(90deg, #66f09f 0%, #f1c86b 70%, #ff7070 100%);
+    transition: width 80ms linear;
+  }
+  .tire-fill.hot {
+    box-shadow: 0 0 6px rgba(255, 112, 112, 0.8);
+  }
+  .tire-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: #77cfff;
   }
   .label {
     font-size: 10px;

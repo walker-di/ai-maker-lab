@@ -33,10 +33,14 @@ describe('racing physics module edge coverage', () => {
     expect(tireD(1.15, TIRE_FZ_REF)).toBeCloseTo(1.15 * TIRE_FZ_REF, 8);
   });
 
-  it('pacejka falloff trims lateral force past the peak angle', () => {
-    const noFalloff = Math.abs(pacejkaLat(14 * DEG, 3500, 1, 0));
-    const withFalloff = Math.abs(pacejkaLat(14 * DEG, 3500, 1, 0.35));
-    expect(withFalloff).toBeLessThan(noFalloff);
+  it('pacejka lateral curve falls back from its peak past the reference angle', () => {
+    // Phase 2 dropped the legacy `fall` post-peak heuristic — load- and
+    // curvature-aware MF coefficients (`pEy1`, `pDy2`) now produce the
+    // post-peak grip drop directly. Verify the curve still rolls off past
+    // the peak instead of growing unboundedly with slip angle.
+    const peak = Math.abs(pacejkaLat(7 * DEG, 3500, 1));
+    const past = Math.abs(pacejkaLat(20 * DEG, 3500, 1));
+    expect(past).toBeLessThan(peak);
   });
 
   it('engine curve interpolates between control points and clamps above max rpm', () => {

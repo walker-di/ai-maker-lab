@@ -42,6 +42,50 @@ export interface VehiclePhysicsPreset {
   brakeBiasFront?: number;
   cdAreaM2?: number;
   yawAeroCoeff?: number;
+  /**
+   * Effective `Cl · A` for the front axle (m²). Positive values create
+   * downward aerodynamic load on the front tires that grows with speed
+   * squared. Defaults to 0 so existing road-car presets are unchanged.
+   */
+  clAreaFrontM2?: number;
+  /** Effective `Cl · A` for the rear axle (m²). Defaults to 0. */
+  clAreaRearM2?: number;
+  /** Total chassis CG height above the contact patches (m). */
+  cgHeightM?: number;
+  /** Sprung-mass CG height above the contact patches (m). */
+  sprungCgHeightM?: number;
+  /** Unsprung-mass CG height above the contact patches (m), ~ wheel centre. */
+  unsprungCgHeightM?: number;
+  /** Total unsprung mass on the front axle (kg). Wheels + hubs + brakes. */
+  unsprungMassFrontKg?: number;
+  /** Total unsprung mass on the rear axle (kg). */
+  unsprungMassRearKg?: number;
+  /** Crankshaft + rotating engine assembly inertia (kg·m²). */
+  engineInertiaKgM2?: number;
+  /** Flywheel inertia (kg·m²) added to the engine side of the clutch. */
+  flywheelInertiaKgM2?: number;
+  /** Gearbox input shaft inertia (kg·m²) on the clutch output side. */
+  gearboxInputInertiaKgM2?: number;
+  /** Propshaft inertia (kg·m²) reflected through the gear ratio. */
+  propshaftInertiaKgM2?: number;
+  /** Differential carrier inertia (kg·m²) reflected through the final drive. */
+  diffInertiaKgM2?: number;
+  /** Kinetic clutch torque cap (Nm). */
+  clutchMaxTorqueNm?: number;
+  /** Static-friction multiplier on the kinetic torque cap (>= 1). */
+  clutchStaticFactor?: number;
+  /** Stick band on engine-vs-input slip (rad/s) within which the clutch tries to lock. */
+  clutchStickThresholdRadPerSec?: number;
+  /** Number of internal substeps for the rotational drivetrain solver. */
+  drivetrainSubsteps?: number;
+  /** Salisbury LSD preload torque (Nm) applied even on coast/zero throttle. */
+  diffPreloadNm?: number;
+  /** Salisbury LSD maximum lock torque (Nm). */
+  diffCapacityNm?: number;
+  /** Salisbury LSD power-side ramp coefficient (0..1). */
+  diffPowerRamp?: number;
+  /** Salisbury LSD coast-side ramp coefficient (0..1). */
+  diffCoastRamp?: number;
 }
 
 export interface VehiclePreset {

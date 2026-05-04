@@ -5,7 +5,27 @@
  */
 
 export { tireD, TIRE_FZ_REF, TIRE_LOAD_FALLOFF } from './tire-load.js';
-export { pacejkaLat, pacejkaLong } from './pacejka.js';
+export {
+  computeLongitudinalLoadTransfer,
+  computeLateralLoadTransfer,
+  computeFrontRollStiffnessShare,
+  type LongitudinalLoadTransferInput,
+  type LateralLoadTransferInput,
+  type LateralLoadTransferResult,
+  type FrontRollStiffnessShareInput,
+} from './load-transfer.js';
+export {
+  pacejkaLat,
+  pacejkaLong,
+  evaluatePacejka56Combined,
+  DEFAULT_PACEJKA56_PARAMS,
+  DEFAULT_PACEJKA56_FRONT,
+  DEFAULT_PACEJKA56_REAR,
+  type Pacejka56Axle,
+  type Pacejka56AxleParams,
+  type Pacejka56Input,
+  type Pacejka56Result,
+} from './pacejka.js';
 export {
   ENGINE_CURVE,
   ENGINE_REDLINE,
@@ -16,8 +36,15 @@ export { computeAckermannAngles, type AckermannPair } from './ackermann.js';
 export {
   computeWheelHeadingBasis,
   computeSlipAngleRad,
+  computeWheelSlipTargets,
   type WheelHeadingBasis,
+  type WheelSlipTargetInput,
+  type WheelSlipTargets,
 } from './wheel-kinematics.js';
+export {
+  stepRelaxedSlip,
+  type RelaxationStepInput,
+} from './relaxation.js';
 export { computeMotionRatio } from './motion-ratio.js';
 export { computeBumpStopForce } from './bump-stop.js';
 export { computeCasterCamber } from './caster-camber.js';
@@ -45,28 +72,53 @@ export {
   type BrakeThermalStep,
 } from './brakes.js';
 export {
+  computeAeroDownforce,
   computeAeroDrag,
   computeYawRestoringMoment,
+  type AeroDownforceInput,
+  type AeroDownforceResult,
   type AeroDragInput,
   type AeroDragResult,
   type YawRestoringInput,
 } from './aero.js';
-export { computeSelfAligningMoment, type MzInput } from './mz.js';
+export {
+  computeAligningMoment,
+  computeSelfAligningMoment,
+  type AligningMomentInput,
+  type AligningMomentResult,
+  type MzInput,
+} from './mz.js';
+export {
+  applyLowSpeedWheelRotationLock,
+  type LowSpeedWheelLockInput,
+  type LowSpeedWheelLockResult,
+} from './low-speed-wheel.js';
 export {
   applyCorneringBrakeControl,
   type CbcOptions,
   type WheelQuad,
 } from './brake-balance.js';
 export {
+  stepDrivetrain,
+  applySalisburyDiff,
   computeClutchTorque,
   applyDiffCoupling,
   stepEngineOmega,
+  type AxlePosition,
+  type AxleSide,
+  type ClutchMode,
   type ClutchTorqueInput,
   type ClutchTorqueResult,
   type DiffStepInput,
   type DiffStepResult,
   type DiffType,
+  type DrivetrainParams,
+  type DrivetrainStepInput,
+  type DrivetrainStepResult,
+  type DrivetrainWheelInput,
   type EngineStepInput,
+  type SalisburyDiffInput,
+  type SalisburyDiffResult,
 } from './drivetrain.js';
 export {
   applyAbs,

@@ -91,7 +91,12 @@ describe('racing sim physics helpers', () => {
     expect(left.lateralZ).toBeCloseTo(-right.lateralZ, 8);
   });
 
-  it('slip angle flips sign with lateral velocity and clamps low-speed longitudinal input', () => {
+  it('legacy computeSlipAngleRad still encodes the historical 1.5 m/s clamp for back-compat', () => {
+    // The engine pipeline no longer uses this helper — it has been
+    // replaced by `computeWheelSlipTargets` + `stepRelaxedSlip` which
+    // remove the artificial low-speed cliff. The helper is kept only so
+    // external callers / regression baselines still work; this test
+    // pins its historical behaviour rather than the new tire frame.
     expect(computeSlipAngleRad(20, 0)).toBeCloseTo(0, 8);
     expect(computeSlipAngleRad(20, 2)).toBeLessThan(0);
     expect(computeSlipAngleRad(20, -2)).toBeGreaterThan(0);

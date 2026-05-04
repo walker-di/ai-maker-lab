@@ -54,6 +54,33 @@ export interface VehiclePhysicsPreset {
   brakeBiasFront?: number;
   cdAreaM2?: number;
   yawAeroCoeff?: number;
+  /** Effective `Cl · A` for the front axle (m²). Defaults to 0 (no downforce). */
+  clAreaFrontM2?: number;
+  /** Effective `Cl · A` for the rear axle (m²). Defaults to 0 (no downforce). */
+  clAreaRearM2?: number;
+  /** Total chassis CG height above the contact patches (m). */
+  cgHeightM?: number;
+  /** Sprung-mass CG height above the contact patches (m). */
+  sprungCgHeightM?: number;
+  /** Unsprung-mass CG height above the contact patches (m), ~ wheel centre. */
+  unsprungCgHeightM?: number;
+  /** Total unsprung mass on the front axle (kg). Wheels + hubs + brakes. */
+  unsprungMassFrontKg?: number;
+  /** Total unsprung mass on the rear axle (kg). */
+  unsprungMassRearKg?: number;
+  engineInertiaKgM2?: number;
+  flywheelInertiaKgM2?: number;
+  gearboxInputInertiaKgM2?: number;
+  propshaftInertiaKgM2?: number;
+  diffInertiaKgM2?: number;
+  clutchMaxTorqueNm?: number;
+  clutchStaticFactor?: number;
+  clutchStickThresholdRadPerSec?: number;
+  drivetrainSubsteps?: number;
+  diffPreloadNm?: number;
+  diffCapacityNm?: number;
+  diffPowerRamp?: number;
+  diffCoastRamp?: number;
 }
 
 export interface VehiclePreset {

@@ -410,8 +410,13 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 			snap.wheels.map((w) => ({
 				index: w.index,
 				fz: w.fz,
+				fx: w.fx,
+				fy: w.fy,
 				slipRatio: w.slipRatio,
 				slipAngle: w.slipAngle,
+				combinedSlip: w.combinedSlip,
+				tireUtilization: w.tireUtilization,
+				driveTorqueNm: w.driveTorqueNm,
 				surface: w.surface,
 				tempC: w.tempC,
 				brakeTempC: w.brakeTempC,
@@ -423,12 +428,36 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 				yawContribution: w.yawContribution,
 			})),
 		);
+		hud.setDrivetrain({
+			engineOmega: snap.drivetrain.engineOmega,
+			transmissionOmega: snap.drivetrain.transmissionOmega,
+			clutchTorqueNm: snap.drivetrain.clutchTorqueNm,
+			clutchMode: snap.drivetrain.clutchMode,
+			engineDriveTorqueNm: snap.drivetrain.engineDriveTorqueNm,
+			engineDragTorqueNm: snap.drivetrain.engineDragTorqueNm,
+		});
+		hud.setAero({
+			frontDownforceN: snap.aero.frontDownforceN,
+			rearDownforceN: snap.aero.rearDownforceN,
+			dragN: snap.aero.dragN,
+		});
+		// Telemetry trace lane: pick the value that matches the active mode
+		// so the trace line's vertical scale stays meaningful when the user
+		// toggles between load / slip / utilization.
+		const traceMode = hud.state.telemetryMode;
+		const pickTrace = (i: number): number => {
+			const w = snap.wheels[i];
+			if (!w) return 0;
+			if (traceMode === 'load') return w.fz;
+			if (traceMode === 'utilization') return w.tireUtilization;
+			return w.slipRatio;
+		};
 		hud.pushTelemetry(
 			{
-				fl: hud.state.telemetryMode === 'load' ? snap.wheels[0]?.fz ?? 0 : snap.wheels[0]?.slipRatio ?? 0,
-				fr: hud.state.telemetryMode === 'load' ? snap.wheels[1]?.fz ?? 0 : snap.wheels[1]?.slipRatio ?? 0,
-				rl: hud.state.telemetryMode === 'load' ? snap.wheels[2]?.fz ?? 0 : snap.wheels[2]?.slipRatio ?? 0,
-				rr: hud.state.telemetryMode === 'load' ? snap.wheels[3]?.fz ?? 0 : snap.wheels[3]?.slipRatio ?? 0,
+				fl: pickTrace(0),
+				fr: pickTrace(1),
+				rl: pickTrace(2),
+				rr: pickTrace(3),
 			},
 			{ latG: snap.accelLatG, longG: snap.accelLongG },
 		);

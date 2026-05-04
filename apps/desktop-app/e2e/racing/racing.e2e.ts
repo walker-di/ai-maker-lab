@@ -845,4 +845,143 @@ test.describe('Racing Sim browser physics regressions', () => {
 		// the chassis still rolling forward.
 		expect(recoveredState.speedKmh).toBeGreaterThan(3);
 	});
+
+	// ----------------------------------------------------------------
+	// Phase 7 — debug telemetry rendering and tuning HUD invariants.
+	// These exercise the new drivetrain / aero / tire-utilization
+	// debug panels that the engine now feeds via `setDrivetrain`,
+	// `setAero`, and the per-wheel `tireUtilization` field.
+	// ----------------------------------------------------------------
+
+	test('debug toggle reveals drivetrain, aero, and tire-utilization telemetry panels', async ({ page }) => {
+		await page.goto('/experiments/racing');
+		const canvasHost = page.getByTestId('racing-canvas');
+		await expect(canvasHost).toBeVisible({ timeout: 15_000 });
+
+		await expect(page.getByTestId('hud-drivetrain')).toHaveCount(0);
+		await expect(page.getByTestId('hud-aero')).toHaveCount(0);
+		await expect(page.getByTestId('hud-tire-utilization')).toHaveCount(0);
+
+		await canvasHost.click();
+		await page.keyboard.press('t');
+
+		await expect(page.getByTestId('hud-debug')).toBeVisible({ timeout: 5_000 });
+		await expect(page.getByTestId('hud-drivetrain')).toBeVisible();
+		await expect(page.getByTestId('hud-aero')).toBeVisible();
+		await expect(page.getByTestId('hud-tire-utilization')).toBeVisible();
+		await expect(page.getByTestId('hud-drivetrain')).toContainText(/clutch/i);
+		await expect(page.getByTestId('hud-aero')).toContainText(/df front|df rear|drag/i);
+	});
+
+	test('drivetrain telemetry tracks engine RPM and clutch coupling under throttle', async ({ page }) => {
+		await page.goto('/experiments/racing');
+		await focusStageAndShiftToFirst(page);
+		await accelerateToSpeed(page, 5);
+
+		const drivetrain = await page.evaluate(() => {
+			const racing = (window as Window & {
+				__racing?: { hud?: { state?: {
+					drivetrain?: {
+						engineOmega: number;
+						transmissionOmega: number;
+						clutchTorqueNm: number;
+						clutchMode: string;
+						engineDriveTorqueNm: number;
+						engineDragTorqueNm: number;
+					};
+				} } };
+			}).__racing;
+			return racing?.hud?.state?.drivetrain ?? null;
+		});
+
+		expect(drivetrain).not.toBeNull();
+		if (!drivetrain) return;
+		expect(Number.isFinite(drivetrain.engineOmega)).toBe(true);
+		expect(Number.isFinite(drivetrain.transmissionOmega)).toBe(true);
+		expect(drivetrain.engineOmega).toBeGreaterThan(0);
+		expect(['locked', 'slipping']).toContain(drivetrain.clutchMode);
+	});
+
+	test('per-wheel tire-utilization stays finite while cornering', async ({ page }) => {
+		await page.goto('/experiments/racing');
+		await focusStageAndShiftToFirst(page);
+		await accelerateToSpeed(page, 18);
+
+		await page.keyboard.down('ArrowLeft');
+		await page.waitForTimeout(800);
+
+		const utilization = await page.evaluate(() => {
+			const racing = (window as Window & {
+				__racing?: { hud?: { state?: {
+					wheels?: Array<{ tireUtilization: number; combinedSlip: number }>;
+				} } };
+			}).__racing;
+			const wheels = racing?.hud?.state?.wheels ?? [];
+			return wheels.map((w) => ({ u: w.tireUtilization, c: w.combinedSlip }));
+		});
+		await page.keyboard.up('ArrowLeft');
+
+		expect(utilization.length).toBe(4);
+		for (const sample of utilization) {
+			expect(Number.isFinite(sample.u)).toBe(true);
+			expect(sample.u).toBeGreaterThanOrEqual(0);
+			// Combined-slip MF can briefly poke above the simple friction
+			// circle (mu·Fz) ceiling because pDx1/pDy1 can be slightly above
+			// 1, but it must stay well below the over-saturation cliff.
+			expect(sample.u).toBeLessThan(2);
+			expect(Number.isFinite(sample.c)).toBe(true);
+		}
+	});
+
+	test('aero downforce telemetry stays non-negative through normal driving', async ({ page }) => {
+		await page.goto('/experiments/racing');
+		await focusStageAndShiftToFirst(page);
+		await accelerateToSpeed(page, 15);
+
+		const aero = await page.evaluate(() => {
+			const racing = (window as Window & {
+				__racing?: { hud?: { state?: { aero?: {
+					frontDownforceN: number;
+					rearDownforceN: number;
+					dragN: number;
+				} } } };
+			}).__racing;
+			return racing?.hud?.state?.aero ?? null;
+		});
+
+		expect(aero).not.toBeNull();
+		if (!aero) return;
+		expect(aero.frontDownforceN).toBeGreaterThanOrEqual(0);
+		expect(aero.rearDownforceN).toBeGreaterThanOrEqual(0);
+		// Drag must oppose motion; the magnitude scales with v² and so it
+		// is positive whenever the chassis is moving.
+		expect(aero.dragN).toBeGreaterThanOrEqual(0);
+	});
+
+	test('launch from standstill keeps speed monotonic without HUD jitter', async ({ page }) => {
+		await page.goto('/experiments/racing');
+		await focusStageAndShiftToFirst(page);
+
+		await page.keyboard.down('w');
+		const samples: number[] = [];
+		const sampleEnd = Date.now() + 2_000;
+		while (Date.now() < sampleEnd) {
+			samples.push(await readHudSpeed(page));
+			await page.waitForTimeout(120);
+		}
+		await page.keyboard.up('w');
+
+		expect(samples.length).toBeGreaterThan(5);
+		// Final speed should be measurably higher than the initial sample.
+		expect(samples[samples.length - 1]).toBeGreaterThan(samples[0]);
+		// HUD speed is integer km/h, so a true "speed jitter" (engine
+		// solver oscillating around standstill) would show up as
+		// repeated drops > 1 km/h. Allow a single small dip for clutch
+		// pickup but reject a noisy launch.
+		let drops = 0;
+		for (let i = 1; i < samples.length; i++) {
+			if (samples[i] + 1 < samples[i - 1]) drops += 1;
+		}
+		expect(drops).toBeLessThan(2);
+	});
 });

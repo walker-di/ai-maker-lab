@@ -53,6 +53,10 @@ export interface TcInput {
   maxDriveSlip: number;
   threshold: number;
   window: number;
+  /** Optional sideslip magnitude (deg). Large sideslip means the driver is
+   *  intentionally drifting; TC authority backs off so opening the throttle
+   *  in a deliberate slide still produces forward bite. Defaults to 0. */
+  sideslipDeg?: number;
 }
 
 export interface TcResult {
@@ -61,17 +65,32 @@ export interface TcResult {
   driveSlip: number;
 }
 
+const TC_DRIFT_ENGAGE_DEG = 10;
+const TC_DRIFT_FULL_BACKOFF_DEG = 25;
+const TC_DRIFT_FLOOR = 0.2;
+
 export function computeTcCut(input: TcInput): TcResult {
   const driveSlip = input.maxDriveSlip;
   if (!input.enabled || input.driverThrottle <= 0.05 || input.speedKmh <= 8) {
     return { cut: 0, driveSlip };
   }
   if (driveSlip <= input.threshold) return { cut: 0, driveSlip };
-  const cut = Math.max(
+  const baseCut = Math.max(
     0,
     Math.min(0.88, (driveSlip - input.threshold) / Math.max(0.001, input.window)),
   );
-  return { cut, driveSlip };
+  // During a deliberate slide (high sideslip), reduce TC authority so the
+  // driver can hold a power slide on throttle. Full authority below
+  // `TC_DRIFT_ENGAGE_DEG`; floors at `TC_DRIFT_FLOOR` past
+  // `TC_DRIFT_FULL_BACKOFF_DEG`.
+  const sideslipMag = Math.abs(input.sideslipDeg ?? 0);
+  let driftScale = 1;
+  if (sideslipMag > TC_DRIFT_ENGAGE_DEG) {
+    const t = (sideslipMag - TC_DRIFT_ENGAGE_DEG) /
+      Math.max(0.001, TC_DRIFT_FULL_BACKOFF_DEG - TC_DRIFT_ENGAGE_DEG);
+    driftScale = Math.max(TC_DRIFT_FLOOR, 1 - t * (1 - TC_DRIFT_FLOOR));
+  }
+  return { cut: baseCut * driftScale, driveSlip };
 }
 
 export type EscMode = 'oversteer' | 'understeer' | 'stable';

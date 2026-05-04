@@ -82,6 +82,19 @@ export function validateVehiclePreset(input: unknown): ValidationResult {
       'brakeTorqueMaxNm',
       'cdAreaM2',
       'yawAeroCoeff',
+      'cgHeightM',
+      'sprungCgHeightM',
+      'unsprungCgHeightM',
+      'unsprungMassFrontKg',
+      'unsprungMassRearKg',
+      'engineInertiaKgM2',
+      'flywheelInertiaKgM2',
+      'gearboxInputInertiaKgM2',
+      'propshaftInertiaKgM2',
+      'diffInertiaKgM2',
+      'clutchMaxTorqueNm',
+      'clutchStickThresholdRadPerSec',
+      'diffCapacityNm',
     ] as const;
     for (const key of finitePositiveFields) {
       const value = physics[key];
@@ -94,6 +107,37 @@ export function validateVehiclePreset(input: unknown): ValidationResult {
       (!isFiniteNumber(physics.brakeBiasFront) || physics.brakeBiasFront < 0 || physics.brakeBiasFront > 1)
     ) {
       pushError(errors, 'physics.brakeBiasFront', 'invalid', 'brakeBiasFront must be in [0, 1]');
+    }
+    const nonNegativeFields = ['clAreaFrontM2', 'clAreaRearM2', 'diffPreloadNm'] as const;
+    for (const key of nonNegativeFields) {
+      const value = physics[key];
+      if (value !== undefined && (!isFiniteNumber(value) || value < 0)) {
+        pushError(errors, `physics.${key}`, 'invalid', `${key} must be >= 0 when provided`);
+      }
+    }
+    if (
+      physics.clutchStaticFactor !== undefined &&
+      (!isFiniteNumber(physics.clutchStaticFactor) || physics.clutchStaticFactor < 1)
+    ) {
+      pushError(errors, 'physics.clutchStaticFactor', 'invalid', 'clutchStaticFactor must be >= 1 when provided');
+    }
+    if (
+      physics.drivetrainSubsteps !== undefined &&
+      (!Number.isInteger(physics.drivetrainSubsteps) || physics.drivetrainSubsteps < 1)
+    ) {
+      pushError(
+        errors,
+        'physics.drivetrainSubsteps',
+        'invalid',
+        'drivetrainSubsteps must be an integer >= 1',
+      );
+    }
+    const rampFields = ['diffPowerRamp', 'diffCoastRamp'] as const;
+    for (const key of rampFields) {
+      const value = physics[key];
+      if (value !== undefined && (!isFiniteNumber(value) || value < 0 || value > 1)) {
+        pushError(errors, `physics.${key}`, 'invalid', `${key} must be in [0, 1] when provided`);
+      }
     }
   }
   return errors.length ? { ok: false, errors } : { ok: true };

@@ -30,35 +30,38 @@ import { sampleCentripetal, type SampledPoint } from './tracks/catmull-rom.js';
 import {
   applyAbs,
   applyCorneringBrakeControl,
-  applyDiffCoupling,
   brakeFadeFactor,
   classifyEsc,
   computeAckermannAngles,
+  computeAeroDownforce,
   computeAeroDrag,
   computeAntiPitchVertical,
   computeAxleArb,
   computeBumpStopForce,
   computeCamberThrust,
   computeCasterCamber,
-  computeClutchTorque,
   computeEscBrakeTargets,
+  computeFrontRollStiffnessShare,
+  computeLateralLoadTransfer,
+  computeLongitudinalLoadTransfer,
   computeSelfAligningMoment,
-  computeSlipAngleRad,
   computeTcCut,
   computeToeSlipOffset,
   computeWheelHeadingBasis,
+  computeWheelSlipTargets,
   computeYawRestoringMoment,
   ENGINE_IDLE,
   ENGINE_REDLINE,
   engineTorqueAt,
-  pacejkaLat,
-  pacejkaLong,
+  evaluatePacejka56Combined,
   stepBrakeTemperature,
-  stepEngineOmega,
+  stepDrivetrain,
+  stepRelaxedSlip,
   stepTireTemperature,
-  tireD,
   tireTempMu,
   TIRE_AMBIENT_C,
+  type DrivetrainParams,
+  type DrivetrainWheelInput,
 } from './physics/index.js';
 import type {
   DiffType,
@@ -85,6 +88,61 @@ const RAD = Math.PI / 180;
 const DEG = 180 / Math.PI;
 
 const DRIVE_EFFICIENCY = 0.93;
+
+const ENGINE_IDLE_OMEGA = ENGINE_IDLE * (2 * Math.PI / 60);
+const ENGINE_REDLINE_OMEGA = ENGINE_REDLINE * 1.05 * (2 * Math.PI / 60);
+
+/**
+ * Phase 5 drivetrain solver defaults. Each value can be overridden by the
+ * vehicle preset's `physics.*` field; presets that omit them keep the
+ * tuned-stock behaviour. See `applyVehiclePhysicsPreset()` for the full
+ * mapping.
+ */
+function makeDefaultDrivetrainParams(diffType: DiffType): DrivetrainParams {
+  return {
+    engineInertia: 0.18,
+    flywheelInertia: 0.08,
+    gearboxInputInertia: 0.035,
+    propshaftInertia: 0.025,
+    diffInertia: 0.06,
+    clutchMaxTorqueNm: 720,
+    clutchStaticFactor: 1.15,
+    clutchStickThresholdRadPerSec: 4,
+    drivetrainSubsteps: 4,
+    diffType,
+    diffPreloadNm: 60,
+    diffCapacityNm: 1200,
+    diffPowerRamp: 0.45,
+    diffCoastRamp: 0.30,
+    idleOmega: ENGINE_IDLE_OMEGA,
+    redlineOmega: ENGINE_REDLINE_OMEGA,
+  };
+}
+
+// Default centre-of-gravity geometry used when a vehicle preset omits the
+// matching `physics.*` field. Values are chosen for a generic sports car
+// with a 0.34 m wheel radius and a low cabin; per-vehicle JSON overrides
+// these in the catalog presets.
+const DEFAULT_CG_HEIGHT_M = 0.5;
+const DEFAULT_SPRUNG_CG_HEIGHT_M = 0.52;
+const DEFAULT_UNSPRUNG_CG_HEIGHT_M = 0.34;
+const DEFAULT_UNSPRUNG_MASS_PER_AXLE_KG = 80;
+
+// Lateral acceleration clamp (m/s²) when computing rigid-body load transfer.
+// 2.5 g is well past production-tire grip on dry asphalt and easily covers
+// authored race-tire presets, while still suppressing the spurious spikes
+// that show up after externally injected velocity changes (most commonly
+// inside tests). Without this, a single inflated `accelLatG` sample can
+// briefly invert axle load.
+const LATERAL_ACCEL_CLAMP_MS2 = 2.5 * 9.81;
+
+// Tire relaxation lengths (m). The contact patch must travel roughly one
+// `sigma` before the slip-driven force fully builds — that is what creates
+// the physically correct "tire takes a beat to respond" feel and removes
+// the artificial low-speed `slipEps = 1.5` cliff the legacy slip helper
+// needed. Defaults match the Phase 1 plan and a typical sports tire.
+const TIRE_RELAXATION_LENGTH_LONG_M = 0.4;
+const TIRE_RELAXATION_LENGTH_LAT_M = 0.55;
 
 const SURFACE_TABLE: Record<SurfaceId, { mu: number; roll: number }> = {
   RUBBER: { mu: 1.08, roll: 0.013 },
@@ -135,8 +193,22 @@ interface WheelState {
   fx: number;
   fy: number;
   mz: number;
+  /**
+   * Authoritative slip ratio fed into the tire force model. Equal to
+   * `slipRatioDynamic` on contact, reset to 0 when airborne. Public
+   * snapshot/HUD reads this field.
+   */
   slipRatio: number;
+  /** Authoritative slip angle (rad). See `slipRatio`. */
   slipAngle: number;
+  /** Instantaneous slip ratio target before relaxation lag. Diagnostics only. */
+  slipRatioTarget: number;
+  /** Instantaneous slip angle target (rad) before relaxation lag. Diagnostics only. */
+  slipAngleTarget: number;
+  /** Relaxation-filtered slip ratio. Carried across steps. */
+  slipRatioDynamic: number;
+  /** Relaxation-filtered slip angle (rad). Carried across steps. */
+  slipAngleDynamic: number;
   camberRad: number;
   slidePower: number;
 
@@ -154,6 +226,18 @@ interface WheelState {
   absScale: number;
   /** This wheel's contribution to chassis-up yaw torque this step (N·m). */
   yawContribution: number;
+  /**
+   * Effective contact-patch friction coefficient used to evaluate Pacejka
+   * this step (surface mu × tire-temp mu × any axle scale). Pure
+   * diagnostic surface — feeds the snapshot/HUD tire-utilization view.
+   */
+  mu: number;
+  /**
+   * Combined-slip magnitude `hypot(slipRatio, slipAngle)` (dimensionless,
+   * with the slip angle in radians). Useful for at-a-glance "how saturated
+   * is this tire" telemetry without needing to read both axes.
+   */
+  combinedSlip: number;
 
   // ARB pre-pass scratch.
   _preCompression: number;
@@ -164,6 +248,10 @@ interface WheelState {
   _fxFinal: number;
   _frx: number;
   _vx: number;
+  /** Rotational external torque this step (Nm). Tire reaction + brake +
+   *  handbrake + ESC, fed into the drivetrain solver. Drive torque is
+   *  applied by `stepDrivetrain` and is NOT included here. */
+  _externalTorque: number;
 }
 
 interface DriverAidsState {
@@ -230,8 +318,32 @@ export interface RacingEngineSnapshot {
   wheels: ReadonlyArray<{
     index: number;
     fz: number;
+    fx: number;
+    fy: number;
+    mz: number;
     slipRatio: number;
     slipAngle: number;
+    /** Instantaneous slip ratio target before relaxation lag. */
+    slipRatioTarget: number;
+    /** Instantaneous slip angle (rad) target before relaxation lag. */
+    slipAngleTarget: number;
+    /** Relaxation-filtered slip ratio carried across steps. */
+    slipRatioDynamic: number;
+    /** Relaxation-filtered slip angle (rad) carried across steps. */
+    slipAngleDynamic: number;
+    /** Effective camber (rad) used to evaluate camber thrust this step. */
+    camberRad: number;
+    /** `hypot(slipRatio, slipAngleRad)` — at-a-glance saturation. */
+    combinedSlip: number;
+    /** Effective contact-patch friction coefficient this step. */
+    mu: number;
+    /**
+     * Tire utilization in [0, 1+]: `hypot(Fx, Fy) / (mu * Fz)`. >1 means
+     * the tire is producing more force than the simple friction-circle
+     * ceiling — combined-slip MF can do this transiently because the
+     * peak coefficients (pDx1, pDy1) can be slightly above 1.
+     */
+    tireUtilization: number;
     surface: SurfaceId;
     tempC: number;
     brakeTempC: number;
@@ -240,7 +352,31 @@ export interface RacingEngineSnapshot {
     absScale: number;
     absActive: boolean;
     yawContribution: number;
+    /** Drive torque (Nm) routed to this wheel by the drivetrain solver. */
+    driveTorqueNm: number;
   }>;
+  drivetrain: {
+    /** Engine crank angular speed (rad/s). */
+    engineOmega: number;
+    /** Gearbox input shaft angular speed (rad/s). */
+    transmissionOmega: number;
+    /** Last clutch coupling torque (Nm). */
+    clutchTorqueNm: number;
+    /** `'locked'` (Karnopp stick) or `'slipping'`. */
+    clutchMode: 'locked' | 'slipping';
+    /** Engine drive torque the throttle pedal produced this step (Nm). */
+    engineDriveTorqueNm: number;
+    /** Engine pumping + friction drag magnitude this step (Nm). */
+    engineDragTorqueNm: number;
+  };
+  aero: {
+    /** Front-axle aero downforce magnitude (N). */
+    frontDownforceN: number;
+    /** Rear-axle aero downforce magnitude (N). */
+    rearDownforceN: number;
+    /** Magnitude of chassis-frame aero drag this step (N). */
+    dragN: number;
+  };
   lap: { lastMs: number | null; bestMs: number | null; t0: number | null };
 }
 
@@ -272,12 +408,29 @@ export class RacingEngine {
   private chassisMass = 1240;
   private readonly chassisInertia = new Vector3(1500, 1700, 450);
 
+  // Mass distribution / CG geometry used by the rigid-body load-transfer
+  // helpers. Sprung mass is derived as `chassisMass - unsprung sum` so total
+  // chassis mass is always authoritative and presets can not silently
+  // disagree with themselves.
+  private cgHeightM = DEFAULT_CG_HEIGHT_M;
+  private sprungCgHeightM = DEFAULT_SPRUNG_CG_HEIGHT_M;
+  private unsprungCgHeightM = DEFAULT_UNSPRUNG_CG_HEIGHT_M;
+  private unsprungMassFrontKg = DEFAULT_UNSPRUNG_MASS_PER_AXLE_KG;
+  private unsprungMassRearKg = DEFAULT_UNSPRUNG_MASS_PER_AXLE_KG;
+
   // Drivetrain state
   private engineOmega = ENGINE_IDLE * (2 * Math.PI / 60);
+  private transmissionOmega = ENGINE_IDLE * (2 * Math.PI / 60);
   private gearIndex = 1; // Reverse, Neutral, 1, 2, ... — N is index 1
-  private clutchStiffness = 350;
-  private clutchMaxTorque = 720;
-  private engineInertia = 0.18;
+  private engineDriveTorqueNm = 0;
+  private engineDragTorqueNm = 0;
+  /** Last clutch-coupling torque returned by `stepDrivetrain`, in Nm. */
+  private clutchTorqueNm = 0;
+  /** Last clutch-mode tag returned by `stepDrivetrain`. */
+  private clutchMode: 'locked' | 'slipping' = 'slipping';
+  /** Magnitude of the chassis-frame aerodynamic drag this step (N). */
+  private aeroDragMagN = 0;
+  private drivetrainParams: DrivetrainParams = makeDefaultDrivetrainParams('clutchLSD');
 
   // ARB
   private arbFront = 25000;
@@ -303,9 +456,17 @@ export class RacingEngine {
   // Aero
   private cdA = 0.7;
   private cyYaw = 0.1;
-
-  // Diff
-  private diff = { type: 'clutchLSD' as DiffType, powerLockPct: 0.45, coastLockPct: 0.3, preloadNm: 60, capacityNm: 1200 };
+  /** Effective `Cl · A` for the front axle (m²). 0 = no front downforce. */
+  private clAreaFront = 0;
+  /** Effective `Cl · A` for the rear axle (m²). 0 = no rear downforce. */
+  private clAreaRear = 0;
+  /**
+   * Per-axle aerodynamic downforce computed by the wheel pass and consumed
+   * by `runAero()` to cancel the chassis-up boost it introduces. Without
+   * the cancellation, adding downforce to per-wheel `fz` would also pump
+   * upward force into the rigid body via the contact-force projection.
+   */
+  private readonly lastAeroDownforce = { front: 0, rear: 0 };
 
   // Wheels (4)
   private readonly wheels: WheelState[] = [];
@@ -376,7 +537,6 @@ export class RacingEngine {
 
   setVehiclePreset(preset: VehiclePreset): void {
     this.vehicle = preset;
-    this.diff.type = preset.diffType;
     this.applyVehiclePhysicsPreset();
     this.buildWheels();
     this.resetCar();
@@ -504,7 +664,10 @@ export class RacingEngine {
     this.appliedTorque.set(0, 0, 0);
     this.prevLocalVelocity.set(0, 0, 0);
     this.lastStepDt = 1 / 240;
-    this.engineOmega = ENGINE_IDLE * (2 * Math.PI / 60);
+    this.engineOmega = ENGINE_IDLE_OMEGA;
+    this.transmissionOmega = ENGINE_IDLE_OMEGA;
+    this.engineDriveTorqueNm = 0;
+    this.engineDragTorqueNm = 0;
     this.gearIndex = 1; // Neutral
     for (const w of this.wheels) {
       w.omega = 0;
@@ -519,6 +682,13 @@ export class RacingEngine {
       w.brakeTempC = TIRE_AMBIENT_C;
       w.brakeFade = 1;
       w.prevCompression = 0;
+      w.slipRatio = 0;
+      w.slipAngle = 0;
+      w.slipRatioTarget = 0;
+      w.slipAngleTarget = 0;
+      w.slipRatioDynamic = 0;
+      w.slipAngleDynamic = 0;
+      w._externalTorque = 0;
     }
     this.lap.t0 = null;
     this.lap.prevSign = 0;
@@ -539,7 +709,10 @@ export class RacingEngine {
     this.runArbPrepass();
     this.runDrivetrainAndAids(dt);
     this.runWheelPass(dt);
-    this.runDiffCoupling(dt);
+    // Phase 5: integrated rotational chain (engine + clutch + gearbox +
+    // diff + driven wheels) advances together using the explicit tire /
+    // brake torque the wheel pass just stamped onto each wheel.
+    this.runDrivetrainRotationalStep(dt);
     this.runAero();
     this.lastStepDt = dt;
     this.integrateChassis(dt);
@@ -587,20 +760,49 @@ export class RacingEngine {
         escActive: this.driverAids.escActive,
         tcCut: this.driverAids.tcCut,
       },
-      wheels: this.wheels.map((w) => ({
-        index: w.index,
-        fz: w.fz,
-        slipRatio: w.slipRatio,
-        slipAngle: w.slipAngle,
-        surface: w.surface,
-        tempC: w.tempC,
-        brakeTempC: w.brakeTempC,
-        bumpStopPct: w.bumpStopPct,
-        brakeTorqueApplied: w.brakeTorqueApplied,
-        absScale: w.absScale,
-        absActive: w.absActive,
-        yawContribution: w.yawContribution,
-      })),
+      wheels: this.wheels.map((w, i) => {
+        const ceiling = Math.max(1e-3, w.mu * w.fz);
+        const tireUtilization = Math.hypot(w.fx, w.fy) / ceiling;
+        return {
+          index: w.index,
+          fz: w.fz,
+          fx: w.fx,
+          fy: w.fy,
+          mz: w.mz,
+          slipRatio: w.slipRatio,
+          slipAngle: w.slipAngle,
+          slipRatioTarget: w.slipRatioTarget,
+          slipAngleTarget: w.slipAngleTarget,
+          slipRatioDynamic: w.slipRatioDynamic,
+          slipAngleDynamic: w.slipAngleDynamic,
+          camberRad: w.camberRad,
+          combinedSlip: w.combinedSlip,
+          mu: w.mu,
+          tireUtilization,
+          surface: w.surface,
+          tempC: w.tempC,
+          brakeTempC: w.brakeTempC,
+          bumpStopPct: w.bumpStopPct,
+          brakeTorqueApplied: w.brakeTorqueApplied,
+          absScale: w.absScale,
+          absActive: w.absActive,
+          yawContribution: w.yawContribution,
+          driveTorqueNm: this.driveTorqueByWheel[i] ?? 0,
+        };
+      }),
+      drivetrain: {
+        engineOmega: this.engineOmega,
+        transmissionOmega: this.transmissionOmega,
+        clutchTorqueNm: this.clutchTorqueNm,
+        clutchMode: this.clutchMode,
+        engineDriveTorqueNm: this.engineDriveTorqueNm,
+        engineDragTorqueNm: this.engineDragTorqueNm,
+      },
+      aero: {
+        frontDownforceN: this.lastAeroDownforce.front,
+        rearDownforceN: this.lastAeroDownforce.rear,
+        dragN: this.aeroDragMagN,
+      },
       lap: { lastMs: this.lap.lastMs, bestMs: this.lap.bestMs, t0: this.lap.t0 },
     };
   }
@@ -639,6 +841,35 @@ export class RacingEngine {
     this.arbRear = physics?.arbRearNpm ?? 22000;
     this.cdA = physics?.cdAreaM2 ?? 0.7;
     this.cyYaw = physics?.yawAeroCoeff ?? 0.1;
+    this.clAreaFront = Math.max(0, physics?.clAreaFrontM2 ?? 0);
+    this.clAreaRear = Math.max(0, physics?.clAreaRearM2 ?? 0);
+    this.lastAeroDownforce.front = 0;
+    this.lastAeroDownforce.rear = 0;
+    this.cgHeightM = physics?.cgHeightM ?? DEFAULT_CG_HEIGHT_M;
+    this.sprungCgHeightM = physics?.sprungCgHeightM ?? this.cgHeightM;
+    this.unsprungCgHeightM = physics?.unsprungCgHeightM ?? DEFAULT_UNSPRUNG_CG_HEIGHT_M;
+    this.unsprungMassFrontKg = physics?.unsprungMassFrontKg ?? DEFAULT_UNSPRUNG_MASS_PER_AXLE_KG;
+    this.unsprungMassRearKg = physics?.unsprungMassRearKg ?? DEFAULT_UNSPRUNG_MASS_PER_AXLE_KG;
+    const defaults = makeDefaultDrivetrainParams(this.vehicle.diffType);
+    this.drivetrainParams = {
+      engineInertia: physics?.engineInertiaKgM2 ?? defaults.engineInertia,
+      flywheelInertia: physics?.flywheelInertiaKgM2 ?? defaults.flywheelInertia,
+      gearboxInputInertia: physics?.gearboxInputInertiaKgM2 ?? defaults.gearboxInputInertia,
+      propshaftInertia: physics?.propshaftInertiaKgM2 ?? defaults.propshaftInertia,
+      diffInertia: physics?.diffInertiaKgM2 ?? defaults.diffInertia,
+      clutchMaxTorqueNm: physics?.clutchMaxTorqueNm ?? defaults.clutchMaxTorqueNm,
+      clutchStaticFactor: physics?.clutchStaticFactor ?? defaults.clutchStaticFactor,
+      clutchStickThresholdRadPerSec:
+        physics?.clutchStickThresholdRadPerSec ?? defaults.clutchStickThresholdRadPerSec,
+      drivetrainSubsteps: physics?.drivetrainSubsteps ?? defaults.drivetrainSubsteps,
+      diffType: this.vehicle.diffType,
+      diffPreloadNm: physics?.diffPreloadNm ?? defaults.diffPreloadNm,
+      diffCapacityNm: physics?.diffCapacityNm ?? defaults.diffCapacityNm,
+      diffPowerRamp: physics?.diffPowerRamp ?? defaults.diffPowerRamp,
+      diffCoastRamp: physics?.diffCoastRamp ?? defaults.diffCoastRamp,
+      idleOmega: ENGINE_IDLE_OMEGA,
+      redlineOmega: ENGINE_REDLINE_OMEGA,
+    };
   }
 
   private buildWheels(): void {
@@ -694,6 +925,10 @@ export class RacingEngine {
         mz: 0,
         slipRatio: 0,
         slipAngle: 0,
+        slipRatioTarget: 0,
+        slipAngleTarget: 0,
+        slipRatioDynamic: 0,
+        slipAngleDynamic: 0,
         camberRad: 0,
         slidePower: 0,
         tempC: TIRE_AMBIENT_C,
@@ -705,12 +940,15 @@ export class RacingEngine {
         brakeTorqueApplied: 0,
         absScale: 1,
         yawContribution: 0,
+        mu: 1,
+        combinedSlip: 0,
         _preCompression: 0,
         _preContact: false,
         _arbDfz: 0,
         _fxFinal: 0,
         _frx: 0,
         _vx: 0,
+        _externalTorque: 0,
       });
     }
   }
@@ -819,13 +1057,6 @@ export class RacingEngine {
     const driverThrottle = this.input.state.throttle;
     const driverBrake = this.input.state.brake;
     this.driverBrake = driverBrake;
-    const gear = this.vehicle.gears[this.gearIndex];
-    const ratio = gear.ratio * this.vehicle.finalDrive;
-    const drivenOmegaAvg = this.wheels.reduce(
-      (sum, w) => sum + (w.driveShare || 0) * w.omega,
-      0,
-    );
-    const wheelEngineOmega = drivenOmegaAvg * ratio;
 
     let maxDriveSlip = 0;
     for (const w of this.wheels) {
@@ -897,32 +1128,12 @@ export class RacingEngine {
     const offThrottle = clamp(1 - this.effectiveThrottle * 4, 0, 1);
     const engineDragT = 0.04 * Math.abs(this.engineOmega) + 8 + 20 * offThrottle;
 
-    let clutchT = 0;
+    // Stash engine torques. The rotational chain (engine + clutch + gearbox
+    // + diff + driven wheels) is integrated together by `stepDrivetrain`
+    // after the wheel-force pass so it sees this step's tire/brake torque.
+    this.engineDriveTorqueNm = engineDriveT;
+    this.engineDragTorqueNm = engineDragT;
     this.driveTorqueByWheel = [0, 0, 0, 0];
-    if (gear.ratio !== 0) {
-      const r = computeClutchTorque({
-        engineOmega: this.engineOmega,
-        wheelEngineOmega,
-        clutchStiffness: this.clutchStiffness,
-        clutchMaxTorque: this.clutchMaxTorque,
-      });
-      clutchT = r.clutchTorque;
-      const wheelTotal = clutchT * ratio * DRIVE_EFFICIENCY;
-      for (let i = 0; i < 4; i++) {
-        this.driveTorqueByWheel[i] = wheelTotal * this.wheels[i].driveShare;
-      }
-    }
-
-    this.engineOmega = stepEngineOmega({
-      engineOmega: this.engineOmega,
-      engineDriveTorque: engineDriveT,
-      engineDragTorque: engineDragT,
-      clutchTorque: clutchT,
-      engineInertia: this.engineInertia,
-      idleOmega: ENGINE_IDLE * (2 * Math.PI / 60),
-      redlineOmega: ENGINE_REDLINE * 1.05 * (2 * Math.PI / 60),
-      dt,
-    });
 
     if (this.input.state.shiftUp) {
       this.shiftUp();
@@ -946,6 +1157,85 @@ export class RacingEngine {
       this.vehicle.trackWidth,
       this.setup.ackermannPct,
     );
+
+    // Phase 4 aero downforce: per-axle vertical load that grows with the
+    // chassis-local longitudinal speed squared. We add the per-wheel half
+    // to `fz` BEFORE Pacejka so high-speed corners get the expected grip
+    // boost. The matching upward chassis-force boost is canceled inside
+    // `runAero()`, so net vertical motion stays governed by gravity +
+    // suspension contact (downforce only buys grip, not lift).
+    const aeroLocalVel = this.velocityWS.clone().applyQuaternion(this.worldQuat.clone().invert());
+    const aeroDown = computeAeroDownforce({
+      forwardSpeed: aeroLocalVel.z,
+      clAreaFront: this.clAreaFront,
+      clAreaRear: this.clAreaRear,
+    });
+    this.lastAeroDownforce.front = aeroDown.frontDownforceN;
+    this.lastAeroDownforce.rear = aeroDown.rearDownforceN;
+    const aeroPerWheelFront = aeroDown.frontDownforceN * 0.5;
+    const aeroPerWheelRear = aeroDown.rearDownforceN * 0.5;
+
+    // Phase 3 longitudinal weight transfer: m·a·h/L shifts vertical load
+    // from the front to the rear axle when the chassis accelerates forward.
+    // We feed this DIRECTLY into the per-wheel `fz` used by the tire model
+    // so opening the throttle in a slide lifts rear `fz` (and therefore
+    // rear grip) immediately, instead of waiting a frame or two for the
+    // suspension raycast to compress under pitch.
+    //
+    // `accelLongG` carries last step's value (this method runs before
+    // `updateChassisDerived`). Externally injected velocity changes — most
+    // commonly inside tests — can produce spuriously large accelerations on
+    // the next step, so we clamp to ±2g (the practical road-tire ceiling)
+    // to keep load transfer sane without smothering normal acceleration.
+    const longAccelG = clamp(this.accelLongG, -2, 2);
+    const dFzLong = computeLongitudinalLoadTransfer({
+      longitudinalAccelMs2: longAccelG * 9.81,
+      massKg: this.chassisMass,
+      cgHeightM: this.cgHeightM,
+      wheelbaseM: this.vehicle.wheelbase,
+    });
+    const longTransferPerWheel = dFzLong * 0.5;
+
+    // Phase 3 lateral load transfer: m·a·h/T shifts vertical load from the
+    // inside wheels to the outside wheels under cornering. We split the
+    // SPRUNG-mass contribution between front and rear axles by roll
+    // stiffness share (springs + ARB at each axle) and apply each axle's
+    // UNSPRUNG-mass contribution locally. This is the rigid-body
+    // counterpart to the existing ARB elastic transfer in
+    // `runArbPrepass()`: ARB represents the suspension's compliance
+    // response, while this term is the chassis-up load shift the tires
+    // feel before any suspension travel develops. The ±2.5g clamp guards
+    // against externally injected `accelLatG` spikes (mostly in tests).
+    const latAccelMs2 = clamp(
+      this.accelLatG * 9.81,
+      -LATERAL_ACCEL_CLAMP_MS2,
+      LATERAL_ACCEL_CLAMP_MS2,
+    );
+    const unsprungTotal = this.unsprungMassFrontKg + this.unsprungMassRearKg;
+    const sprungMassKg = Math.max(0, this.chassisMass - unsprungTotal);
+    const rollStiffnessShareRaw = computeFrontRollStiffnessShare({
+      springFrontNpm: this.susp.kFront,
+      springRearNpm: this.susp.kRear,
+      arbFrontNpm: this.arbFront,
+      arbRearNpm: this.arbRear,
+      motionRatioFront: this.susp.motionRatioFront,
+      motionRatioRear: this.susp.motionRatioRear,
+      trackWidthM: this.vehicle.trackWidth,
+    });
+    const fallbackShare = clamp(this.vehicle.frontMassPct, 0.05, 0.95);
+    const frontRollStiffnessShare = Number.isFinite(rollStiffnessShareRaw)
+      ? rollStiffnessShareRaw
+      : fallbackShare;
+    const lateralTransfer = computeLateralLoadTransfer({
+      accelLatMs2: latAccelMs2,
+      sprungMassKg,
+      unsprungMassKgFront: this.unsprungMassFrontKg,
+      unsprungMassKgRear: this.unsprungMassRearKg,
+      sprungCgHeightM: this.sprungCgHeightM,
+      unsprungCgHeightM: this.unsprungCgHeightM,
+      trackWidthM: this.vehicle.trackWidth,
+      frontRollStiffnessShare,
+    });
 
     const totalForce = new Vector3();
     const totalTorque = new Vector3();
@@ -988,8 +1278,16 @@ export class RacingEngine {
       if (!hit) {
         w.contact = false;
         w.fz = 0; w.fx = 0; w.fy = 0; w.slipRatio = 0; w.slipAngle = 0; w.mz = 0;
+        // Airborne: drain the relaxation-length lag back to zero so the
+        // tire does not slam to a saturated value the moment the wheel
+        // touches down again.
+        w.slipRatioTarget = 0;
+        w.slipAngleTarget = 0;
+        w.slipRatioDynamic = 0;
+        w.slipAngleDynamic = 0;
         w.slidePower = 0;
         w.surface = 'ASPHALT';
+        w.combinedSlip = 0;
         w.compression = 0;
         w.bumpStopForce = 0;
         w.bumpStopPct = 0;
@@ -998,9 +1296,10 @@ export class RacingEngine {
         w.yawContribution = 0;
         w.tempC = stepTireTemperature({ tempC: w.tempC, slidePower: 0, contactSpeed: speed, dt });
         w.brakeTempC = stepBrakeTemperature({ brakeTempC: w.brakeTempC, brakeTorque: 0, omega: 0, contactSpeed: speed, dt });
-        w.omega *= Math.exp(-0.5 * dt);
-        if (w.drive) w.omega += this.driveTorqueByWheel[i] / w.inertia * dt;
-        w.spinAngle += w.omega * dt;
+        // No tire / brake torque on an airborne wheel. Drive torque (when
+        // the clutch is engaged) is applied by the drivetrain solver in
+        // `runDrivetrainRotationalStep()`.
+        w._externalTorque = 0;
         continue;
       }
 
@@ -1019,7 +1318,21 @@ export class RacingEngine {
       const bumpThreshold = isFront ? this.susp.bumpStopGapFrontM : this.susp.bumpStopGapRearM;
       const bumpRate = isFront ? this.susp.bumpStopRateFront : this.susp.bumpStopRateRear;
       const bumpForce = computeBumpStopForce(compression, bumpThreshold, bumpRate);
-      const fz = Math.max(0, fzSpring + bumpForce + w._arbDfz);
+      // Aero downforce share: split each axle total equally left/right.
+      // Default `clArea*` of 0 keeps `aeroShift = 0` for road-car presets so
+      // existing behaviour is preserved unless authoring data opts in.
+      const aeroShift = isFront ? aeroPerWheelFront : aeroPerWheelRear;
+      // Phase 3 longitudinal transfer: forward accel REMOVES load from the
+      // front axle and ADDS it to the rear. Front wheels get `-`, rear `+`.
+      const longShift = isFront ? -longTransferPerWheel : longTransferPerWheel;
+      // Phase 3 lateral transfer: per-axle delta is the signed left→right
+      // load shift. Project through `lateralSign` (FL/RL = -1, FR/RR = +1)
+      // so the inside wheel gets `-` and the outside wheel gets `+`. The
+      // half factor splits the axle delta evenly between the two wheels on
+      // that axle, mirroring the longitudinal-transfer split.
+      const axleLatDelta = isFront ? lateralTransfer.frontDelta : lateralTransfer.rearDelta;
+      const lateralShift = w.lateralSign * axleLatDelta * 0.5;
+      const fz = Math.max(0, fzSpring + bumpForce + w._arbDfz + aeroShift + longShift + lateralShift);
       w.fz = fz;
       w.bumpStopForce = bumpForce;
       w.bumpStopPct = clamp(Math.max(0, compression - bumpThreshold) / 0.05, 0, 1);
@@ -1029,6 +1342,7 @@ export class RacingEngine {
       w.surface = this.surfaceLookup?.surfaceAt(hit.point.x, hit.point.z) ?? 'ASPHALT';
       const surf = SURFACE_TABLE[w.surface];
       const mu = surf.mu * tireTempMu(w.tempC);
+      w.mu = mu;
 
       const heading = computeWheelHeadingBasis(w.steerAngle);
       const wheelFwd = this.right.clone()
@@ -1044,21 +1358,61 @@ export class RacingEngine {
       const vx = vAtContact.dot(wheelFwd);
       const vy = vAtContact.dot(wheelLat);
 
-      const slipEps = 1.5;
-      const slipRatio = (w.omega * w.radius - vx) / (Math.abs(vx) + slipEps);
-      const slipAngle = computeSlipAngleRad(vx, vy);
-      w.slipRatio = slipRatio;
-      w.slipAngle = slipAngle;
+      // Phase 1 wheel-frame + relaxation-length pipeline:
+      //   1. Compute INSTANTANEOUS slip targets in the project-local SAE
+      //      wheel frame (`+x` rolling direction, `+y` wheel-right). The
+      //      symmetric denominator removes the legacy `+1.5` low-speed
+      //      cliff and stays finite at standstill.
+      //   2. Lag the dynamic slip behind the target with first-order
+      //      relaxation in path-domain (`travel = contactSpeed * dt`).
+      //   3. Feed the dynamic slip into Pacejka and downstream consumers.
+      const targets = computeWheelSlipTargets({
+        longitudinalSpeed: vx,
+        lateralSpeed: vy,
+        wheelAngularSpeed: w.omega,
+        wheelRadius: w.radius,
+      });
+      w.slipRatioTarget = targets.slipRatio;
+      w.slipAngleTarget = targets.slipAngleRad;
+      w.slipRatioDynamic = stepRelaxedSlip({
+        slipTarget: targets.slipRatio,
+        slipDynamic: w.slipRatioDynamic,
+        contactSpeed: targets.contactSpeed,
+        relaxationLength: TIRE_RELAXATION_LENGTH_LONG_M,
+        dt,
+      });
+      w.slipAngleDynamic = stepRelaxedSlip({
+        slipTarget: targets.slipAngleRad,
+        slipDynamic: w.slipAngleDynamic,
+        contactSpeed: targets.contactSpeed,
+        relaxationLength: TIRE_RELAXATION_LENGTH_LAT_M,
+        dt,
+      });
+      w.slipRatio = w.slipRatioDynamic;
+      w.slipAngle = w.slipAngleDynamic;
+      const slipRatio = w.slipRatio;
+      const slipAngle = w.slipAngle;
+      w.combinedSlip = Math.hypot(slipRatio, slipAngle);
 
-      const fall = 0.04;
-      let Fx = pacejkaLong(slipRatio, fz, mu);
-      let Fy = pacejkaLat(slipAngle, fz, mu, fall);
-      // SAE-style combined-slip weighting: cos(arctan(k * slipRatio)) keeps a
-      // realistic share of lateral grip while a wheel spins, with a floor so
-      // a fully spinning rear can still push sideways enough to hold a drift.
-      const COMBINED_SLIP_K = 1.0;
-      const Gyk = Math.cos(Math.atan(COMBINED_SLIP_K * slipRatio));
-      Fy *= Math.max(0.35, Gyk);
+      // Phase 2 Pacejka MF 5.6 evaluator: pure longitudinal/lateral curves
+      // get dfz-based load sensitivity so peak force, slip stiffness, and
+      // curvature scale with vertical load. Combined slip is weighted with
+      // smooth MF-style cosines (Gxa, Gyk) normalized so they equal `1` at
+      // pure slip — there is no `0.35` floor and no isotropic friction-circle
+      // clamp downstream, so saturation comes entirely from the tire model.
+      const tireOverride = isFront
+        ? this.vehicle.physics?.tireFront
+        : this.vehicle.physics?.tireRear;
+      const tire = evaluatePacejka56Combined({
+        kappa: slipRatio,
+        alphaRad: slipAngle,
+        fz,
+        muScale: mu,
+        axle: isFront ? 'front' : 'rear',
+        params: tireOverride,
+      });
+      let Fx = tire.fx;
+      let Fy = tire.fy;
 
       w.mz = computeSelfAligningMoment({ slipAngleRad: slipAngle, fySlip: Fy });
 
@@ -1090,12 +1444,12 @@ export class RacingEngine {
       Fy *= lowSpeedScale;
       Fx *= 0.4 + 0.6 * lowSpeedScale;
 
-      const Fmax = tireD(mu, fz);
-      const F = Math.hypot(Fx, Fy);
-      if (F > Fmax && Fmax > 0) {
-        const k2 = Fmax / F;
-        Fx *= k2; Fy *= k2;
-      }
+      // Phase 2 removed the isotropic `hypot(Fx, Fy) <= tireD(mu, fz)`
+      // friction-circle clamp. Combined-slip MF saturates naturally — the
+      // clamp was a second penalty on top of Gxa/Gyk that over-killed `Fx`
+      // in transitions. Numeric safety against pathological inputs is
+      // covered by the per-axis cosine weights (bounded in [0, 1]) and the
+      // dfz-clamped Dx/Dy peaks inside the evaluator.
 
       let Frx = 0;
       if (Math.abs(vx) > 0.1) {
@@ -1149,9 +1503,10 @@ export class RacingEngine {
       const Frx = w._frx;
       const vx = w._vx;
 
-      let netTorque = 0;
-      if (w.drive) netTorque += this.driveTorqueByWheel[i];
-      netTorque -= (Fx - Frx) * w.radius;
+      // Tire reaction torque on the wheel (excluding rolling resistance,
+      // which is already folded into `Fx`; we re-add `Frx` here so the net
+      // tire term is just the driving Fx without rolling resistance).
+      const tireReactionTorque = -(Fx - Frx) * w.radius;
 
       const biasFactor = isFront ? brakeBiasFront : 1 - brakeBiasFront;
       const fade = brakeFadeFactor({ brakeTempC: w.brakeTempC });
@@ -1187,40 +1542,75 @@ export class RacingEngine {
         contactSpeed: Math.abs(vx),
         dt,
       });
+      // Cap brake torque so it cannot reverse the wheel sign through this
+      // outer step alone (drive torque is added inside the drivetrain
+      // solver; this cap is a numerical safety, not a physics constraint).
       const omegaSign = Math.sign(w.omega) || (vx > 0 ? 1 : vx < 0 ? -1 : 0);
-      const maxBrakeReactMag = Math.abs(w.omega) * w.inertia / Math.max(dt, 1e-6) + Math.abs(netTorque);
+      const maxBrakeReactMag =
+        (Math.abs(w.omega) * w.inertia) / Math.max(dt, 1e-6) + Math.abs(tireReactionTorque);
       const brakeReact = -omegaSign * Math.min(maxBrakeReactMag, brakeTorque);
-      netTorque += brakeReact;
 
-      w.omega += (netTorque / w.inertia) * dt;
-      w.omega *= Math.exp(-0.05 * dt);
-      w.spinAngle += w.omega * dt;
+      w._externalTorque = tireReactionTorque + brakeReact;
     }
   }
 
-  private runDiffCoupling(dt: number): void {
-    const wL = this.wheels[2];
-    const wR = this.wheels[3];
-    const r = applyDiffCoupling({
-      type: this.diff.type,
-      leftOmega: wL.omega,
-      rightOmega: wR.omega,
-      leftInertia: wL.inertia,
-      effectiveThrottle: this.effectiveThrottle,
-      driveTorquePerWheel: (this.driveTorqueByWheel[2] + this.driveTorqueByWheel[3]) * 0.5,
-      preloadNm: this.diff.preloadNm,
-      capacityNm: this.diff.capacityNm,
-      powerLockPct: this.diff.powerLockPct,
-      coastLockPct: this.diff.coastLockPct,
+  /**
+   * Phase 5 rotational integration. The wheel-force pass has already
+   * stamped each wheel's tire/brake/handbrake/ESC torque into
+   * `_externalTorque`; this method hands the engine + clutch +
+   * gearbox + diff + driven wheels to the integrated solver so the
+   * rotational chain advances coherently in one outer step.
+   *
+   * Drive torque is computed inside the solver via a Karnopp stick-slip
+   * clutch and reflected inertias, so we don't double-count it here. The
+   * driven-wheel kinematic constraint (avg ↔ input shaft) is enforced
+   * each substep and Salisbury-style LSD coupling runs per axle inside
+   * the same loop.
+   */
+  private runDrivetrainRotationalStep(dt: number): void {
+    const gear = this.vehicle.gears[this.gearIndex];
+    const wheels: DrivetrainWheelInput[] = this.wheels.map((w, i) => ({
+      index: i,
+      omega: w.omega,
+      inertia: w.inertia,
+      driveShare: w.driveShare,
+      axle: i < 2 ? 'front' : 'rear',
+      side: w.lateralSign < 0 ? 'left' : 'right',
+      externalTorqueNm: w._externalTorque,
+    }));
+    const result = stepDrivetrain({
+      engineOmega: this.engineOmega,
+      transmissionOmega: this.transmissionOmega,
+      wheels,
+      gearRatio: gear.ratio,
+      finalDrive: this.vehicle.finalDrive,
+      engineDriveTorqueNm: this.engineDriveTorqueNm,
+      engineDragTorqueNm: this.engineDragTorqueNm,
+      params: this.drivetrainParams,
       dt,
     });
-    wL.omega = r.leftOmega;
-    wR.omega = r.rightOmega;
+    this.engineOmega = result.engineOmega;
+    this.transmissionOmega = result.transmissionOmega;
+    this.driveTorqueByWheel = result.driveTorqueByWheel.slice(0, 4);
+    this.clutchTorqueNm = result.clutchTorqueNm;
+    this.clutchMode = result.clutchMode;
+    for (let i = 0; i < this.wheels.length; i++) {
+      const w = this.wheels[i];
+      let omega = result.wheelOmegas[i];
+      // Small per-step damping. Stronger for airborne wheels so a
+      // freely-spinning wheel does not pin the engine to redline forever
+      // through the locked-clutch kinematic coupling.
+      const decayRate = w.contact ? 0.05 : 0.5;
+      omega *= Math.exp(-decayRate * dt);
+      w.omega = omega;
+      w.spinAngle += omega * dt;
+    }
   }
 
   private runAero(): void {
     const local = this.velocityWS.clone().applyQuaternion(this.worldQuat.clone().invert());
     const drag = computeAeroDrag({ forwardSpeed: local.z, sideSpeed: local.x, cdArea: this.cdA });
+    this.aeroDragMagN = Math.hypot(drag.fxDragWS, drag.fzDragWS);
     const speed = this.velocityWS.length();
     const yawMoment = computeYawRestoringMoment({
       sideslipRad: this.sideslipRad,
@@ -1237,6 +1627,19 @@ export class RacingEngine {
       .addScaledVector(this.forward, -drag.fzDragWS);
     this.appliedForce.add(dragWS);
     this.appliedTorque.add(this.up.clone().multiplyScalar(yawMoment));
+
+    // Phase 4 chassis-side reaction: `runWheelPass` added per-axle aero
+    // downforce into per-wheel `fz`, which feeds the contact-force
+    // projection that pushes the chassis upward. Without a matching
+    // downward force, downforce would lift the car instead of just
+    // boosting tire grip. Apply the equal-and-opposite load on the chassis
+    // body so the net vertical aero contribution to rigid-body motion is
+    // zero when all four tires are on the ground (and naturally pushes a
+    // partially airborne car back toward the surface).
+    const totalAeroDown = this.lastAeroDownforce.front + this.lastAeroDownforce.rear;
+    if (totalAeroDown > 0) {
+      this.appliedForce.addScaledVector(this.up, -totalAeroDown);
+    }
   }
 
   private readonly appliedForce = new Vector3();

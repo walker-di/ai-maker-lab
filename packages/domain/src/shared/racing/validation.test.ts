@@ -82,6 +82,33 @@ describe('validateVehiclePreset', () => {
     }
   });
 
+  it('accepts valid optional load-transfer fields', () => {
+    expect(
+      validateVehiclePreset({
+        ...VALID_VEHICLE,
+        physics: {
+          cgHeightM: 0.49,
+          sprungCgHeightM: 0.52,
+          unsprungCgHeightM: 0.31,
+          unsprungMassFrontKg: 80,
+          unsprungMassRearKg: 80,
+        },
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  it('rejects non-positive load-transfer fields', () => {
+    const result = validateVehiclePreset({
+      ...VALID_VEHICLE,
+      physics: { sprungCgHeightM: 0, unsprungMassFrontKg: -10 },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.path === 'physics.sprungCgHeightM')).toBe(true);
+      expect(result.errors.some((e) => e.path === 'physics.unsprungMassFrontKg')).toBe(true);
+    }
+  });
+
   it('rejects negative wheelbase', () => {
     const result = validateVehiclePreset({ ...VALID_VEHICLE, wheelbase: -1 });
     expect(result.ok).toBe(false);

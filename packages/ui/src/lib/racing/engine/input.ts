@@ -7,7 +7,7 @@
  * Steering is rate-limited with three regimes: an active rate when the driver
  * pushes the input further in the current direction, a faster counter rate
  * when the driver flips sign (i.e. catching a slide with countersteer), and a
- * self-centring rate when input is released (scaled by caster).
+ * self-centring rate when input is released (assisted by tire aligning torque).
  *
  * Defaults: active 4.5 rad/s, counter 8.0 rad/s, self-centre 6.0 rad/s. The
  * counter rate matters most for drift recovery — a real driver moves the
@@ -34,8 +34,8 @@ export interface RacingInputOptions {
   centreRate?: number;
   /** Counter steer rate (1/s) when the input flips sign (catching a slide). Default 8.0. */
   counterRate?: number;
-  /** Caster degree from the runtime setup, used to scale self-centring. */
-  casterDeg?: () => number;
+  /** Normalized steering aligning feedback from the front tires, in [-1, 1]. */
+  alignFeedback?: () => number;
 }
 
 export class RacingInput {
@@ -49,7 +49,7 @@ export class RacingInput {
     shiftDown: false,
   };
 
-  private readonly opts: Required<Omit<RacingInputOptions, 'casterDeg'>> & { casterDeg: () => number };
+  private readonly opts: Required<Omit<RacingInputOptions, 'alignFeedback'>> & { alignFeedback: () => number };
   private readonly keys = new Set<string>();
   private readonly onKeyDown: (e: KeyboardEvent) => void;
   private readonly onKeyUp: (e: KeyboardEvent) => void;
@@ -60,7 +60,7 @@ export class RacingInput {
       activeRate: opts.activeRate ?? 4.5,
       centreRate: opts.centreRate ?? 6.0,
       counterRate: opts.counterRate ?? 8.0,
-      casterDeg: opts.casterDeg ?? (() => 0),
+      alignFeedback: opts.alignFeedback ?? (() => 0),
     };
     this.onKeyDown = (e) => {
       if (this.consumes(e.key)) {
@@ -122,10 +122,16 @@ export class RacingInput {
     this.state.steerCmd = clamp(this.state.steerCmd + delta, -1, 1);
 
     if (target === 0) {
-      const casterAssist = 1 + (this.opts.casterDeg() / 10) * 0.8;
-      const r2 = this.opts.centreRate * casterAssist * dt;
-      if (this.state.steerCmd > 0) this.state.steerCmd = Math.max(0, this.state.steerCmd - r2);
-      else if (this.state.steerCmd < 0) this.state.steerCmd = Math.min(0, this.state.steerCmd + r2);
+      const align = clamp(this.opts.alignFeedback(), -1, 1);
+      const baseStep = this.opts.centreRate * dt;
+      const alignStep = Math.abs(align) * this.opts.centreRate * dt;
+      if (this.state.steerCmd > 0) {
+        const assist = align < 0 ? alignStep : 0;
+        this.state.steerCmd = Math.max(0, this.state.steerCmd - baseStep - assist);
+      } else if (this.state.steerCmd < 0) {
+        const assist = align > 0 ? alignStep : 0;
+        this.state.steerCmd = Math.min(0, this.state.steerCmd + baseStep + assist);
+      }
     }
 
     // Light smoothing for HUD readout / actuator feed.

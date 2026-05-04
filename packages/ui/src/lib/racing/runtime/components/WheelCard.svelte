@@ -11,6 +11,10 @@
   const tempPct = $derived(Math.min(100, Math.max(0, ((wheel.tempC - 20) / 160) * 100)));
   const brakeTempPct = $derived(Math.min(100, Math.max(0, ((wheel.brakeTempC - 20) / 600) * 100)));
   const bumpPct = $derived(Math.min(100, Math.max(0, wheel.bumpStopPct * 100)));
+  // Tire utilization: 0..1 is the friction-circle window; the bar caps at
+  // 120% so combined-slip transients that briefly poke past the simple
+  // mu·Fz ceiling stay visible without breaking the layout.
+  const utilizationPct = $derived(Math.min(120, Math.max(0, wheel.tireUtilization * 100)));
 </script>
 
 <div class="panel wheel-card" data-testid="hud-wheel-{wheel.index}" class:airborne={wheel.airborne}>
@@ -24,6 +28,7 @@
   <div class="row"><span class="label2">Bump</span><div class="meter bs"><span style="width: {bumpPct}%"></span></div><span class="v">{wheel.airborne ? 'clear' : `${Math.round(bumpPct)}%`}</span></div>
   <div class="row"><span class="label2">Tire</span><div class="meter temp"><span style="width: {tempPct}%"></span></div><span class="v">{Math.round(wheel.tempC)}°</span></div>
   <div class="row"><span class="label2">Brake</span><div class="meter temp"><span style="width: {brakeTempPct}%"></span></div><span class="v">{Math.round(wheel.brakeTempC)}°</span></div>
+  <div class="row"><span class="label2">Util</span><div class="meter slip"><span style="width: {Math.min(100, utilizationPct)}%"></span></div><span class="v">{Math.round(utilizationPct)}%</span></div>
 </div>
 
 <style>

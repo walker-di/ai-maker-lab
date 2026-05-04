@@ -1,12 +1,22 @@
 import type { SurfaceId } from '../types.js';
 
-export type RacingTelemetryMode = 'load' | 'slip';
+// 'utilization' shows the Phase 7 tire-utilization bar: how close each
+// tire is to its current friction-circle ceiling. Useful for tuning
+// combined-slip behaviour.
+export type RacingTelemetryMode = 'load' | 'slip' | 'utilization';
 
 export interface RacingHudWheelState {
   index: number;
   fz: number;
+  fx: number;
+  fy: number;
   slipRatio: number;
   slipAngle: number;
+  combinedSlip: number;
+  /** `hypot(Fx, Fy) / (mu · Fz)` — clamped at 0 if airborne. */
+  tireUtilization: number;
+  /** Drive torque applied to this wheel by the drivetrain solver (Nm). */
+  driveTorqueNm: number;
   surface: SurfaceId | null;
   tempC: number;
   brakeTempC: number;
@@ -16,6 +26,21 @@ export interface RacingHudWheelState {
   absScale: number;
   absActive: boolean;
   yawContribution: number;
+}
+
+export interface RacingHudDrivetrainState {
+  engineOmega: number;
+  transmissionOmega: number;
+  clutchTorqueNm: number;
+  clutchMode: 'locked' | 'slipping';
+  engineDriveTorqueNm: number;
+  engineDragTorqueNm: number;
+}
+
+export interface RacingHudAeroState {
+  frontDownforceN: number;
+  rearDownforceN: number;
+  dragN: number;
 }
 
 export interface RacingHudInputState {
@@ -85,6 +110,8 @@ export interface RacingHudState {
   input: RacingHudInputState;
   lap: RacingHudLapState;
   wheels: RacingHudWheelState[];
+  drivetrain: RacingHudDrivetrainState;
+  aero: RacingHudAeroState;
   traceSamples: RacingTraceSample[];
   ggTrail: RacingGgPoint[];
 }
@@ -132,11 +159,24 @@ export class RacingHudModel {
     input: { throttle: 0, brake: 0, steer: 0, handbrake: 0 },
     lap: { bestMs: null, lastMs: null, currentMs: null },
     wheels: [
-      { index: 0, fz: 0, slipRatio: 0, slipAngle: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false, brakeTorqueApplied: 0, absScale: 1, absActive: false, yawContribution: 0 },
-      { index: 1, fz: 0, slipRatio: 0, slipAngle: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false, brakeTorqueApplied: 0, absScale: 1, absActive: false, yawContribution: 0 },
-      { index: 2, fz: 0, slipRatio: 0, slipAngle: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false, brakeTorqueApplied: 0, absScale: 1, absActive: false, yawContribution: 0 },
-      { index: 3, fz: 0, slipRatio: 0, slipAngle: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false, brakeTorqueApplied: 0, absScale: 1, absActive: false, yawContribution: 0 },
+      { index: 0, fz: 0, fx: 0, fy: 0, slipRatio: 0, slipAngle: 0, combinedSlip: 0, tireUtilization: 0, driveTorqueNm: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false, brakeTorqueApplied: 0, absScale: 1, absActive: false, yawContribution: 0 },
+      { index: 1, fz: 0, fx: 0, fy: 0, slipRatio: 0, slipAngle: 0, combinedSlip: 0, tireUtilization: 0, driveTorqueNm: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false, brakeTorqueApplied: 0, absScale: 1, absActive: false, yawContribution: 0 },
+      { index: 2, fz: 0, fx: 0, fy: 0, slipRatio: 0, slipAngle: 0, combinedSlip: 0, tireUtilization: 0, driveTorqueNm: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false, brakeTorqueApplied: 0, absScale: 1, absActive: false, yawContribution: 0 },
+      { index: 3, fz: 0, fx: 0, fy: 0, slipRatio: 0, slipAngle: 0, combinedSlip: 0, tireUtilization: 0, driveTorqueNm: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false, brakeTorqueApplied: 0, absScale: 1, absActive: false, yawContribution: 0 },
     ],
+    drivetrain: {
+      engineOmega: 0,
+      transmissionOmega: 0,
+      clutchTorqueNm: 0,
+      clutchMode: 'slipping',
+      engineDriveTorqueNm: 0,
+      engineDragTorqueNm: 0,
+    },
+    aero: {
+      frontDownforceN: 0,
+      rearDownforceN: 0,
+      dragN: 0,
+    },
     traceSamples: [],
     ggTrail: [],
   });
@@ -216,12 +256,21 @@ export class RacingHudModel {
       this.state.wheels[i] = { ...incoming };
     }
   }
+  setDrivetrain(state: RacingHudDrivetrainState): void {
+    this.state.drivetrain = { ...state };
+  }
+  setAero(state: RacingHudAeroState): void {
+    this.state.aero = { ...state };
+  }
   pushTelemetry(sample: RacingTraceSample, gg: RacingGgPoint): void {
     this.state.traceSamples = [...this.state.traceSamples.slice(-119), sample];
     this.state.ggTrail = [...this.state.ggTrail.slice(-79), gg];
   }
   toggleTelemetryMode(): void {
-    this.state.telemetryMode = this.state.telemetryMode === 'load' ? 'slip' : 'load';
+    // load → slip → utilization → load
+    const order: RacingTelemetryMode[] = ['load', 'slip', 'utilization'];
+    const idx = order.indexOf(this.state.telemetryMode);
+    this.state.telemetryMode = order[(idx + 1) % order.length] ?? 'load';
   }
 }
 

@@ -122,4 +122,22 @@ describe('RacingInput', () => {
 
     expect(counterStep).toBeGreaterThan(refStep * 3);
   });
+
+  it('uses tire aligning feedback to self-centre faster when steering is released', () => {
+    const baseline = new RacingInput({ activeRate: 2, counterRate: 2, centreRate: 1 });
+    const assisted = new RacingInput({
+      activeRate: 2,
+      counterRate: 2,
+      centreRate: 1,
+      alignFeedback: () => -1,
+    });
+    baseline.state.steerCmd = 0.8;
+    assisted.state.steerCmd = 0.8;
+
+    baseline.update(0.1, 60);
+    assisted.update(0.1, 60);
+
+    expect(assisted.state.steerCmd).toBeLessThan(baseline.state.steerCmd);
+    expect(assisted.state.steerCmd).toBeGreaterThanOrEqual(0);
+  });
 });
