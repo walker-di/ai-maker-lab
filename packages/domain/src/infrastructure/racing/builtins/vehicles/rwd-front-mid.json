@@ -20,5 +20,23 @@
   ],
   "steerMaxDeg": 35,
   "axleDrive": { "front": 0, "rear": 1 },
-  "diffType": "clutchLSD"
+  "diffType": "clutchLSD",
+  "physics": {
+    "massKg": 1285,
+    "inertiaPitchKgM2": 1460,
+    "inertiaYawKgM2": 1640,
+    "inertiaRollKgM2": 430,
+    "springFrontNpm": 69000,
+    "springRearNpm": 64000,
+    "damperBumpFrontNsPm": 4400,
+    "damperReboundFrontNsPm": 6000,
+    "damperBumpRearNsPm": 4600,
+    "damperReboundRearNsPm": 6200,
+    "arbFrontNpm": 28000,
+    "arbRearNpm": 23500,
+    "brakeTorqueMaxNm": 4550,
+    "brakeBiasFront": 0.58,
+    "cdAreaM2": 0.68,
+    "yawAeroCoeff": 0.11
+  }
 }

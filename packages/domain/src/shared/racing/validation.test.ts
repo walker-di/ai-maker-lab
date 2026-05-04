@@ -70,6 +70,18 @@ describe('validateVehiclePreset', () => {
     }
   });
 
+  it('rejects invalid optional physics overrides', () => {
+    const result = validateVehiclePreset({
+      ...VALID_VEHICLE,
+      physics: { massKg: 0, brakeBiasFront: 1.5 },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.path === 'physics.massKg')).toBe(true);
+      expect(result.errors.some((e) => e.path === 'physics.brakeBiasFront')).toBe(true);
+    }
+  });
+
   it('rejects negative wheelbase', () => {
     const result = validateVehiclePreset({ ...VALID_VEHICLE, wheelbase: -1 });
     expect(result.ok).toBe(false);

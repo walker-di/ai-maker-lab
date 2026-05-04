@@ -40,6 +40,7 @@ import {
   computeCamberThrust,
   computeCasterCamber,
   computeClutchTorque,
+  computeEscBrakeTargets,
   computeSelfAligningMoment,
   computeTcCut,
   computeYawRestoringMoment,
@@ -244,7 +245,7 @@ export class RacingEngine {
   private readonly right = new Vector3(1, 0, 0);
   private readonly up = new Vector3(0, 1, 0);
 
-  private readonly chassisMass = 1240;
+  private chassisMass = 1240;
   private readonly chassisInertia = new Vector3(1500, 1700, 450);
 
   // Drivetrain state
@@ -343,6 +344,7 @@ export class RacingEngine {
     this.trackPreset = config.track;
     this.setup = { ...DEFAULT_SETUP, ...(config.setup ?? {}) };
     this.audio = config.audio ?? new NullAudioBus();
+    this.applyVehiclePhysicsPreset();
     this.buildWheels();
     this.buildSurfaceLookup();
     this.resetCar();
@@ -351,6 +353,7 @@ export class RacingEngine {
   setVehiclePreset(preset: VehiclePreset): void {
     this.vehicle = preset;
     this.diff.type = preset.diffType;
+    this.applyVehiclePhysicsPreset();
     this.buildWheels();
     this.resetCar();
   }
@@ -565,6 +568,26 @@ export class RacingEngine {
 
   // ---- internal helpers --------------------------------------------------
 
+  private applyVehiclePhysicsPreset(): void {
+    const physics = this.vehicle.physics;
+    this.chassisMass = physics?.massKg ?? 1240;
+    this.chassisInertia.set(
+      physics?.inertiaPitchKgM2 ?? 1500,
+      physics?.inertiaYawKgM2 ?? 1700,
+      physics?.inertiaRollKgM2 ?? 450,
+    );
+    this.susp.kFront = physics?.springFrontNpm ?? 65000;
+    this.susp.kRear = physics?.springRearNpm ?? 60000;
+    this.susp.cBumpFront = physics?.damperBumpFrontNsPm ?? 4200;
+    this.susp.cReboundFront = physics?.damperReboundFrontNsPm ?? 5800;
+    this.susp.cBumpRear = physics?.damperBumpRearNsPm ?? 4400;
+    this.susp.cReboundRear = physics?.damperReboundRearNsPm ?? 6000;
+    this.arbFront = physics?.arbFrontNpm ?? 25000;
+    this.arbRear = physics?.arbRearNpm ?? 22000;
+    this.cdA = physics?.cdAreaM2 ?? 0.7;
+    this.cyYaw = physics?.yawAeroCoeff ?? 0.1;
+  }
+
   private buildWheels(): void {
     this.wheels.length = 0;
     const halfTrack = this.vehicle.trackWidth * 0.5;
@@ -640,6 +663,9 @@ export class RacingEngine {
     }
     for (const z of this.trackPreset.dampZones ?? []) {
       zones.push({ x: z.x, z: z.z, w: z.w, h: z.h, rot: (z as { rot?: number }).rot ?? 0, surface: 'DAMP' });
+    }
+    for (const z of this.trackPreset.surfaceZones ?? []) {
+      zones.push({ x: z.x, z: z.z, w: z.w, h: z.h, rot: z.rot ?? 0, surface: z.surface });
     }
     this.surfaceLookup = new SurfaceLookup({
       points,
@@ -774,21 +800,12 @@ export class RacingEngine {
     });
     aids.escActive = esc.active;
     aids.escTorqueTargetByWheel.fill(0);
-    if (esc.active && esc.turnSign !== 0 && esc.axle) {
-      const leftTurn = esc.turnSign > 0;
-      const targetIndex = esc.axle === 'front'
-        ? (leftTurn ? 0 : 1)
-        : (leftTurn ? 3 : 2);
-      const threshold = esc.mode === 'oversteer'
-        ? aids.escOversteerThreshold
-        : aids.escUndersteerThreshold;
-      const cap = aids.escMaxBrakeTorque * (esc.mode === 'understeer' ? 0.8 : 1);
-      const normalized = clamp(
-        (Math.abs(esc.yawError) - threshold) / Math.max(0.05, threshold * 2),
-        0,
-        1,
-      );
-      aids.escTorqueTargetByWheel[targetIndex] = cap * normalized;
+    const escTargets = computeEscBrakeTargets({
+      esc,
+      maxBrakeTorque: aids.escMaxBrakeTorque * (esc.mode === 'understeer' ? 0.8 : 1),
+    });
+    for (let i = 0; i < escTargets.torqueByWheel.length; i++) {
+      aids.escTorqueTargetByWheel[i] = escTargets.torqueByWheel[i];
     }
 
     for (let i = 0; i < aids.escTorqueByWheel.length; i++) {
@@ -849,8 +866,8 @@ export class RacingEngine {
 
   private runWheelPass(dt: number): void {
     const speed = this.velocityWS.length();
-    const maxBrakeTorque = 4200;
-    const brakeBiasFront = 0.565;
+    const maxBrakeTorque = this.vehicle.physics?.brakeTorqueMaxNm ?? 4200;
+    const brakeBiasFront = this.vehicle.physics?.brakeBiasFront ?? 0.565;
     const aids = this.driverAids;
     const steerCmdRad = this.input.state.steerSmoothed * (this.vehicle.steerMaxDeg * RAD);
     const ackermann = computeAckermannAngles(
@@ -1147,6 +1164,9 @@ export class RacingEngine {
   }
 
   private updateChassisDerived(): void {
+    this.rollDeg = Math.asin(clamp(-this.right.y, -1, 1)) * DEG;
+    this.pitchDeg = Math.asin(clamp(this.forward.y, -1, 1)) * DEG;
+
     const fzFL = this.wheels[0].fz, fzFR = this.wheels[1].fz;
     const fzRL = this.wheels[2].fz, fzRR = this.wheels[3].fz;
     const fzTotal = fzFL + fzFR + fzRL + fzRR;

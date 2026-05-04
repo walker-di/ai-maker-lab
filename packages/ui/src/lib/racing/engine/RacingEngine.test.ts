@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
+import { Euler, Quaternion } from 'three';
 import { RacingEngine } from './RacingEngine.js';
 import type { TrackPreset, VehiclePreset } from '../types.js';
 
@@ -263,6 +264,32 @@ describe('RacingEngine integration', () => {
     expect(internals.driverAids.escTorqueByWheel).toEqual([0, 0, 0, 0]);
     expect(internals.driverAids.escTorqueTargetByWheel).toEqual([0, 0, 0, 0]);
     expect(internals.wheels.every((wheel) => wheel.escTorque === 0)).toBe(true);
+  });
+
+  it('reports roll and pitch from the chassis orientation', () => {
+    const engine = createEngine();
+    engine.worldQuat.copy(new Quaternion().setFromEuler(new Euler(4 * (Math.PI / 180), 0, 6 * (Math.PI / 180), 'XYZ')));
+    engine.velocityWS.set(0, 0, 10);
+    engine.step(1 / 240);
+
+    const snapshot = engine.snapshot();
+    expect(Math.abs(snapshot.rollDeg)).toBeGreaterThan(1);
+    expect(Math.abs(snapshot.pitchDeg)).toBeGreaterThan(1);
+  });
+
+  it('honors explicit authored surface zones', () => {
+    const track: TrackPreset = {
+      ...makeTrack(),
+      surfaceZones: [{ x: 0, z: 0, w: 40, h: 40, rot: 0, surface: 'GRAVEL' }],
+    };
+    const engine = new RacingEngine({ vehicle: makeVehicle(), track });
+    engines.push(engine);
+    engine.resetCar();
+
+    stepFor(engine, 0.1);
+
+    const snapshot = engine.snapshot();
+    expect(snapshot.wheels.some((wheel) => wheel.surface === 'GRAVEL')).toBe(true);
   });
 
   it('emits lap start and finish events across repeated start-line crossings', () => {

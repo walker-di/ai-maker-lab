@@ -76,7 +76,7 @@ export interface VehiclePreset {
 }
 
 export interface SurfaceZone {
-  id: string;
+  id?: string;
   surface: SurfaceId;
   /** World-space rectangle, optionally rotated about its centre. */
   x: number;

@@ -5,6 +5,7 @@ import {
   brakeFadeFactor,
   classifyEsc,
   computeAeroDrag,
+  computeEscBrakeTargets,
   computeAntiPitchVertical,
   computeAxleArb,
   computeCamberThrust,
@@ -295,6 +296,22 @@ describe('driver aids', () => {
     });
     expect(r.active).toBe(true);
     expect(r.mode).toBe('oversteer');
+  });
+
+  it('ESC brake targets map oversteer to outside-front and understeer to inside-rear', () => {
+    const oversteer = computeEscBrakeTargets({
+      esc: { active: true, mode: 'oversteer', turnSign: 1, axle: 'front', yawError: 0.6 },
+      maxBrakeTorque: 2400,
+    });
+    expect(oversteer.targetWheel).toBe(0);
+    expect(oversteer.torqueByWheel).toEqual([1800, 0, 0, 0]);
+
+    const understeer = computeEscBrakeTargets({
+      esc: { active: true, mode: 'understeer', turnSign: 1, axle: 'rear', yawError: -0.4 },
+      maxBrakeTorque: 1920,
+    });
+    expect(understeer.targetWheel).toBe(3);
+    expect(understeer.torqueByWheel).toEqual([0, 0, 0, 960]);
   });
 });
 

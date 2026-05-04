@@ -28,6 +28,9 @@
   "dampZones": [
     { "x": 0, "z": -82, "w": 30, "h": 8, "rot": 0 }
   ],
+  "surfaceZones": [
+    { "x": 98, "z": 54, "w": 10, "h": 22, "rot": 0.52, "surface": "MARBLES" }
+  ],
   "apexes": [70, 200],
   "propCadence": { "cones": 8, "barriers": 10, "lights": 48, "billboards": 70 }
 }

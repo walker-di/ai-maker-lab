@@ -20,5 +20,23 @@
   ],
   "steerMaxDeg": 37,
   "axleDrive": { "front": 1, "rear": 0 },
-  "diffType": "open"
+  "diffType": "open",
+  "physics": {
+    "massKg": 1315,
+    "inertiaPitchKgM2": 1540,
+    "inertiaYawKgM2": 1780,
+    "inertiaRollKgM2": 470,
+    "springFrontNpm": 72000,
+    "springRearNpm": 56000,
+    "damperBumpFrontNsPm": 4700,
+    "damperReboundFrontNsPm": 6300,
+    "damperBumpRearNsPm": 4000,
+    "damperReboundRearNsPm": 5400,
+    "arbFrontNpm": 30000,
+    "arbRearNpm": 18000,
+    "brakeTorqueMaxNm": 4300,
+    "brakeBiasFront": 0.63,
+    "cdAreaM2": 0.72,
+    "yawAeroCoeff": 0.095
+  }
 }

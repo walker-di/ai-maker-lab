@@ -12,6 +12,8 @@ describe('BuiltInRacingCatalogSource', () => {
     for (const v of vehicles) {
       expect(v.gears.length).toBeGreaterThanOrEqual(3);
       expect(v.axleDrive.front + v.axleDrive.rear).toBeCloseTo(1, 6);
+      expect(v.physics?.massKg).toBeGreaterThan(1000);
+      expect(v.physics?.brakeBiasFront).toBeGreaterThan(0.5);
     }
   });
 
@@ -24,6 +26,8 @@ describe('BuiltInRacingCatalogSource', () => {
       expect(t.ctrl.length).toBeGreaterThanOrEqual(4);
       expect(t.samples).toBeGreaterThanOrEqual(32);
     }
+    const lakeside = tracks.find((t) => t.id === 'lakeside-gp');
+    expect(lakeside?.surfaceZones?.[0]?.surface).toBe('MARBLES');
   });
 
   it('looks up vehicles and tracks by id', async () => {
