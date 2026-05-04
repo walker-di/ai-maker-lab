@@ -95,9 +95,19 @@ export interface EscResult {
   mode: EscMode;
   /** Sign of the requested yaw correction. */
   turnSign: 1 | -1 | 0;
-  /** Brake-bias side ('inner' = front-inside or rear-inside). */
+  /** Front axle for oversteer correction, rear axle for understeer correction. */
   axle: 'front' | 'rear' | null;
   yawError: number;
+}
+
+export interface EscBrakeTargetsInput {
+  esc: EscResult;
+  maxBrakeTorque: number;
+}
+
+export interface EscBrakeTargetsResult {
+  torqueByWheel: [number, number, number, number];
+  targetWheel: 0 | 1 | 2 | 3 | null;
 }
 
 export function classifyEsc(input: EscInput): EscResult {
@@ -119,4 +129,29 @@ export function classifyEsc(input: EscInput): EscResult {
     return { active: true, mode: 'understeer', turnSign, axle: 'rear', yawError: yawErr };
   }
   return { active: false, mode: 'stable', turnSign, axle: null, yawError: yawErr };
+}
+
+/**
+ * Map the ESC classification onto a single-wheel corrective brake target.
+ * Oversteer gets the outside-front wheel; understeer gets the inside-rear.
+ */
+export function computeEscBrakeTargets(input: EscBrakeTargetsInput): EscBrakeTargetsResult {
+  const torqueByWheel: [number, number, number, number] = [0, 0, 0, 0];
+  if (!input.esc.active || input.esc.turnSign === 0) {
+    return { torqueByWheel, targetWheel: null };
+  }
+
+  let targetWheel: 0 | 1 | 2 | 3 | null = null;
+  if (input.esc.mode === 'oversteer') {
+    targetWheel = input.esc.turnSign > 0 ? 0 : 1;
+  } else if (input.esc.mode === 'understeer') {
+    targetWheel = input.esc.turnSign > 0 ? 3 : 2;
+  }
+  if (targetWheel == null) {
+    return { torqueByWheel, targetWheel };
+  }
+
+  const authority = Math.max(0.18, Math.min(1, Math.abs(input.esc.yawError) / 0.8));
+  torqueByWheel[targetWheel] = input.maxBrakeTorque * authority;
+  return { torqueByWheel, targetWheel };
 }

@@ -62,6 +62,7 @@ export {
   applyAbs,
   computeTcCut,
   classifyEsc,
+  computeEscBrakeTargets,
   type AbsInput,
   type AbsResult,
   type TcInput,
@@ -69,6 +70,8 @@ export {
   type EscInput,
   type EscMode,
   type EscResult,
+  type EscBrakeTargetsInput,
+  type EscBrakeTargetsResult,
 } from './driver-aids.js';
 export {
   tireTempMu,

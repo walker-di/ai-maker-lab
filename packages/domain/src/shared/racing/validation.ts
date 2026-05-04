@@ -64,6 +64,38 @@ export function validateVehiclePreset(input: unknown): ValidationResult {
   if (v.diffType !== 'welded' && v.diffType !== 'open' && v.diffType !== 'clutchLSD') {
     pushError(errors, 'diffType', 'invalid', 'diffType must be welded, open, or clutchLSD');
   }
+  const physics = v.physics;
+  if (physics && typeof physics === 'object') {
+    const finitePositiveFields = [
+      'massKg',
+      'inertiaPitchKgM2',
+      'inertiaYawKgM2',
+      'inertiaRollKgM2',
+      'springFrontNpm',
+      'springRearNpm',
+      'damperBumpFrontNsPm',
+      'damperReboundFrontNsPm',
+      'damperBumpRearNsPm',
+      'damperReboundRearNsPm',
+      'arbFrontNpm',
+      'arbRearNpm',
+      'brakeTorqueMaxNm',
+      'cdAreaM2',
+      'yawAeroCoeff',
+    ] as const;
+    for (const key of finitePositiveFields) {
+      const value = physics[key];
+      if (value !== undefined && (!isFiniteNumber(value) || value <= 0)) {
+        pushError(errors, `physics.${key}`, 'invalid', `${key} must be > 0 when provided`);
+      }
+    }
+    if (
+      physics.brakeBiasFront !== undefined &&
+      (!isFiniteNumber(physics.brakeBiasFront) || physics.brakeBiasFront < 0 || physics.brakeBiasFront > 1)
+    ) {
+      pushError(errors, 'physics.brakeBiasFront', 'invalid', 'brakeBiasFront must be in [0, 1]');
+    }
+  }
   return errors.length ? { ok: false, errors } : { ok: true };
 }
 

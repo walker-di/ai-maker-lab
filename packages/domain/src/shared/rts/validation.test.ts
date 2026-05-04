@@ -82,10 +82,21 @@ describe('validateMapDefinition', () => {
     expect(isRefineryAdjacentToGasNode(map, { col: 0, row: 0 }, { cols: 2, rows: 2 })).toBe(false);
   });
 
+  test('ignores mineral nodes when checking refinery adjacency', () => {
+    const map = flat(8, 8);
+    map.resources.push({ id: 'm', kind: 'mineral', tile: { col: 4, row: 4 }, amount: 100 });
+    expect(isRefineryAdjacentToGasNode(map, { col: 2, row: 3 }, { cols: 2, rows: 2 })).toBe(false);
+  });
+
   test('requires a completed adjacent refinery for gas harvesting', () => {
     const gas = { kind: 'gas' as const, tile: { col: 4, row: 4 } };
     expect(canHarvestGasNode(gas, [])).toBe(false);
     expect(canHarvestGasNode(gas, [{ origin: { col: 2, row: 3 }, footprint: { cols: 2, rows: 2 }, buildProgress: 0.5 }])).toBe(false);
     expect(canHarvestGasNode(gas, [{ origin: { col: 2, row: 3 }, footprint: { cols: 2, rows: 2 }, buildProgress: 1 }])).toBe(true);
+  });
+
+  test('allows non-gas nodes to be harvested without a refinery', () => {
+    const mineral = { kind: 'mineral' as const, tile: { col: 4, row: 4 } };
+    expect(canHarvestGasNode(mineral, [])).toBe(true);
   });
 });

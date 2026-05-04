@@ -15,11 +15,11 @@ function collectTsFiles(dir: string): string[] {
 }
 
 describe('RTS engine import boundaries', () => {
-  test('engine does not import persistence or application layers', () => {
+  test('engine does not import persistence, application, or app-only layers', () => {
     const files = collectTsFiles(fileURLToPath(new URL('.', import.meta.url)));
     const offenders = files.filter((file) => {
       const content = readFileSync(file, 'utf8');
-      return /from ['"].*(surrealdb|domain\/infrastructure|domain\/application)/.test(content);
+      return /from ['"].*(surrealdb|domain\/infrastructure|domain\/application|\$app\/)/.test(content);
     });
     expect(offenders).toEqual([]);
   });

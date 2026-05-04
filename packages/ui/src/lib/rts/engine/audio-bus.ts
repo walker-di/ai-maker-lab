@@ -48,6 +48,10 @@ export class WebAudioBus implements AudioBus {
         this.tone(150, 0.05, 'sawtooth', 0.16 * volume, now);
         this.noiseBurst(0.045, 0.07 * volume, now);
         break;
+      case 'attack-move':
+        this.tone(320, 0.06, 'square', 0.16 * volume, now);
+        this.tone(360, 0.07, 'triangle', 0.1 * volume, now + 0.02);
+        break;
       case 'build-place':
         this.chord([260, 390], 0.09, 'square', 0.11 * volume, now);
         break;

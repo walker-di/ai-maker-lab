@@ -1,19 +1,15 @@
 <script lang="ts">
   let {
+    currentLabel = '—',
     bestLabel = '—',
     lastLabel = '—',
-  }: { bestLabel?: string; lastLabel?: string } = $props();
+  }: { currentLabel?: string; bestLabel?: string; lastLabel?: string } = $props();
 </script>
 
 <div class="panel lap-card" data-testid="hud-lap">
-  <div class="lap-row">
-    <span>Best</span>
-    <span class="v">{bestLabel}</span>
-  </div>
-  <div class="lap-row">
-    <span>Last</span>
-    <span class="v">{lastLabel}</span>
-  </div>
+  <div class="lap-row"><span>Lap</span><span class="v current">{currentLabel}</span></div>
+  <div class="lap-row"><span>Last</span><span class="v">{lastLabel}</span></div>
+  <div class="lap-row"><span>Best</span><span class="v">{bestLabel}</span></div>
 </div>
 
 <style>
@@ -33,5 +29,8 @@
   .lap-row .v {
     color: #77cfff;
     font-variant-numeric: tabular-nums;
+  }
+  .lap-row .v.current {
+    color: #66f09f;
   }
 </style>

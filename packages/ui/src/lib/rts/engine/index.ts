@@ -21,6 +21,8 @@ export type {
   WorkerComponent,
   ResourceNodeComponent,
   ProductionQueueComponent,
+  ResearchQueueComponent,
+  ResearchQueueItem,
   ProjectileComponent,
   DeathComponent,
   RenderableComponent,
@@ -36,8 +38,42 @@ export {
   FogOfWarSystem,
   type FogOfWarSnapshot,
 } from './systems.js';
-export { RtsEngine, type RtsEngineConfig, type RtsRenderer, type RtsRendererSnapshot, type RtsResourceState } from './RtsEngine.js';
+export { ResearchSystem, createFactionTechState, type FactionTechState } from './systems/research.js';
+export {
+  RtsEngine,
+  type RtsEngineConfig,
+  type RtsRenderer,
+  type RtsRendererSnapshot,
+  type RtsResourceState,
+  type RtsSelectionSummary,
+  type RtsSelectionSummaryEntry,
+  type RtsProductionQueueEntry,
+  type RtsMinimapBlip,
+  type RtsViewportBounds,
+  type RtsScreenPoint,
+  type RtsProductionOptionSummary,
+  type RtsSelectedRallyPoint,
+  type RtsProductionStructureGroup,
+  type RtsResearchQueueEntry,
+  type RtsResearchState,
+  type RtsResearchOptionSummary,
+} from './RtsEngine.js';
 export { EngineEmitter, type EngineEventMap } from './events.js';
+export {
+  getAiWaveCadenceMs,
+  missionDirectiveFromPhase,
+  missionPressureDetailFromPhase,
+  missionPressureFromScore,
+  missionStatusFromPhase,
+  missionToneFromPhaseAndPressure,
+  missionWaveLabelAndDetail,
+  type RtsMissionEnemyActivity,
+  type RtsMissionPhase,
+  type RtsMissionPressure,
+  type RtsMissionState,
+  type RtsMissionTone,
+  type RtsMissionWaveStatus,
+} from './mission.js';
 export { NullAudioBus, WebAudioBus, type AudioBus } from './audio-bus.js';
 export { FxManager, type FxKind, type FxRequest, type FxState } from './fx.js';
 export {
@@ -45,6 +81,8 @@ export {
   type RtsFeedbackSnapshot,
   type RtsOrderFeedbackKind,
   type RtsOrderRipple,
+  type RtsImpactKind,
+  type RtsImpactFlash,
 } from './fx/feedback.js';
 export { AiController } from './ai.js';
 export { createPixiRtsRendererFactory, pickTileFrame } from './pixi-renderer.js';

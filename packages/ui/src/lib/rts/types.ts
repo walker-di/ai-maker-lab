@@ -77,6 +77,66 @@ export type UnitKind = 'worker' | 'rifleman' | 'rocket' | 'scout';
 export type BuildingKind = 'hq' | 'barracks' | 'factory' | 'refinery' | 'depot' | 'turret';
 export type TechKind = 'armorT1' | 'armorT2' | 'weaponT1' | 'weaponT2' | 'sightRange';
 
+export interface TechStats {
+  /** Display name shown in HUD research panels. */
+  label: string;
+  cost: ResourceCost;
+  researchTimeMs: number;
+  /**
+   * Prerequisite techs that must already be researched before this tech can
+   * be queued. Empty means no prerequisites.
+   */
+  requires: TechKind[];
+  /**
+   * Stat deltas applied to every unit of the faction upon completion.
+   * Fields are additive increments; `sightMult` etc. intentionally not used
+   * so all effects are plain additive for simplicity.
+   */
+  effects: {
+    armorBonus?: number;
+    damageBonus?: number;
+    sightBonus?: number;
+  };
+}
+
+export const TECH_STATS: Readonly<Record<TechKind, TechStats>> = {
+  armorT1: {
+    label: 'Armor I',
+    cost: { mineral: 100, gas: 50 },
+    researchTimeMs: 30_000,
+    requires: [],
+    effects: { armorBonus: 1 },
+  },
+  armorT2: {
+    label: 'Armor II',
+    cost: { mineral: 175, gas: 100 },
+    researchTimeMs: 45_000,
+    requires: ['armorT1'],
+    effects: { armorBonus: 1 },
+  },
+  weaponT1: {
+    label: 'Weapons I',
+    cost: { mineral: 100, gas: 50 },
+    researchTimeMs: 30_000,
+    requires: [],
+    effects: { damageBonus: 2 },
+  },
+  weaponT2: {
+    label: 'Weapons II',
+    cost: { mineral: 175, gas: 100 },
+    researchTimeMs: 45_000,
+    requires: ['weaponT1'],
+    effects: { damageBonus: 2 },
+  },
+  sightRange: {
+    label: 'Advanced Optics',
+    cost: { mineral: 75, gas: 75 },
+    researchTimeMs: 25_000,
+    requires: [],
+    effects: { sightBonus: 2 },
+  },
+};
+
 export interface ResourceCost {
   mineral: number;
   gas: number;

@@ -13,7 +13,22 @@
     "check:desktop-app": "bun run --filter ui prepack && bun run --filter desktop-app check",
     "build:desktop-app": "bun run --filter ui prepack && cd apps/desktop-app && bun run build",
     "build:ui": "bun run --filter ui prepack",
-    "dev:domain": "bun run --filter domain dev"
+    "dev:domain": "bun run --filter domain dev",
+    "test:e2e:racing": "bun run --filter desktop-app test:e2e:racing",
+    "test:e2e:rts": "bun run --filter desktop-app test:e2e:rts",
+    "test:racing:logic": "bun run --filter ui test:logic:racing && bun run --filter desktop-app test:unit:racing:model",
+    "test:racing:driving": "bun run --filter ui test:logic:racing:engine && bun run --filter desktop-app test:e2e:racing:driving",
+    "test:racing:aids": "bun run --filter ui test:logic:racing:physics && bun run --filter desktop-app test:e2e:racing:aids",
+    "test:racing:setup": "bun run --filter desktop-app test:unit:racing:model && bun run --filter desktop-app test:e2e:racing:setup",
+    "test:racing:visual": "bun run --filter ui test:visual:racing && bun run --filter desktop-app test:visual:racing",
+    "test:racing:assets": "bun run --filter ui test:browser:racing && bun run --filter desktop-app test:racing:assets",
+    "test:racing": "bun run test:racing:logic && bun run test:racing:driving && bun run test:racing:aids && bun run test:racing:setup && bun run test:racing:visual",
+    "test:rts:logic": "bun run --filter ui test:logic:rts && bun run --filter desktop-app test:unit:rts:model",
+    "test:rts:lobby": "bun run --filter desktop-app test:e2e:rts:lobby",
+    "test:rts:controls": "bun run --filter desktop-app test:e2e:rts:controls",
+    "test:rts:missions": "bun run --filter ui test:logic:rts:ai && bun run --filter ui test:logic:rts:engine && bun run --filter desktop-app test:unit:rts:model",
+    "test:rts:visual": "bun run --filter ui test:visual:rts && bun run --filter desktop-app test:visual:rts",
+    "test:rts": "bun run test:rts:logic && bun run test:rts:lobby && bun run test:rts:controls && bun run test:rts:missions && bun run test:rts:visual"
   },
   "devDependencies": {
     "@ai-sdk/svelte": "^4.0.170",

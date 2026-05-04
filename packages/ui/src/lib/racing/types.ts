@@ -37,6 +37,25 @@ export interface SurfaceDef {
 /** A `[rpm, Nm]` control point on the engine torque curve. */
 export type EngineCurvePoint = readonly [number, number];
 
+export interface VehiclePhysicsPreset {
+  massKg?: number;
+  inertiaPitchKgM2?: number;
+  inertiaYawKgM2?: number;
+  inertiaRollKgM2?: number;
+  springFrontNpm?: number;
+  springRearNpm?: number;
+  damperBumpFrontNsPm?: number;
+  damperReboundFrontNsPm?: number;
+  damperBumpRearNsPm?: number;
+  damperReboundRearNsPm?: number;
+  arbFrontNpm?: number;
+  arbRearNpm?: number;
+  brakeTorqueMaxNm?: number;
+  brakeBiasFront?: number;
+  cdAreaM2?: number;
+  yawAeroCoeff?: number;
+}
+
 export interface VehiclePreset {
   id: string;
   label: string;
@@ -53,6 +72,7 @@ export interface VehiclePreset {
   steerMaxDeg: number;
   axleDrive: { front: number; rear: number };
   diffType: DiffType;
+  physics?: VehiclePhysicsPreset;
 }
 
 export interface SurfaceZone {
@@ -86,6 +106,7 @@ export interface TrackPreset {
   ctrl: ReadonlyArray<readonly [number, number]>;
   gravelZones?: ReadonlyArray<SurfaceZone | { x: number; z: number; w: number; h: number; rot?: number }>;
   dampZones?: ReadonlyArray<SurfaceZone | { x: number; z: number; w: number; h: number; rot?: number }>;
+  surfaceZones?: ReadonlyArray<SurfaceZone>;
   apexes?: ReadonlyArray<number>;
   propCadence?: SceneryHint;
 }

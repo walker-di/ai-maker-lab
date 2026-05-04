@@ -21,6 +21,29 @@ export interface AxleDriveShare {
   rear: number;
 }
 
+export interface VehiclePhysicsPreset {
+  /** Total chassis mass used by the rigid-body integrator. */
+  massKg?: number;
+  /** Body-axis pitch inertia (rotation about chassis X / right axis). */
+  inertiaPitchKgM2?: number;
+  /** Body-axis yaw inertia (rotation about chassis Y / up axis). */
+  inertiaYawKgM2?: number;
+  /** Body-axis roll inertia (rotation about chassis Z / forward axis). */
+  inertiaRollKgM2?: number;
+  springFrontNpm?: number;
+  springRearNpm?: number;
+  damperBumpFrontNsPm?: number;
+  damperReboundFrontNsPm?: number;
+  damperBumpRearNsPm?: number;
+  damperReboundRearNsPm?: number;
+  arbFrontNpm?: number;
+  arbRearNpm?: number;
+  brakeTorqueMaxNm?: number;
+  brakeBiasFront?: number;
+  cdAreaM2?: number;
+  yawAeroCoeff?: number;
+}
+
 export interface VehiclePreset {
   id: string;
   label: string;
@@ -39,4 +62,6 @@ export interface VehiclePreset {
   steerMaxDeg: number;
   axleDrive: AxleDriveShare;
   diffType: DiffType;
+  /** Optional runtime tuning that lets each built-in car feel distinct. */
+  physics?: VehiclePhysicsPreset;
 }

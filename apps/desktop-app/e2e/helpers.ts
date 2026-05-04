@@ -75,6 +75,44 @@ export async function patchEmptyRacingTableErrors(page: Page) {
 	});
 }
 
+/**
+ * Intercept RTS API GETs that may 500 on a fresh SurrealDB mem:// instance
+ * and return safe empty responses so the lobby and result lookups bootstrap
+ * without test flakes.
+ */
+export async function patchEmptyRtsTableErrors(page: Page) {
+	await page.route('**/api/rts/**', async (route, request) => {
+		if (request.method() !== 'GET') {
+			return route.fallback();
+		}
+		const url = request.url();
+		try {
+			const response = await route.fetch();
+			if (response.ok()) {
+				const body = await response.body();
+				return route.fulfill({
+					status: response.status(),
+					headers: response.headers(),
+					body,
+				});
+			}
+			const fallback = /\/api\/rts\/(?:maps|user-maps)\/.+/.test(url) ? 'null' : '[]';
+			return route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: fallback,
+			});
+		} catch {
+			const fallback = /\/api\/rts\/(?:maps|user-maps)\/.+/.test(url) ? 'null' : '[]';
+			return route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: fallback,
+			});
+		}
+	});
+}
+
 export async function navigateToChat(page: Page, query?: Record<string, string>) {
 	const params = query ? '?' + new URLSearchParams(query).toString() : '';
 	const agentsResponse = page.waitForResponse((response) => {

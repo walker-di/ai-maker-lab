@@ -47,6 +47,12 @@ export class MovementSystem implements System {
           const path = findPath(this.grid, { col: Math.floor(pos.col), row: Math.floor(pos.row) }, next);
           move.path = path?.slice(1) ?? [];
           move.goal = next;
+        } else if (move.path.length === 0 && move.orderMode === 'attackMove' && move.goal) {
+          const reachedGoal = Math.floor(pos.col) === move.goal.col && Math.floor(pos.row) === move.goal.row;
+          if (reachedGoal) {
+            move.orderMode = 'hold';
+            move.holdTile = { ...move.goal };
+          }
         }
         continue;
       }
@@ -79,9 +85,24 @@ export class CombatSystem implements System {
       const combat = world.getComponent<CombatComponent>(id, C.combat)!;
       const pos = world.getComponent<PositionComponent>(id, C.position)!;
       const faction = world.getComponent<FactionComponent>(id, C.faction)!;
+      const move = world.getComponent<MovementComponent>(id, C.movement);
+      const vision = world.getComponent<VisionComponent>(id, C.vision);
+      const orderMode = move?.orderMode ?? 'idle';
       combat.cooldownMs = Math.max(0, combat.cooldownMs - dtMs);
       if (!combat.targetId || !world.isAlive(combat.targetId)) {
-        combat.targetId = findNearestEnemy(world, pos, faction.factionId, combat.range + 2);
+        const searchRange = orderMode === 'hold'
+          ? combat.range + 0.5
+          : orderMode === 'attackMove'
+            ? Math.max(combat.range + 2, vision?.sight ?? combat.range + 2)
+            : combat.range + 2;
+        combat.targetId = findNearestEnemy(world, pos, faction.factionId, searchRange);
+        if (!combat.targetId && orderMode === 'attackMove' && move?.goal && move.path.length === 0) {
+          const from = { col: Math.floor(pos.col), row: Math.floor(pos.row) };
+          if (from.col !== move.goal.col || from.row !== move.goal.row) {
+            const path = findPath(this.grid, from, move.goal);
+            move.path = path?.slice(1) ?? [];
+          }
+        }
       }
       if (!combat.targetId) continue;
       const targetPos = world.getComponent<PositionComponent>(combat.targetId, C.position);
@@ -96,8 +117,13 @@ export class CombatSystem implements System {
       const distance = Math.hypot(dx, dy);
       if (combat.arc === 'direct' && crossesBlockingCliff(this.grid, pos, targetPos)) continue;
       if (distance > range) {
-        // Out of range; move owner toward target if it's a unit.
-        const move = world.getComponent<MovementComponent>(id, C.movement);
+        if (orderMode === 'hold') {
+          combat.targetId = null;
+          continue;
+        }
+        if (orderMode === 'attackMove') {
+          continue;
+        }
         if (move && move.path.length === 0) {
           const path = findPath(this.grid, { col: Math.floor(pos.col), row: Math.floor(pos.row) }, { col: Math.floor(targetPos.col), row: Math.floor(targetPos.row) });
           if (path) move.path = path.slice(1);
@@ -109,6 +135,9 @@ export class CombatSystem implements System {
       if (targetPos.altitude > pos.altitude && Math.random() < TUNABLES.lowerToHigherMissChance) {
         combat.cooldownMs = combat.attackPeriodMs;
         continue;
+      }
+      if (orderMode === 'attackMove' && move) {
+        move.path = [];
       }
       const damage = combat.damage * (1 + TUNABLES.altitudeDamageBonusPerLevel * Math.max(0, pos.altitude - targetPos.altitude));
       this.spawnProjectile({ col: pos.col, row: pos.row, altitude: pos.altitude }, combat.targetId, damage, combat.projectileKind, combat.arc, faction.factionId);
@@ -165,14 +194,30 @@ export class ProjectileSystem implements System {
         pos.altitude = p.altitude;
       }
       if (proj.elapsedMs >= proj.totalMs) {
+        let impactTile: TilePos | null = null;
+        let targetFactionId: string | undefined;
         if (world.isAlive(proj.toEntity)) {
           const hp = world.getComponent<HealthComponent>(proj.toEntity, C.health);
+          const targetFaction = world.getComponent<FactionComponent>(proj.toEntity, C.faction);
+          targetFactionId = targetFaction?.factionId;
           if (hp) {
             const reduced = Math.max(1, proj.damage - hp.armor);
             hp.hp -= reduced;
           }
         }
-        ctx.bus.emit({ type: 'projectileImpact', entity: proj.toEntity, kind: proj.kind, factionId: proj.factionId });
+        if (targetPos) {
+          impactTile = { col: Math.floor(targetPos.col), row: Math.floor(targetPos.row) };
+        } else if (pos) {
+          impactTile = { col: Math.floor(pos.col), row: Math.floor(pos.row) };
+        }
+        ctx.bus.emit({
+          type: 'projectileImpact',
+          entity: proj.toEntity,
+          kind: proj.kind,
+          factionId: proj.factionId,
+          targetFactionId,
+          tile: impactTile,
+        });
         world.removeEntity(id);
       }
     }
@@ -186,7 +231,14 @@ export class HealthSystem implements System {
       const hp = world.getComponent<HealthComponent>(id, C.health)!;
       if (hp.hp > 0) continue;
       const faction = world.getComponent<FactionComponent>(id, C.faction);
-      ctx.bus.emit({ type: 'death', entity: id, factionId: faction?.factionId, isBuilding: world.hasComponent(id, C.building) });
+      const pos = world.getComponent<PositionComponent>(id, C.position);
+      ctx.bus.emit({
+        type: 'death',
+        entity: id,
+        factionId: faction?.factionId,
+        isBuilding: world.hasComponent(id, C.building),
+        tile: pos ? { col: Math.floor(pos.col), row: Math.floor(pos.row) } : undefined,
+      });
       world.removeEntity(id);
     }
   }
@@ -209,6 +261,7 @@ export class WorkerSystem implements System {
 
       switch (worker.state) {
         case 'idle':
+          if (!worker.autoGatherEnabled) break;
           if (worker.resourceNodeId == null || !world.isAlive(worker.resourceNodeId)) {
             const node = findNearestResourceNode(world, pos);
             if (!node) break;
@@ -376,6 +429,7 @@ export class ProductionSystem implements System {
       kind: import('../types.js').UnitKind,
       factionId: string,
       atTile: TilePos,
+      producerId: number,
     ) => number,
   ) {}
 
@@ -394,7 +448,7 @@ export class ProductionSystem implements System {
       queue.items.shift();
       if (item.isUnit) {
         const tile = { col: Math.floor(pos.col + 1), row: Math.floor(pos.row + 1) };
-        const entity = this.spawnUnit(item.kind as import('../types.js').UnitKind, faction.factionId, tile);
+        const entity = this.spawnUnit(item.kind as import('../types.js').UnitKind, faction.factionId, tile, id);
         ctx.bus.emit({ type: 'productionCompleted', factionId: faction.factionId, kind: item.kind, entity });
       }
       void this.resources; // placeholder for cost handling done at queue time

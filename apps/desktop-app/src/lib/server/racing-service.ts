@@ -11,7 +11,6 @@ import {
 import { getAppDbConfig } from './db-config.js';
 
 interface RacingServiceBundle {
-	catalog: BuiltInRacingCatalogSource;
 	sessions: SurrealRacingSessionRepository;
 	laps: SurrealLapResultRepository;
 	setups: SurrealRacingSetupRepository;
@@ -24,7 +23,12 @@ interface RacingServiceBundle {
 	};
 }
 
+const catalog = new BuiltInRacingCatalogSource();
 let bundlePromise: Promise<RacingServiceBundle> | undefined;
+
+export function getRacingCatalog(): BuiltInRacingCatalogSource {
+	return catalog;
+}
 
 export function getRacingServices(): Promise<RacingServiceBundle> {
 	if (!bundlePromise) {
@@ -35,7 +39,6 @@ export function getRacingServices(): Promise<RacingServiceBundle> {
 				const sessions = new SurrealRacingSessionRepository(adapter);
 				const laps = new SurrealLapResultRepository(adapter);
 				const setups = new SurrealRacingSetupRepository(adapter);
-				const catalog = new BuiltInRacingCatalogSource();
 				const useCases = {
 					startSession: Racing.createStartSession(sessions),
 					recordLap: Racing.createRecordLap(laps),
@@ -43,7 +46,7 @@ export function getRacingServices(): Promise<RacingServiceBundle> {
 					getSetup: Racing.createGetSetup(setups),
 					setSetup: Racing.createSetSetup(setups)
 				};
-				return { catalog, sessions, laps, setups, useCases };
+				return { sessions, laps, setups, useCases };
 			} catch (error) {
 				bundlePromise = undefined;
 				throw error;

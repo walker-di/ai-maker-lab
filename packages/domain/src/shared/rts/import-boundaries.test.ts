@@ -15,9 +15,9 @@ function collectTsFiles(dir: string): string[] {
 }
 
 describe('RTS import boundaries', () => {
-  test('domain shared RTS code does not import pixi', () => {
+  test('domain shared RTS code does not import UI, app, or persistence modules', () => {
     const files = collectTsFiles(fileURLToPath(new URL('.', import.meta.url)));
-    const offenders = files.filter((file) => /from ['"](?:pixi\.js|@pixi\/)/.test(readFileSync(file, 'utf8')));
+    const offenders = files.filter((file) => /from ['"](?:pixi\.js|@pixi\/|surrealdb|\$app\/)/.test(readFileSync(file, 'utf8')));
     expect(offenders).toEqual([]);
   });
 });

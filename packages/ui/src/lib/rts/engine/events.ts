@@ -1,3 +1,6 @@
+import type { TechKind, TilePos } from '../types.js';
+import type { RtsMissionState } from './mission.js';
+
 export type EngineEventMap = {
   unitCreated: { entity: number; factionId: string; kind: string };
   unitKilled: { entity: number; factionId: string; killerFactionId?: string };
@@ -6,8 +9,26 @@ export type EngineEventMap = {
   resourceChanged: { factionId: string; mineral: number; gas: number };
   selectionChanged: { entityIds: number[] };
   productionStarted: { factionId: string; kind: string };
+  productionCanceled: { factionId: string; kind: string; producerId: number };
   productionCompleted: { factionId: string; kind: string; entity?: number };
-  squadLaunched: { factionId: string; size: number; waveIndex: number };
+  researchStarted: { factionId: string; kind: TechKind; researcherId: number };
+  researchCanceled: { factionId: string; kind: TechKind; researcherId: number };
+  researchCompleted: { factionId: string; kind: TechKind };
+  squadLaunched: {
+    factionId: string;
+    size: number;
+    waveIndex: number;
+    launchedAtMs?: number;
+    cadenceMs?: number;
+    targetTile?: TilePos;
+  };
+  missionUpdated: { state: RtsMissionState };
+  combatAlert: {
+    tile: TilePos;
+    factionId?: string;
+    kind: 'impact' | 'critical';
+    severity: 'warning' | 'danger';
+  };
   matchEnded: { winner: string; durationMs: number };
 };
 

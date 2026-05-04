@@ -42,8 +42,23 @@ and a Svelte 5 HUD reads engine snapshots.
 
 ```sh
 bun test packages/ui/src/lib/racing/
+bun run --filter ui test:browser:racing
+bun run --filter desktop-app test:racing:assets
+bun run test:racing:assets
 ```
 
-77 tests across 8 files cover physics helpers, advanced contributors
-(camber, ARB, anti-dive, brake fade, yaw-aero, Mz, slipping clutch,
-diff variants, thermal models), and import boundaries.
+The racing asset checks are split across three layers:
+
+- `packages/ui/src/lib/racing/engine/three-renderer.browser.test.ts` mocks
+  `GLTFLoader` and verifies renderer-side asset caching, scenery rebuilds,
+  and primitive fallback behavior without launching the full app.
+- `apps/desktop-app/src/routes/experiments/racing/racing-kenney-assets.test.ts`
+  validates that the shipped desktop bundle still includes Kenney attribution,
+  `static/racing/License.txt`, and the expected GLB families on disk.
+- `apps/desktop-app/e2e/racing/racing-assets.e2e.ts` proves the browser route
+  actually requests `/racing/extracted/*.glb` at runtime and stays playable
+  when those GLBs fail to load.
+
+The existing package tests continue to cover physics helpers, advanced
+contributors (camber, ARB, anti-dive, brake fade, yaw-aero, Mz, slipping
+clutch, diff variants, thermal models), and import boundaries.

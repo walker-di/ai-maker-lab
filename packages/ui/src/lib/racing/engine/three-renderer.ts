@@ -33,6 +33,7 @@ import {
   Vector3,
   WebGLRenderer,
 } from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { sampleCentripetal, type SampledPoint } from './tracks/catmull-rom.js';
 import { placeScenery, type PropKind } from './tracks/scenery-placement.js';
 import type { TrackPreset, VehiclePreset } from '../types.js';
@@ -65,6 +66,13 @@ const PROP_FALLBACK_COLOR: Record<PropKind, number> = {
   billboard: 0x6c7a89,
 };
 
+const PROP_ASSET_FILE: Record<PropKind, string> = {
+  cone: 'cone.glb',
+  barrier: 'barrierWhite.glb',
+  light: 'lightPostModern.glb',
+  billboard: 'billboard.glb',
+};
+
 export class RacingRenderer {
   readonly scene = new Scene();
   readonly camera: PerspectiveCamera;
@@ -75,6 +83,11 @@ export class RacingRenderer {
 
   private trackRoot: Group | null = null;
   private propsRoot: Group | null = null;
+  private readonly gltfLoader = new GLTFLoader();
+  private readonly assetCache = new Map<PropKind, Object3D | null>();
+  private readonly assetLoads = new Map<PropKind, Promise<void>>();
+  private lastTrackPreset: TrackPreset | null = null;
+  private lastTrackPoints: SampledPoint[] = [];
 
   constructor(private readonly opts: RacingRendererOptions) {
     this.renderer = new WebGLRenderer({ canvas: opts.canvas, antialias: true });
@@ -165,6 +178,8 @@ export class RacingRenderer {
     }
     this.trackRoot = new Group();
     const points = sampleCentripetal(preset.ctrl, preset.samples);
+    this.lastTrackPreset = preset;
+    this.lastTrackPoints = [...points];
     const ribbon = buildRibbonGeometry(points, preset.halfWidth);
     const mesh = new Mesh(
       ribbon,
@@ -188,14 +203,39 @@ export class RacingRenderer {
       halfWidth: preset.halfWidth,
       cadence: preset.propCadence,
     });
+    this.primeAssets(placements.map((placement) => placement.kind));
     for (const p of placements) {
-      const asset = this.opts.getAsset?.(p.kind);
+      const asset = this.opts.getAsset?.(p.kind) ?? this.assetCache.get(p.kind) ?? undefined;
       const node = asset ? asset.clone() : this.fallbackProp(p.kind);
       node.position.set(p.x, p.y, p.z);
       node.rotation.y = p.rot;
       this.propsRoot.add(node);
     }
     this.scene.add(this.propsRoot);
+  }
+
+  private primeAssets(kinds: Iterable<PropKind>): void {
+    if (this.opts.getAsset) return;
+    for (const kind of new Set(kinds)) {
+      if (this.assetCache.has(kind) || this.assetLoads.has(kind)) continue;
+      const file = PROP_ASSET_FILE[kind];
+      const load = this.gltfLoader
+        .loadAsync(`/racing/extracted/${file}`)
+        .then((gltf) => {
+          this.assetCache.set(kind, gltf.scene);
+          if (this.lastTrackPreset) {
+            this.placeScenery(this.lastTrackPreset, this.lastTrackPoints);
+          }
+        })
+        .catch((error) => {
+          console.warn(`Failed to load racing asset ${file}`, error);
+          this.assetCache.set(kind, null);
+        })
+        .finally(() => {
+          this.assetLoads.delete(kind);
+        });
+      this.assetLoads.set(kind, load);
+    }
   }
 
   private fallbackProp(kind: PropKind): Object3D {

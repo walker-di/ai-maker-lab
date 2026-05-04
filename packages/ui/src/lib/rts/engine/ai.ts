@@ -10,6 +10,7 @@ import type {
   WorkerComponent,
 } from './components.js';
 import { SeededRng } from './rng.js';
+import { getAiWaveCadenceMs } from './mission.js';
 
 interface DirectorState {
   lastTickMs: number;
@@ -57,6 +58,7 @@ export class AiController {
   private state: DirectorState = { lastTickMs: 0 };
   private attacked = false;
   private waveIndex = 0;
+  private nextAttackAtMs = 0;
 
   constructor(
     private readonly engine: RtsEngine,
@@ -66,6 +68,7 @@ export class AiController {
   ) {
     this.rng = SeededRng.fromString(`${factionId}-ai`, seed);
     this.buildOrder = [...BASE_BUILD_ORDER];
+    this.engine.registerEnemyWaveCadence(factionId, getAiWaveCadenceMs(difficulty));
   }
 
   tick(nowMs: number): void {
@@ -110,21 +113,39 @@ export class AiController {
   }
 
   private militaryDirector(nowMs: number): void {
-    if (this.buildOrderIndex < 4) return;
+    const cadenceMs = getAiWaveCadenceMs(this.difficulty);
+    if (this.buildOrderIndex < 4) {
+      this.engine.registerEnemyWaveCadence(this.factionId, cadenceMs);
+      return;
+    }
     const aggression = DIFFICULTY_AGGRESSION[this.difficulty];
     const myUnits = this.collectMyUnits();
     const minWaveSize = Math.max(2, Math.round(4 * aggression));
-    if (myUnits.length < minWaveSize) return;
+    if (myUnits.length < minWaveSize) {
+      this.engine.registerEnemyWaveCadence(this.factionId, cadenceMs);
+      return;
+    }
     const enemyTarget = this.findEnemyTarget();
     if (!enemyTarget) return;
-    if (!this.attacked || nowMs - this.state.lastTickMs >= 0) {
-      this.engine.selectByIds(myUnits);
-      this.engine.orderMoveSelectionTo(enemyTarget);
-      this.engine.selectByIds([]);
-      this.attacked = true;
-      this.waveIndex++;
-      this.engine.emitter.emit('squadLaunched', { factionId: this.factionId, size: myUnits.length, waveIndex: this.waveIndex });
+    if (this.attacked && nowMs < this.nextAttackAtMs) {
+      this.engine.registerEnemyWaveCadence(this.factionId, cadenceMs);
+      return;
     }
+
+    this.engine.selectByIds(myUnits);
+    this.engine.orderMoveSelectionTo(enemyTarget);
+    this.engine.selectByIds([]);
+    this.attacked = true;
+    this.waveIndex++;
+    this.nextAttackAtMs = nowMs + cadenceMs;
+    this.engine.reportSquadLaunched({
+      factionId: this.factionId,
+      size: myUnits.length,
+      waveIndex: this.waveIndex,
+      launchedAtMs: nowMs,
+      cadenceMs,
+      targetTile: enemyTarget,
+    });
   }
 
   private scoutDirector(): void {

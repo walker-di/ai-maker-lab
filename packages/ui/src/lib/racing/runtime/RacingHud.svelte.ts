@@ -1,10 +1,7 @@
 import type { SurfaceId } from '../types.js';
 
-/**
- * Presentation model for the Racing HUD. Updated by the page model from
- * engine snapshot data once per render frame. The HUD components read
- * `model.state.*` directly via Svelte 5 reactivity.
- */
+export type RacingTelemetryMode = 'load' | 'slip';
+
 export interface RacingHudWheelState {
   index: number;
   fz: number;
@@ -13,6 +10,7 @@ export interface RacingHudWheelState {
   surface: SurfaceId | null;
   tempC: number;
   brakeTempC: number;
+  bumpStopPct: number;
   airborne: boolean;
 }
 
@@ -29,6 +27,18 @@ export interface RacingHudLapState {
   currentMs: number | null;
 }
 
+export interface RacingTraceSample {
+  fl: number;
+  fr: number;
+  rl: number;
+  rr: number;
+}
+
+export interface RacingGgPoint {
+  latG: number;
+  longG: number;
+}
+
 export interface RacingHudState {
   speedKmh: number;
   rpm: number;
@@ -37,9 +47,22 @@ export interface RacingHudState {
   driftState: string;
   sideslipDeg: number;
   yawRateRad: number;
+  rollDeg: number;
+  pitchDeg: number;
   rearLockPct: number;
+  rearSlipRatio: number;
+  frontSlipDeg: number;
+  rearSlipDeg: number;
   frontLoadPct: number;
   leftLoadPct: number;
+  ackermannDeltaDeg: number;
+  frontToeDeg: number;
+  rearToeDeg: number;
+  casterDeg: number;
+  accelLongG: number;
+  accelLatG: number;
+  fps: number;
+  telemetryMode: RacingTelemetryMode;
   cameraMode: 'chase' | 'hood' | 'far' | 'map';
   trackId: string;
   vehicleId: string;
@@ -48,9 +71,18 @@ export interface RacingHudState {
   paused: boolean;
   muted: boolean;
   showDebug: boolean;
+  absEnabled: boolean;
+  tcEnabled: boolean;
+  escEnabled: boolean;
+  absActive: boolean;
+  tcActive: boolean;
+  escActive: boolean;
+  tcCutPct: number;
   input: RacingHudInputState;
   lap: RacingHudLapState;
   wheels: RacingHudWheelState[];
+  traceSamples: RacingTraceSample[];
+  ggTrail: RacingGgPoint[];
 }
 
 export class RacingHudModel {
@@ -63,8 +95,21 @@ export class RacingHudModel {
     sideslipDeg: 0,
     yawRateRad: 0,
     rearLockPct: 0,
+    rearSlipRatio: 0,
+    frontSlipDeg: 0,
+    rearSlipDeg: 0,
     frontLoadPct: 50,
     leftLoadPct: 50,
+    ackermannDeltaDeg: 0,
+    frontToeDeg: 0,
+    rearToeDeg: 0,
+    casterDeg: 0,
+    accelLongG: 0,
+    accelLatG: 0,
+    fps: 0,
+    telemetryMode: 'load',
+    rollDeg: 0,
+    pitchDeg: 0,
     cameraMode: 'chase',
     trackId: '',
     vehicleId: '',
@@ -73,14 +118,23 @@ export class RacingHudModel {
     paused: false,
     muted: false,
     showDebug: false,
+    absEnabled: true,
+    tcEnabled: true,
+    escEnabled: false,
+    absActive: false,
+    tcActive: false,
+    escActive: false,
+    tcCutPct: 0,
     input: { throttle: 0, brake: 0, steer: 0, handbrake: 0 },
     lap: { bestMs: null, lastMs: null, currentMs: null },
     wheels: [
-      { index: 0, fz: 0, slipRatio: 0, slipAngle: 0, surface: null, tempC: 30, brakeTempC: 30, airborne: false },
-      { index: 1, fz: 0, slipRatio: 0, slipAngle: 0, surface: null, tempC: 30, brakeTempC: 30, airborne: false },
-      { index: 2, fz: 0, slipRatio: 0, slipAngle: 0, surface: null, tempC: 30, brakeTempC: 30, airborne: false },
-      { index: 3, fz: 0, slipRatio: 0, slipAngle: 0, surface: null, tempC: 30, brakeTempC: 30, airborne: false },
+      { index: 0, fz: 0, slipRatio: 0, slipAngle: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false },
+      { index: 1, fz: 0, slipRatio: 0, slipAngle: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false },
+      { index: 2, fz: 0, slipRatio: 0, slipAngle: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false },
+      { index: 3, fz: 0, slipRatio: 0, slipAngle: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false },
     ],
+    traceSamples: [],
+    ggTrail: [],
   });
 
   setSpeed(kmh: number): void { this.state.speedKmh = kmh; }
@@ -90,10 +144,36 @@ export class RacingHudModel {
   setSideslip(deg: number): void { this.state.sideslipDeg = deg; }
   setYawRate(rad: number): void { this.state.yawRateRad = rad; }
   setRearLock(pct: number): void { this.state.rearLockPct = pct; }
+  setOrientation(rollDeg: number, pitchDeg: number): void {
+    this.state.rollDeg = rollDeg;
+    this.state.pitchDeg = pitchDeg;
+  }
   setBalance(frontPct: number, leftPct: number): void {
     this.state.frontLoadPct = frontPct;
     this.state.leftLoadPct = leftPct;
   }
+  setHandlingMetrics(metrics: {
+    rearSlipRatio: number;
+    frontSlipDeg: number;
+    rearSlipDeg: number;
+    ackermannDeltaDeg: number;
+    frontToeDeg: number;
+    rearToeDeg: number;
+    casterDeg: number;
+    accelLongG: number;
+    accelLatG: number;
+  }): void {
+    this.state.rearSlipRatio = metrics.rearSlipRatio;
+    this.state.frontSlipDeg = metrics.frontSlipDeg;
+    this.state.rearSlipDeg = metrics.rearSlipDeg;
+    this.state.ackermannDeltaDeg = metrics.ackermannDeltaDeg;
+    this.state.frontToeDeg = metrics.frontToeDeg;
+    this.state.rearToeDeg = metrics.rearToeDeg;
+    this.state.casterDeg = metrics.casterDeg;
+    this.state.accelLongG = metrics.accelLongG;
+    this.state.accelLatG = metrics.accelLatG;
+  }
+  setFps(fps: number): void { this.state.fps = fps; }
   setCameraMode(mode: 'chase' | 'hood' | 'far' | 'map'): void { this.state.cameraMode = mode; }
   setVehicle(id: string, label: string): void {
     this.state.vehicleId = id;
@@ -106,6 +186,23 @@ export class RacingHudModel {
   setPaused(paused: boolean): void { this.state.paused = paused; }
   setMuted(muted: boolean): void { this.state.muted = muted; }
   setShowDebug(show: boolean): void { this.state.showDebug = show; }
+  setAidState(aids: {
+    absEnabled: boolean;
+    tcEnabled: boolean;
+    escEnabled: boolean;
+    absActive: boolean;
+    tcActive: boolean;
+    escActive: boolean;
+    tcCutPct: number;
+  }): void {
+    this.state.absEnabled = aids.absEnabled;
+    this.state.tcEnabled = aids.tcEnabled;
+    this.state.escEnabled = aids.escEnabled;
+    this.state.absActive = aids.absActive;
+    this.state.tcActive = aids.tcActive;
+    this.state.escActive = aids.escActive;
+    this.state.tcCutPct = aids.tcCutPct;
+  }
   setInput(input: RacingHudInputState): void { this.state.input = { ...input }; }
   setLap(lap: RacingHudLapState): void { this.state.lap = { ...lap }; }
   setWheels(wheels: ReadonlyArray<RacingHudWheelState>): void {
@@ -114,6 +211,13 @@ export class RacingHudModel {
       if (!incoming) continue;
       this.state.wheels[i] = { ...incoming };
     }
+  }
+  pushTelemetry(sample: RacingTraceSample, gg: RacingGgPoint): void {
+    this.state.traceSamples = [...this.state.traceSamples.slice(-119), sample];
+    this.state.ggTrail = [...this.state.ggTrail.slice(-79), gg];
+  }
+  toggleTelemetryMode(): void {
+    this.state.telemetryMode = this.state.telemetryMode === 'load' ? 'slip' : 'load';
   }
 }
 

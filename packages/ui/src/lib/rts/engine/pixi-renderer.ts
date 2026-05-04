@@ -6,7 +6,7 @@
  */
 import type { MapDefinition, TerrainKind, TilePos } from '../types.js';
 import { OrthoProjection } from './iso.js';
-import type { RtsRenderer, RtsRendererSnapshot } from './RtsEngine.js';
+import type { RtsRenderer, RtsRendererSnapshot, RtsViewportBounds, RtsScreenPoint } from './RtsEngine.js';
 import {
   getSpriteFrame,
   loadRtsAtlases,
@@ -197,8 +197,22 @@ class PixiRtsRenderer implements RtsRenderer {
       } else if (entity.kind === 'mineral-node' || entity.kind === 'gas-node') {
         this.drawResourceIcon(overlay, tileW, tileH, tint);
       } else if (entity.kind.startsWith('projectile-')) {
-        overlay.circle(0, 0, entity.kind.includes('rocket') ? 4 : 2);
-        overlay.fill({ color: tint });
+        if (entity.kind.includes('rocket')) {
+          overlay.moveTo(-8, 2);
+          overlay.lineTo(-2, 0);
+          overlay.lineTo(-8, -2);
+          overlay.stroke({ color: 0xff9b5a, width: 2, alpha: 0.95 });
+          overlay.circle(0, 0, 4);
+          overlay.fill({ color: tint });
+          overlay.circle(0, 0, 7);
+          overlay.stroke({ color: 0xffe082, width: 1, alpha: 0.65 });
+        } else {
+          overlay.moveTo(-7, 0);
+          overlay.lineTo(0, 0);
+          overlay.stroke({ color: tint, width: entity.kind.includes('tracer') ? 2 : 1.5, alpha: 0.9 });
+          overlay.circle(1, 0, entity.kind.includes('tracer') ? 2.5 : 2);
+          overlay.fill({ color: tint });
+        }
       } else {
         overlay.rect(-tileW / 4, -tileH / 4, tileW / 2, tileH / 2);
         overlay.fill({ color: tint });
@@ -279,6 +293,19 @@ class PixiRtsRenderer implements RtsRenderer {
       drawIsoDiamond(g, screen.x, screen.y, tileW + pad * 2, tileH + pad);
       g.stroke({ color, alpha: 1 - t, width: 2 });
       this.feedbackLayer.addChild(g);
+    }
+    for (const impact of feedback.impacts) {
+      const altitude = this.map.altitude.levels[impact.tile.row]?.[impact.tile.col] ?? 0;
+      const screen = this.projection.tileToScreen(impact.tile, altitude);
+      const t = Math.min(1, impact.ageMs / impact.durationMs);
+      const burst = new Graphics();
+      const color = impact.kind === 'rocket' || impact.kind === 'critical' ? 0xff7a59 : 0xffe082;
+      const alpha = 0.85 - t * 0.65;
+      burst.circle(screen.x, screen.y, 5 + t * (impact.kind === 'rocket' || impact.kind === 'critical' ? 24 : 14));
+      burst.stroke({ color, alpha, width: impact.kind === 'rocket' || impact.kind === 'critical' ? 3 : 2 });
+      burst.circle(screen.x, screen.y, 2 + t * 5);
+      burst.fill({ color, alpha: alpha * 0.45 });
+      this.feedbackLayer.addChild(burst);
     }
     if (feedback.combatHeat > 0.05) {
       const vignette = new Graphics();
@@ -567,6 +594,33 @@ class PixiRtsRenderer implements RtsRenderer {
 
   getCanvas(): HTMLCanvasElement | null {
     return (this.app?.canvas as HTMLCanvasElement | undefined) ?? null;
+  }
+
+  tileToScreen(tile: TilePos, altitude = 0): RtsScreenPoint | null {
+    if (!this.projection) return null;
+    const world = this.projection.tileToScreen(tile, altitude);
+    return {
+      x: world.x * this.cameraScale + this.cameraOffset.x,
+      y: world.y * this.cameraScale + this.cameraOffset.y,
+    };
+  }
+
+  getViewportTileBounds(): RtsViewportBounds | null {
+    if (!this.projection || !this.map) return null;
+    const corners = [
+      this.projection.screenToTile({ x: (0 - this.cameraOffset.x) / this.cameraScale, y: (0 - this.cameraOffset.y) / this.cameraScale }),
+      this.projection.screenToTile({ x: (this.viewportWidth - this.cameraOffset.x) / this.cameraScale, y: (0 - this.cameraOffset.y) / this.cameraScale }),
+      this.projection.screenToTile({ x: (0 - this.cameraOffset.x) / this.cameraScale, y: (this.viewportHeight - this.cameraOffset.y) / this.cameraScale }),
+      this.projection.screenToTile({ x: (this.viewportWidth - this.cameraOffset.x) / this.cameraScale, y: (this.viewportHeight - this.cameraOffset.y) / this.cameraScale }),
+    ];
+    const cols = corners.map((corner) => Math.max(0, Math.min(this.map!.size.cols - 1, corner.col)));
+    const rows = corners.map((corner) => Math.max(0, Math.min(this.map!.size.rows - 1, corner.row)));
+    return {
+      minCol: Math.min(...cols),
+      maxCol: Math.max(...cols),
+      minRow: Math.min(...rows),
+      maxRow: Math.max(...rows),
+    };
   }
 
   screenToTile(clientX: number, clientY: number): TilePos | null {

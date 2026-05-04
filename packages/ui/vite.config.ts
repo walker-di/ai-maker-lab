@@ -35,6 +35,8 @@ export default defineConfig({
       '@lucide/svelte/icons/volume-2',
       '@lucide/svelte/icons/waypoints',
       '@lucide/svelte/icons/x',
+      'three',
+      'three/addons/loaders/GLTFLoader.js',
     ],
   },
   test: {

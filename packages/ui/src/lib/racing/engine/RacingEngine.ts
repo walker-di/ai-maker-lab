@@ -190,8 +190,26 @@ export interface RacingEngineSnapshot {
   rollDeg: number;
   pitchDeg: number;
   rearLockPct: number;
+  rearSlipRatio: number;
+  frontSlipDeg: number;
+  rearSlipDeg: number;
   frontLoadPct: number;
   leftLoadPct: number;
+  ackermannDeltaDeg: number;
+  frontToeDeg: number;
+  rearToeDeg: number;
+  casterDeg: number;
+  accelLongG: number;
+  accelLatG: number;
+  aids: {
+    absEnabled: boolean;
+    tcEnabled: boolean;
+    escEnabled: boolean;
+    absActive: boolean;
+    tcActive: boolean;
+    escActive: boolean;
+    tcCut: number;
+  };
   wheels: ReadonlyArray<{
     index: number;
     fz: number;
@@ -200,6 +218,7 @@ export interface RacingEngineSnapshot {
     surface: SurfaceId;
     tempC: number;
     brakeTempC: number;
+    bumpStopPct: number;
   }>;
   lap: { lastMs: number | null; bestMs: number | null; t0: number | null };
 }
@@ -309,6 +328,10 @@ export class RacingEngine {
   driftState = 'IDLE';
   sideslipRad = 0;
   yawRateRad = 0;
+  accelLongG = 0;
+  accelLatG = 0;
+  private readonly prevLocalVelocity = new Vector3();
+  private lastStepDt = 1 / 240;
   rollDeg = 0;
   pitchDeg = 0;
   rearLockPct = 0;
@@ -322,6 +345,7 @@ export class RacingEngine {
     this.audio = config.audio ?? new NullAudioBus();
     this.buildWheels();
     this.buildSurfaceLookup();
+    this.resetCar();
   }
 
   setVehiclePreset(preset: VehiclePreset): void {
@@ -349,6 +373,38 @@ export class RacingEngine {
     for (let i = 0; i < this.wheels.length; i++) {
       const isFront = i < 2;
       this.wheels[i].toeDeg = isFront ? setup.frontToeDeg : setup.rearToeDeg;
+    }
+  }
+
+  setAbsEnabled(enabled: boolean): void {
+    this.driverAids.absEnabled = enabled;
+    if (!enabled) {
+      this.driverAids.absActive = false;
+      this.driverAids.absEventCount = 0;
+      for (const wheel of this.wheels) {
+        wheel.absRelease = 1;
+        wheel.absActive = false;
+      }
+    }
+  }
+
+  setTcEnabled(enabled: boolean): void {
+    this.driverAids.tcEnabled = enabled;
+    if (!enabled) {
+      this.driverAids.tcCut = 0;
+      this.driverAids.driveSlip = 0;
+    }
+  }
+
+  setEscEnabled(enabled: boolean): void {
+    this.driverAids.escEnabled = enabled;
+    if (!enabled) {
+      this.driverAids.escActive = false;
+      this.driverAids.escTorqueByWheel.fill(0);
+      this.driverAids.escTorqueTargetByWheel.fill(0);
+      for (const wheel of this.wheels) {
+        wheel.escTorque = 0;
+      }
     }
   }
 
@@ -391,10 +447,15 @@ export class RacingEngine {
   }
 
   resetCar(): void {
-    this.worldPos.set(0, this.susp.restLen + 0.34 + 0.05, 0);
-    this.worldQuat.identity();
+    const spawn = this.computeSpawnPose();
+    this.worldPos.set(spawn.x, this.susp.restLen + 0.34 + 0.05, spawn.z);
+    this.worldQuat.copy(spawn.quat);
     this.velocityWS.set(0, 0, 0);
     this.omegaWS.set(0, 0, 0);
+    this.appliedForce.set(0, 0, 0);
+    this.appliedTorque.set(0, 0, 0);
+    this.prevLocalVelocity.set(0, 0, 0);
+    this.lastStepDt = 1 / 240;
     this.engineOmega = ENGINE_IDLE * (2 * Math.PI / 60);
     this.gearIndex = 1; // Neutral
     for (const w of this.wheels) {
@@ -429,6 +490,7 @@ export class RacingEngine {
     this.runWheelPass(dt);
     this.runDiffCoupling(dt);
     this.runAero();
+    this.lastStepDt = dt;
     this.integrateChassis(dt);
     this.updateChassisDerived();
     this.updateLapTimer(this.simTime);
@@ -439,6 +501,10 @@ export class RacingEngine {
 
   snapshot(): RacingEngineSnapshot {
     const gear = this.vehicle.gears[this.gearIndex];
+    const frontSlipDeg = Math.abs((this.wheels[0].slipAngle + this.wheels[1].slipAngle) * 0.5 * DEG);
+    const rearSlipDeg = Math.abs((this.wheels[2].slipAngle + this.wheels[3].slipAngle) * 0.5 * DEG);
+    const rearSlipRatio = Math.abs((this.wheels[2].slipRatio + this.wheels[3].slipRatio) * 0.5);
+    const ackermannDeltaDeg = Math.abs((this.wheels[0].baseSteerAngle - this.wheels[1].baseSteerAngle) * DEG);
     return {
       speedKmh: this.speedKmh,
       rpm: this.engineOmega * (60 / (2 * Math.PI)),
@@ -450,8 +516,26 @@ export class RacingEngine {
       rollDeg: this.rollDeg,
       pitchDeg: this.pitchDeg,
       rearLockPct: this.rearLockPct,
+      rearSlipRatio,
+      frontSlipDeg,
+      rearSlipDeg,
       frontLoadPct: this.frontLoadPct,
       leftLoadPct: this.leftLoadPct,
+      ackermannDeltaDeg,
+      frontToeDeg: this.setup.frontToeDeg,
+      rearToeDeg: this.setup.rearToeDeg,
+      casterDeg: this.setup.casterDeg,
+      accelLongG: this.accelLongG,
+      accelLatG: this.accelLatG,
+      aids: {
+        absEnabled: this.driverAids.absEnabled,
+        tcEnabled: this.driverAids.tcEnabled,
+        escEnabled: this.driverAids.escEnabled,
+        absActive: this.driverAids.absActive,
+        tcActive: this.driverAids.tcCut > 0.01,
+        escActive: this.driverAids.escActive,
+        tcCut: this.driverAids.tcCut,
+      },
       wheels: this.wheels.map((w) => ({
         index: w.index,
         fz: w.fz,
@@ -460,6 +544,7 @@ export class RacingEngine {
         surface: w.surface,
         tempC: w.tempC,
         brakeTempC: w.brakeTempC,
+        bumpStopPct: w.bumpStopPct,
       })),
       lap: { lastMs: this.lap.lastMs, bestMs: this.lap.bestMs, t0: this.lap.t0 },
     };
@@ -565,6 +650,21 @@ export class RacingEngine {
       defaultOffTrack: 'GRASS',
       zones,
     });
+  }
+
+  private computeSpawnPose(): { x: number; z: number; quat: Quaternion } {
+    const first = this.centerline[0];
+    const next = this.centerline[1] ?? first;
+    if (!first) {
+      return { x: 0, z: 0, quat: new Quaternion() };
+    }
+    const tangent = new Vector3(next.x - first.x, 0, next.z - first.z);
+    if (tangent.lengthSq() < 1e-6) {
+      return { x: first.x, z: first.z, quat: new Quaternion() };
+    }
+    tangent.normalize();
+    const quat = new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), tangent);
+    return { x: first.x, z: first.z, quat };
   }
 
   private updateBasis(): void {
@@ -674,6 +774,22 @@ export class RacingEngine {
     });
     aids.escActive = esc.active;
     aids.escTorqueTargetByWheel.fill(0);
+    if (esc.active && esc.turnSign !== 0 && esc.axle) {
+      const leftTurn = esc.turnSign > 0;
+      const targetIndex = esc.axle === 'front'
+        ? (leftTurn ? 0 : 1)
+        : (leftTurn ? 3 : 2);
+      const threshold = esc.mode === 'oversteer'
+        ? aids.escOversteerThreshold
+        : aids.escUndersteerThreshold;
+      const cap = aids.escMaxBrakeTorque * (esc.mode === 'understeer' ? 0.8 : 1);
+      const normalized = clamp(
+        (Math.abs(esc.yawError) - threshold) / Math.max(0.05, threshold * 2),
+        0,
+        1,
+      );
+      aids.escTorqueTargetByWheel[targetIndex] = cap * normalized;
+    }
 
     for (let i = 0; i < aids.escTorqueByWheel.length; i++) {
       const cur = aids.escTorqueByWheel[i] || 0;
@@ -914,6 +1030,10 @@ export class RacingEngine {
       });
       w.absRelease = abs.release;
       w.absActive = abs.active;
+      if (abs.active) {
+        aids.absActive = true;
+        aids.absEventCount++;
+      }
       const brakeTorqueRaw = this.driverBrake * maxBrakeTorque * biasFactor * fade * abs.scale;
       const handbrakeTorque = w.hand ? this.input.state.handbrake * 4200 : 0;
       const escBrakeTorque = aids.escTorqueByWheel[i] || 0;
@@ -1039,6 +1159,11 @@ export class RacingEngine {
     }
     const invQ = this.worldQuat.clone().invert();
     const localVel = this.velocityWS.clone().applyQuaternion(invQ);
+    const dt = Math.max(this.lastStepDt, 1e-6);
+    const localAccel = localVel.clone().sub(this.prevLocalVelocity).divideScalar(dt);
+    this.accelLatG = localAccel.x / 9.81;
+    this.accelLongG = localAccel.z / 9.81;
+    this.prevLocalVelocity.copy(localVel);
     if (Math.abs(localVel.z) > 0.5 || Math.abs(localVel.x) > 0.5) {
       this.sideslipRad =
         Math.atan2(localVel.x, Math.max(0.001, Math.abs(localVel.z))) * Math.sign(localVel.z || 1);

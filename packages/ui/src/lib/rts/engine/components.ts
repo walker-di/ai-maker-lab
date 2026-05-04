@@ -1,4 +1,4 @@
-import type { BuildingKind, ResourceCost, ResourceKind, TilePos, UnitKind } from '../types.js';
+import type { BuildingKind, ResourceCost, ResourceKind, TechKind, TilePos, UnitKind } from '../types.js';
 
 export const COMPONENT_KINDS = {
   position: 'rts.position',
@@ -14,6 +14,7 @@ export const COMPONENT_KINDS = {
   movement: 'rts.movement',
   worker: 'rts.worker',
   productionQueue: 'rts.productionQueue',
+  researchQueue: 'rts.researchQueue',
   projectile: 'rts.projectile',
   death: 'rts.death',
   renderable: 'rts.renderable',
@@ -63,6 +64,7 @@ export interface BuildingComponent {
   /** 0..1 — `1` means fully constructed. */
   buildProgress: number;
   buildTimeMs: number;
+  rallyPoint?: TilePos | null;
 }
 
 export interface CombatComponent {
@@ -82,6 +84,8 @@ export interface MovementComponent {
   /** Final goal tile. */
   goal?: TilePos;
   patrol?: { a: TilePos; b: TilePos; next: 'a' | 'b' };
+  orderMode?: 'idle' | 'move' | 'attackMove' | 'hold' | 'patrol';
+  holdTile?: TilePos;
 }
 
 export interface WorkerComponent {
@@ -91,6 +95,7 @@ export interface WorkerComponent {
   capacity: number;
   gatherCycleMs: number;
   cycleElapsedMs: number;
+  autoGatherEnabled: boolean;
   resourceNodeId?: number;
   depotId?: number;
   repairTargetId?: number;
@@ -104,6 +109,22 @@ export interface ResourceNodeComponent {
 
 export interface ProductionQueueComponent {
   items: { kind: UnitKind | BuildingKind; isUnit: boolean; remainingMs: number; cost: ResourceCost; supply: number }[];
+}
+
+export interface ResearchQueueItem {
+  kind: TechKind;
+  remainingMs: number;
+  totalMs: number;
+  cost: ResourceCost;
+}
+
+/**
+ * Attached to buildings that have a `canResearch` list. Holds the active
+ * research queue (max 1 item; further queuing is rejected until the slot is
+ * free, matching classic RTS research buildings).
+ */
+export interface ResearchQueueComponent {
+  items: ResearchQueueItem[];
 }
 
 export interface ProjectileComponent {
