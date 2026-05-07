@@ -177,9 +177,9 @@ describe('aero', () => {
 
 describe('aero downforce', () => {
   it('returns zero load at rest', () => {
-    expect(
-      computeAeroDownforce({ forwardSpeed: 0, clAreaFront: 1.5, clAreaRear: 2.5 }),
-    ).toEqual({ frontDownforceN: 0, rearDownforceN: 0 });
+    const r = computeAeroDownforce({ forwardSpeed: 0, clAreaFront: 1.5, clAreaRear: 2.5 });
+    expect(r.frontDownforceN).toBe(0);
+    expect(r.rearDownforceN).toBe(0);
   });
 
   it('returns zero load when both Cl·A values are zero', () => {
@@ -269,14 +269,14 @@ describe('aero downforce', () => {
   });
 
   it('returns zero load when airDensity is non-positive', () => {
-    expect(
-      computeAeroDownforce({
-        forwardSpeed: 80,
-        clAreaFront: 2,
-        clAreaRear: 2,
-        airDensity: 0,
-      }),
-    ).toEqual({ frontDownforceN: 0, rearDownforceN: 0 });
+    const r = computeAeroDownforce({
+      forwardSpeed: 80,
+      clAreaFront: 2,
+      clAreaRear: 2,
+      airDensity: 0,
+    });
+    expect(r.frontDownforceN).toBe(0);
+    expect(r.rearDownforceN).toBe(0);
   });
 });
 

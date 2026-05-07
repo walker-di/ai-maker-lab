@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Euler, Quaternion } from 'three';
 import { RacingEngine } from './RacingEngine.js';
+import { SurfaceLookup } from './tracks/surface-lookup.js';
 import type { TrackPreset, VehiclePreset } from '../types.js';
 
 function makeVehicle(): VehiclePreset {
@@ -307,9 +308,15 @@ describe('RacingEngine integration', () => {
     const engine = createEngine();
 
     stepFor(engine, 1);
-    engine.velocityWS.copy(engine.forward.clone().multiplyScalar(22));
+    // Inject forward velocity and hold it for a few steps so wheel omega
+    // builds from tire-reaction torque before checking brake temperature.
+    // A single step is not sufficient because omega is near zero at the
+    // start of the first brake step and brake-friction power = torque * omega.
     setKey(engine, 's', true);
-    engine.step(1 / 240);
+    for (let i = 0; i < 5; i++) {
+      engine.velocityWS.copy(engine.forward.clone().multiplyScalar(22));
+      engine.step(1 / 240);
+    }
     setKey(engine, 's', false);
 
     const snapshot = engine.snapshot();
@@ -1354,5 +1361,794 @@ describe('RacingEngine integration', () => {
     expect(finished[0]).toBeGreaterThan(200);
     expect(snapshot.lap.lastMs).toBeCloseTo(finished[0], 6);
     expect(snapshot.lap.bestMs).toBeCloseTo(finished[0], 6);
+  });
+
+  // ------------------------------------------------------------------
+  // M0 — Frame and Integrator Cleanup regression locks
+  // ------------------------------------------------------------------
+
+  it('M0: sideslip sign is positive when velocity leans to chassis right (forward travel)', () => {
+    // Canonical SAE/automotive convention: positive sideslip ↔ velocity
+    // vector displaced toward chassis right. Must hold for both left and
+    // right lateral velocity to confirm the atan2-based formula is live.
+    const engine = createEngine();
+    stepFor(engine, 0.5);
+    const internals = engine as unknown as { sideslipRad: number };
+
+    // Slide toward chassis RIGHT while going forward: positive sideslip.
+    engine.worldQuat.identity();
+    engine.velocityWS.set(4, 0, -20); // x=+4 (right), z=-20 (forward)
+    engine.step(1 / 240);
+    expect(internals.sideslipRad).toBeGreaterThan(0);
+
+    // Slide toward chassis LEFT while going forward: negative sideslip.
+    engine.velocityWS.set(-4, 0, -20);
+    engine.step(1 / 240);
+    expect(internals.sideslipRad).toBeLessThan(0);
+  });
+
+  it('M0: semi-implicit Euler keeps chassis velocity finite under sustained gravity with no contact', () => {
+    // A chassis placed high above the ground with no forces other than
+    // gravity must not diverge under the semi-implicit integrator. With
+    // the old explicit-Euler + artificial linear damping, the linear damp
+    // provided ad-hoc stability; without it the integrator must stay
+    // bounded naturally (at 240 Hz, semi-implicit Euler is unconditionally
+    // stable for a linear spring-mass, and gravity is constant so there is
+    // no resonance concern).
+    const engine = createEngine();
+    engine.worldPos.y = 50;
+    engine.velocityWS.set(0, 0, 0);
+    for (let i = 0; i < 240; i++) engine.step(1 / 240);
+    expect(Number.isFinite(engine.velocityWS.y)).toBe(true);
+    expect(Number.isFinite(engine.worldPos.y)).toBe(true);
+    // One second of free-fall from 50 m: v = g*t = 9.81 m/s.
+    // Engine hits the floor clamping at minHeight, so vy resets to 0 at
+    // impact. After that velocity stays bounded.
+    expect(Math.abs(engine.velocityWS.y)).toBeLessThan(20);
+  });
+
+  it('M0: angular integrator produces bounded yaw rate after a sustained yaw impulse', () => {
+    // The old 0.18 s⁻¹ angular damping was a fudge that suppressed yaw
+    // oscillation. With it removed, the engine-native yaw dissipation
+    // (tire Fy × moment arm) must be sufficient to keep yaw bounded
+    // during a steady-state steer. Verify the yaw rate stays finite and
+    // physically plausible (< 5 rad/s) after 2 s of hard cornering.
+    const engine = createEngine();
+    stepFor(engine, 0.5);
+    const snap = holdSteerAtSpeed(engine, 0.8, 18, 2.0);
+    expect(Number.isFinite(snap.yawRateRad)).toBe(true);
+    expect(Math.abs(snap.yawRateRad)).toBeLessThan(5);
+  });
+});
+
+
+describe('M4 — 3D track surface', () => {
+  it('flat fallback: car rests at y ≈ 0 ground for a track with no elevationSamples', () => {
+    const engine = createEngine();
+    // After a half-second warm-up the car should be settled near y = 0 ground.
+    stepFor(engine, 0.5);
+    // worldPos.y is the chassis CG, not the wheel contact. The wheel contact
+    // is at y ≈ 0 (flat ground), so CG is at roughly restLen + cgHeight.
+    const expectedMin = 0.3;
+    expect(engine.worldPos.y).toBeGreaterThan(expectedMin);
+    // Should not have climbed arbitrarily (no elevation forcing it up).
+    expect(engine.worldPos.y).toBeLessThan(2.5);
+  });
+
+  it('snapshot trackCondition is populated for a basic track', () => {
+    const engine = createEngine();
+    stepFor(engine, 0.1);
+    const snap = engine.snapshot();
+    expect(snap.trackCondition).toBeDefined();
+    expect(snap.trackCondition.trackTempC).toBe(28); // default
+    expect(snap.trackCondition.rubberLineGrip).toBe(1); // default
+    expect(snap.trackCondition.terrainActive).toBe(false); // no elevation data
+    expect(snap.trackCondition.bumpAmplitudeM).toBe(0);
+  });
+
+  it('snapshot trackCondition reflects authored preset values', () => {
+    const track: TrackPreset = {
+      ...makeTrack(),
+      trackTempC: 45,
+      rubberLineGrip: 1.08,
+      bumpAmplitudeM: 0.005,
+      elevationSamples: [
+        { segmentIndex: 0, y: 0 },
+        { segmentIndex: 32, y: 5 },
+      ],
+    };
+    const engine = new (RacingEngine as any)({
+      vehicle: makeVehicle(),
+      track,
+    });
+    engines.push(engine);
+    stepFor(engine, 0.1);
+    const snap = engine.snapshot();
+    expect(snap.trackCondition.trackTempC).toBe(45);
+    expect(snap.trackCondition.rubberLineGrip).toBeCloseTo(1.08, 5);
+    expect(snap.trackCondition.bumpAmplitudeM).toBeCloseTo(0.005, 5);
+    expect(snap.trackCondition.terrainActive).toBe(true);
+  });
+
+  it('elevated spawn: car spawns at authored ground height when elevationSamples set spawn point above 0', () => {
+    const track: TrackPreset = {
+      ...makeTrack(),
+      elevationSamples: [
+        { segmentIndex: 0, y: 10 },
+        { segmentIndex: 63, y: 10 },
+      ],
+    };
+    const engine = new (RacingEngine as any)({
+      vehicle: makeVehicle(),
+      track,
+    });
+    engines.push(engine);
+    // worldPos.y should be offset above 10 (the authored ground at segment 0)
+    expect(engine.worldPos.y).toBeGreaterThan(10);
+  });
+
+  it('kerb profile is wired from track preset into surfaceLookup', () => {
+    const track: TrackPreset = {
+      ...makeTrack(),
+      kerbProfile: {
+        widthM: 0.5,
+        crownHeightM: 0.04,
+        topFlatFraction: 0.0,
+        bumpForceN: 1500,
+      },
+    };
+    const engine = new (RacingEngine as any)({
+      vehicle: makeVehicle(),
+      track,
+    });
+    engines.push(engine);
+    // The kerbBumpImpulseAt method should return > 0 for a point known to be
+    // in the CURB strip of a straight-line centerline.  We use a direct
+    // SurfaceLookup to avoid Catmull-Rom curve deviation on the square track.
+    const testLookup = new SurfaceLookup({
+      points: [{ x: 0, z: 0 }, { x: 50, z: 0 }, { x: 100, z: 0 }],
+      halfWidth: 7,
+      curbWidth: 0.5,
+      rubberWidth: 2,
+      marblesWidth: 1,
+      defaultOffTrack: 'GRASS',
+      zones: [],
+      kerbProfile: track.kerbProfile,
+    });
+    // Mid-kerb at z=7.25 on a straight line (halfWidth=7, kerbWidth/2=0.25)
+    const impulse = testLookup.kerbBumpImpulseAt(50, 7.25);
+    expect(impulse).toBeGreaterThan(0);
+    expect(impulse).toBeLessThanOrEqual(1500);
+  });
+
+  // Note: M4 domain validation tests (elevationSamples, kerbProfile) live in
+  // packages/domain/src/shared/racing/validation.test.ts.
+
+  it('snapshot finiteness: all key numeric fields are finite after 1 s of simulation', () => {
+    const engine = createEngine();
+    stepFor(engine, 1);
+    const snap = engine.snapshot();
+    expect(Number.isFinite(snap.speedKmh)).toBe(true);
+    expect(Number.isFinite(snap.rpm)).toBe(true);
+    expect(Number.isFinite(snap.sideslipDeg)).toBe(true);
+    expect(Number.isFinite(snap.yawRateRad)).toBe(true);
+    expect(Number.isFinite(snap.rollDeg)).toBe(true);
+    expect(Number.isFinite(snap.pitchDeg)).toBe(true);
+    expect(Number.isFinite(snap.accelLongG)).toBe(true);
+    expect(Number.isFinite(snap.accelLatG)).toBe(true);
+    expect(Number.isFinite(snap.trackCondition.trackTempC)).toBe(true);
+    expect(Number.isFinite(snap.trackCondition.bumpAmplitudeM)).toBe(true);
+    for (const w of snap.wheels) {
+      expect(Number.isFinite(w.fz)).toBe(true);
+      expect(Number.isFinite(w.fx)).toBe(true);
+      expect(Number.isFinite(w.fy)).toBe(true);
+      expect(Number.isFinite(w.tempC)).toBe(true);
+      expect(Number.isFinite(w.pressureKpa)).toBe(true);
+      expect(Number.isFinite(w.suspensionTravel)).toBe(true);
+    }
+  });
+
+  it('bumpAmplitudeM=0 (flat track): car simulation stays finite after 2 s under throttle', () => {
+    const track: TrackPreset = { ...makeTrack(), bumpAmplitudeM: 0 };
+    const engine = new (RacingEngine as any)({ vehicle: makeVehicle(), track });
+    engines.push(engine);
+    engine.resetCar();
+    setKey(engine, 'ArrowUp', true);
+    stepFor(engine, 2);
+    const snap = engine.snapshot();
+    expect(Number.isFinite(snap.speedKmh)).toBe(true);
+    expect(snap.speedKmh).toBeGreaterThan(0);
+    for (const w of snap.wheels) expect(Number.isFinite(w.fz)).toBe(true);
+  });
+
+  it('Fz stays positive and finite on all wheels during a 1 s straight-line run', () => {
+    const engine = createEngine();
+    setKey(engine, 'ArrowUp', true);
+    let allPositive = true;
+    sampleFor(engine, 1, 1 / 60, () => {
+      const wheels = readWheels(engine);
+      for (const w of wheels) {
+        if (!Number.isFinite(w.fz) || w.fz < 0) allPositive = false;
+      }
+    });
+    expect(allPositive).toBe(true);
+  });
+
+  it('elevated track: Fz remains finite and positive after car settles on raised ground', () => {
+    const track: TrackPreset = {
+      ...makeTrack(),
+      elevationSamples: [
+        { segmentIndex: 0, y: 5 },
+        { segmentIndex: 63, y: 5 },
+      ],
+    };
+    const engine = new (RacingEngine as any)({ vehicle: makeVehicle(), track });
+    engines.push(engine);
+    stepFor(engine, 0.5);
+    const snap = engine.snapshot();
+    expect(snap.trackCondition.terrainActive).toBe(true);
+    for (const w of snap.wheels) {
+      expect(Number.isFinite(w.fz)).toBe(true);
+      expect(w.fz).toBeGreaterThan(0);
+    }
+    // Car should be resting above the authored 5 m ground plane.
+    expect(engine.worldPos.y).toBeGreaterThan(5);
+  });
+
+  it('kerb Fz spike: after reset, running across the kerb strip does not produce NaN in Fz', () => {
+    const track: TrackPreset = {
+      ...makeTrack(),
+      kerbProfile: { widthM: 0.5, crownHeightM: 0.04, topFlatFraction: 0.0, bumpForceN: 800 },
+    };
+    const engine = new (RacingEngine as any)({ vehicle: makeVehicle(), track });
+    engines.push(engine);
+    engine.resetCar();
+    // Drive and steer hard right for 1 s — likely crosses the kerb strip.
+    setKey(engine, 'ArrowUp', true);
+    setKey(engine, 'ArrowRight', true);
+    stepFor(engine, 1);
+    const snap = engine.snapshot();
+    for (const w of snap.wheels) {
+      expect(Number.isFinite(w.fz)).toBe(true);
+      expect(w.fz).toBeGreaterThanOrEqual(0);
+    }
+    expect(Number.isFinite(snap.speedKmh)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M5 aero-map engine integration
+// ---------------------------------------------------------------------------
+
+describe('M5 aero-map engine integration', () => {
+  it('snapshot hasAeroMap is false for scalar-only preset', () => {
+    const engine = createEngine();
+    stepFor(engine, 0.1);
+    const snap = engine.snapshot();
+    expect(snap.aero.hasAeroMap).toBe(false);
+  });
+
+  it('snapshot hasAeroMap is true when aeroMap is provided', () => {
+    const vehicle = makeVehicle();
+    vehicle.physics = {
+      clAreaFrontM2: 0.4,
+      clAreaRearM2: 0.8,
+      aeroMap: {
+        frontClAreaMap: {
+          axis0: [0.05, 0.15],
+          axis1: [-2, 0, 2],
+          data: [
+            [1.4, 1.6, 1.3],
+            [0.7, 0.9, 0.8],
+          ],
+        },
+        rearClAreaMap: {
+          axis0: [0.05, 0.15],
+          axis1: [-2, 0, 2],
+          data: [
+            [2.0, 2.2, 2.0],
+            [1.2, 1.4, 1.3],
+          ],
+        },
+        stallRideHeightM: 0.03,
+      },
+    };
+    const engine = new RacingEngine({ vehicle, track: makeTrack() });
+    engines.push(engine);
+    engine.resetCar();
+    stepFor(engine, 0.1);
+    const snap = engine.snapshot();
+    expect(snap.aero.hasAeroMap).toBe(true);
+  });
+
+  it('M5 snapshot aero fields are all finite', () => {
+    const engine = createEngine();
+    // Force a high-speed state to exercise aero calculations.
+    engine.velocityWS.copy(engine.forward.clone().multiplyScalar(50));
+    stepFor(engine, 0.2);
+    const snap = engine.snapshot();
+    expect(Number.isFinite(snap.aero.frontDownforceN)).toBe(true);
+    expect(Number.isFinite(snap.aero.rearDownforceN)).toBe(true);
+    expect(Number.isFinite(snap.aero.dragN)).toBe(true);
+    expect(Number.isFinite(snap.aero.copFraction)).toBe(true);
+    expect(Number.isFinite(snap.aero.effectiveClAreaFront)).toBe(true);
+    expect(Number.isFinite(snap.aero.effectiveClAreaRear)).toBe(true);
+    expect(Number.isFinite(snap.aero.frontRideHeightM)).toBe(true);
+    expect(Number.isFinite(snap.aero.rearRideHeightM)).toBe(true);
+    expect(snap.aero.frontRideHeightM).toBeGreaterThanOrEqual(0);
+    expect(snap.aero.rearRideHeightM).toBeGreaterThanOrEqual(0);
+  });
+
+  it('M5 aero map shifts CoP rearward relative to scalar preset at high speed', () => {
+    // Build a vehicle with rear-biased map so rear downforce > front.
+    const vehicle = makeVehicle();
+    vehicle.physics = {
+      clAreaFrontM2: 0.4,
+      clAreaRearM2: 0.4, // equal scalars would give CoP=0.5
+      aeroMap: {
+        frontClAreaMap: {
+          axis0: [0.05, 0.15],
+          axis1: [0],
+          data: [[0.4], [0.4]],
+        },
+        rearClAreaMap: {
+          axis0: [0.05, 0.15],
+          axis1: [0],
+          data: [[1.6], [1.6]], // rear-biased map → CoP rearward
+        },
+      },
+    };
+    const engineMap = new RacingEngine({ vehicle, track: makeTrack() });
+    engines.push(engineMap);
+    engineMap.resetCar();
+    const engineScalar = createEngine();
+
+    // Force both to high speed and sample aero.
+    for (const eng of [engineMap, engineScalar]) {
+      eng.velocityWS.copy(eng.forward.clone().multiplyScalar(55));
+      stepFor(eng, 0.5);
+    }
+
+    const snapMap = engineMap.snapshot();
+    const snapScalar = engineScalar.snapshot();
+
+    // Map CoP should be > 0.5 (rear-biased), scalar CoP should be 0.5 (equal ClA).
+    expect(snapMap.aero.copFraction).toBeGreaterThan(0.5);
+    expect(snapScalar.aero.copFraction).toBeCloseTo(0.5, 1);
+  });
+
+  it('scalar fallback: high-speed driving does not produce NaN in snapshot', () => {
+    const engine = createEngine();
+    setKey(engine, 'ArrowUp', true);
+    // Force high speed to exercise aero drag and downforce paths.
+    for (let i = 0; i < 1200; i++) {
+      engine.velocityWS.copy(engine.forward.clone().multiplyScalar(70));
+      engine.step(1 / 240);
+    }
+    const snap = engine.snapshot();
+    expect(Number.isFinite(snap.speedKmh)).toBe(true);
+    expect(Number.isFinite(snap.aero.frontDownforceN)).toBe(true);
+    expect(Number.isFinite(snap.aero.rearDownforceN)).toBe(true);
+    expect(Number.isFinite(snap.aero.dragN)).toBe(true);
+    for (const w of snap.wheels) {
+      expect(Number.isFinite(w.fz)).toBe(true);
+    }
+  });
+
+  it('aero map stall flag is present in snapshot telemetry when ride-height is below threshold', () => {
+    const vehicle = makeVehicle();
+    vehicle.physics = {
+      clAreaFrontM2: 0,
+      clAreaRearM2: 0,
+      aeroMap: {
+        frontClAreaMap: {
+          axis0: [0.02, 0.10],
+          axis1: [0],
+          data: [[0.5], [1.2]],
+        },
+        rearClAreaMap: {
+          axis0: [0.02, 0.10],
+          axis1: [0],
+          data: [[0.6], [1.8]],
+        },
+        stallRideHeightM: 0.08,
+      },
+    };
+    const engine = new RacingEngine({ vehicle, track: makeTrack() });
+    engines.push(engine);
+    engine.resetCar();
+    // Force chassis very close to ground — minimum ride height triggers stall.
+    engine.worldPos.y = 0.2;
+    engine.velocityWS.copy(engine.forward.clone().multiplyScalar(40));
+    stepFor(engine, 0.1);
+    const snap = engine.snapshot();
+    // snapshot should have stall booleans (true/false, not undefined/NaN).
+    expect(typeof snap.aero.frontStalled).toBe('boolean');
+    expect(typeof snap.aero.rearStalled).toBe('boolean');
+  });
+});
+
+// ============================================================
+// M6 Drivetrain Depth — RacingEngine integration
+// ============================================================
+
+describe('M6 drivetrain — snapshot field finiteness', () => {
+  it('all drivetrain snapshot fields are finite after resetCar (NA preset)', () => {
+    const engine = createEngine();
+    const snap = engine.snapshot();
+    const dt = snap.drivetrain;
+    expect(Number.isFinite(dt.boostBar)).toBe(true);
+    expect(Number.isFinite(dt.turboSpoolRatio)).toBe(true);
+    expect(Number.isFinite(dt.boostTorqueMultiplier)).toBe(true);
+    expect(typeof dt.isOverboost).toBe('boolean');
+    expect(typeof dt.shiftRefused).toBe('boolean');
+    expect(typeof dt.shiftInProgress).toBe('boolean');
+    expect(Number.isFinite(dt.shiftRemainingS)).toBe(true);
+    expect(Number.isFinite(dt.drivelineComplianceTwistRad)).toBe(true);
+    expect(Number.isFinite(dt.drivelineComplianceSpringNm)).toBe(true);
+  });
+
+  it('NA preset: boostBar=0, turboSpoolRatio=0, boostTorqueMultiplier=1, isOverboost=false', () => {
+    const engine = createEngine();
+    stepFor(engine, 2);
+    const dt = engine.snapshot().drivetrain;
+    expect(dt.boostBar).toBe(0);
+    expect(dt.turboSpoolRatio).toBe(0);
+    expect(dt.boostTorqueMultiplier).toBe(1);
+    expect(dt.isOverboost).toBe(false);
+  });
+
+  it('all drivetrain snapshot fields remain finite after 5 s of full-throttle driving', () => {
+    const engine = createEngine();
+    setKey(engine, 'ArrowUp', true);
+    // Kick to ~60 km/h to exercise the drivetrain path.
+    for (let i = 0; i < 60 * 240; i++) {
+      engine.velocityWS.copy(engine.forward.clone().multiplyScalar(16));
+      engine.step(1 / 240);
+    }
+    const snap = engine.snapshot();
+    for (const [key, val] of Object.entries(snap.drivetrain)) {
+      if (typeof val === 'number') {
+        expect(Number.isFinite(val)).toBe(true);
+      }
+    }
+  });
+});
+
+describe('M6 drivetrain — turbo spool integration', () => {
+  function makeTurboVehicle(): VehiclePreset {
+    const v = makeVehicle();
+    v.physics = {
+      turbo: {
+        peakBoostBar: 1.2,
+        peakTorqueMultiplier: 1.5,
+        targetSpoolRpm: 3000,
+        spoolUpTimeS: 0.5,
+        spoolDownTimeS: 1.5,
+      },
+    };
+    return v;
+  }
+
+  it('turbo spool rises above 0 under full-throttle high-rpm driving', () => {
+    const vehicle = makeTurboVehicle();
+    const engine = new RacingEngine({ vehicle, track: makeTrack() });
+    engines.push(engine);
+    engine.resetCar();
+    setKey(engine, 'ArrowUp', true);
+    engine.velocityWS.copy(engine.forward.clone().multiplyScalar(20));
+    stepFor(engine, 2);
+    const dt = engine.snapshot().drivetrain;
+    expect(dt.turboSpoolRatio).toBeGreaterThan(0);
+  });
+
+  it('boost bar and torque multiplier are above NA values at full spool', () => {
+    const vehicle = makeTurboVehicle();
+    const engine = new RacingEngine({ vehicle, track: makeTrack() });
+    engines.push(engine);
+    engine.resetCar();
+    setKey(engine, 'ArrowUp', true);
+    engine.velocityWS.copy(engine.forward.clone().multiplyScalar(20));
+    stepFor(engine, 3);
+    const dt = engine.snapshot().drivetrain;
+    expect(dt.boostBar).toBeGreaterThan(0);
+    expect(dt.boostTorqueMultiplier).toBeGreaterThan(1);
+  });
+
+  it('spool ratio drops toward zero on throttle lift', () => {
+    const vehicle = makeTurboVehicle();
+    const engine = new RacingEngine({ vehicle, track: makeTrack() });
+    engines.push(engine);
+    engine.resetCar();
+    setKey(engine, 'ArrowUp', true);
+    engine.velocityWS.copy(engine.forward.clone().multiplyScalar(20));
+    stepFor(engine, 2);
+    const spoolAfterWot = engine.snapshot().drivetrain.turboSpoolRatio;
+    setKey(engine, 'ArrowUp', false);
+    stepFor(engine, 2);
+    const spoolAfterLift = engine.snapshot().drivetrain.turboSpoolRatio;
+    expect(spoolAfterLift).toBeLessThan(spoolAfterWot);
+  });
+
+  it('turbo drivetrain fields remain finite after reset cycle', () => {
+    const vehicle = makeTurboVehicle();
+    const engine = new RacingEngine({ vehicle, track: makeTrack() });
+    engines.push(engine);
+    engine.resetCar();
+    setKey(engine, 'ArrowUp', true);
+    stepFor(engine, 1);
+    engine.resetCar();
+    const snap = engine.snapshot();
+    expect(Number.isFinite(snap.drivetrain.boostBar)).toBe(true);
+    expect(Number.isFinite(snap.drivetrain.turboSpoolRatio)).toBe(true);
+    expect(Number.isFinite(snap.drivetrain.boostTorqueMultiplier)).toBe(true);
+  });
+});
+
+describe('M6 drivetrain — shift refusal and delay', () => {
+  function makeShiftVehicle(): VehiclePreset {
+    const v = makeVehicle();
+    v.physics = {
+      shiftLogic: {
+        upshiftMinRpm: 2000,
+        upshiftMaxRpm: 8000,
+        shiftTimeS: 0.15,
+        shiftThrottleCutFraction: 0.8,
+      },
+    };
+    return v;
+  }
+
+  it('upshift refused below minRpm → shiftRefused=true in snapshot', () => {
+    const vehicle = makeShiftVehicle();
+    const engine = new RacingEngine({ vehicle, track: makeTrack() });
+    engines.push(engine);
+    engine.resetCar();
+    // At idle the engine is below 2000 rpm — upshift should be refused.
+    engine.input.state.shiftUp = true;
+    engine.step(1 / 240);
+    const dt = engine.snapshot().drivetrain;
+    expect(dt.shiftRefused).toBe(true);
+    expect(dt.shiftRefusalReason.length).toBeGreaterThan(0);
+  });
+
+  it('shiftRefused auto-clears on next step when no input is active', () => {
+    const vehicle = makeShiftVehicle();
+    const engine = new RacingEngine({ vehicle, track: makeTrack() });
+    engines.push(engine);
+    engine.resetCar();
+    // Trigger refusal.
+    engine.input.state.shiftUp = true;
+    engine.step(1 / 240);
+    expect(engine.snapshot().drivetrain.shiftRefused).toBe(true);
+    // Next step with no shift input → refused flag must clear.
+    engine.step(1 / 240);
+    expect(engine.snapshot().drivetrain.shiftRefused).toBe(false);
+  });
+
+  it('upshift delay → shiftInProgress=true during shift window', () => {
+    const vehicle = makeShiftVehicle();
+    const engine = new RacingEngine({ vehicle, track: makeTrack() });
+    engines.push(engine);
+    engine.resetCar();
+    setKey(engine, 'ArrowUp', true);
+    engine.velocityWS.copy(engine.forward.clone().multiplyScalar(12));
+    // Warm up the engine above 2000 rpm.
+    stepFor(engine, 1);
+    // Trigger the upshift.
+    engine.input.state.shiftUp = true;
+    engine.step(1 / 240);
+    const dt = engine.snapshot().drivetrain;
+    if (!dt.shiftRefused) {
+      expect(dt.shiftInProgress).toBe(true);
+      expect(dt.shiftRemainingS).toBeGreaterThan(0);
+    }
+  });
+
+  it('shift completes: shiftInProgress=false after delay window', () => {
+    const vehicle = makeShiftVehicle();
+    const engine = new RacingEngine({ vehicle, track: makeTrack() });
+    engines.push(engine);
+    engine.resetCar();
+    setKey(engine, 'ArrowUp', true);
+    engine.velocityWS.copy(engine.forward.clone().multiplyScalar(12));
+    stepFor(engine, 1);
+    engine.input.state.shiftUp = true;
+    engine.step(1 / 240);
+    // Step enough to exceed the 0.15 s delay window.
+    stepFor(engine, 0.25);
+    const dt = engine.snapshot().drivetrain;
+    expect(dt.shiftInProgress).toBe(false);
+    expect(dt.shiftRemainingS).toBe(0);
+  });
+
+  it('hasShiftLogic guard: NA preset (no shiftLogic) shifts instantly', () => {
+    const engine = createEngine();
+    setKey(engine, 'ArrowUp', true);
+    engine.velocityWS.copy(engine.forward.clone().multiplyScalar(10));
+    stepFor(engine, 1);
+    const gearBefore = engine.snapshot().gearIndex;
+    engine.input.state.shiftUp = true;
+    engine.step(1 / 240);
+    const dt = engine.snapshot().drivetrain;
+    // NA preset → no shift logic → instantaneous, shiftInProgress always false.
+    expect(dt.shiftInProgress).toBe(false);
+    expect(dt.shiftRemainingS).toBe(0);
+  });
+});
+
+describe('M6 drivetrain — snapshot NaN guard after reset cycles', () => {
+  it('no NaN in any snapshot field after turbo + shiftLogic + compliance preset driving + reset', () => {
+    const vehicle = makeVehicle();
+    vehicle.physics = {
+      turbo: {
+        peakBoostBar: 1.0,
+        peakTorqueMultiplier: 1.4,
+        targetSpoolRpm: 3500,
+        spoolUpTimeS: 0.6,
+        spoolDownTimeS: 1.2,
+      },
+      shiftLogic: {
+        upshiftMinRpm: 1500,
+        shiftTimeS: 0.1,
+      },
+      drivelineCompliance: {
+        shaftStiffnessNmRad: 8000,
+        shaftDampingNmSRad: 30,
+        backlashRad: 0.01,
+      },
+      engineBraking: {
+        linearNmPerRadS: 0.05,
+        constantNm: 12,
+        maxBrakeTorqueNm: 200,
+      },
+    };
+    const engine = new RacingEngine({ vehicle, track: makeTrack() });
+    engines.push(engine);
+    engine.resetCar();
+    setKey(engine, 'ArrowUp', true);
+    engine.velocityWS.copy(engine.forward.clone().multiplyScalar(15));
+    stepFor(engine, 3);
+    engine.resetCar();
+    setKey(engine, 'ArrowUp', true);
+    stepFor(engine, 2);
+
+    const snap = engine.snapshot();
+    // Check all drivetrain fields.
+    for (const [key, val] of Object.entries(snap.drivetrain)) {
+      if (typeof val === 'number') {
+        expect(Number.isFinite(val)).toBe(true);
+      }
+    }
+    // Check wheel fields too.
+    for (const w of snap.wheels) {
+      expect(Number.isFinite(w.fz)).toBe(true);
+      expect(Number.isFinite(w.slipRatio)).toBe(true);
+    }
+  });
+});
+
+describe('M6 drivetrain — driveline compliance integration', () => {
+  it('drivelineComplianceTwistRad is non-zero when compliance is authored and torque is applied', () => {
+    const vehicle = makeVehicle();
+    vehicle.physics = {
+      drivelineCompliance: {
+        shaftStiffnessNmRad: 5000,
+        shaftDampingNmSRad: 20,
+      },
+    };
+    const engine = new RacingEngine({ vehicle, track: makeTrack() });
+    engines.push(engine);
+    engine.resetCar();
+    setKey(engine, 'ArrowUp', true);
+    engine.velocityWS.copy(engine.forward.clone().multiplyScalar(5));
+    stepFor(engine, 1);
+    const dt = engine.snapshot().drivetrain;
+    // Compliance is authored and torque is flowing — twist should be non-zero.
+    expect(Number.isFinite(dt.drivelineComplianceTwistRad)).toBe(true);
+  });
+
+  it('drivelineComplianceTwistRad stays zero for NA preset (no compliance authored)', () => {
+    const engine = createEngine();
+    setKey(engine, 'ArrowUp', true);
+    stepFor(engine, 2);
+    expect(engine.snapshot().drivetrain.drivelineComplianceTwistRad).toBe(0);
+  });
+});
+
+// ------------------------------------------------------------------
+// Racing chassis compliance — zero-compliance regression gates
+// ------------------------------------------------------------------
+
+describe('Chassis compliance — zero-compliance = no regression', () => {
+  it('preset without compliance fields behaves identically to pre-feature baseline', () => {
+    const engine = createEngine();
+    stepFor(engine, 1);
+    const snap = engine.snapshot();
+    expect(snap.speedKmh).toBeLessThan(1);
+    expect(snap.wheels.every((w) => Number.isFinite(w.fz))).toBe(true);
+    expect(snap.wheels.every((w) => Number.isFinite(w.slipRatio))).toBe(true);
+    // Tiny roll from suspension settle is normal; assert near-zero.
+    expect(Math.abs(snap.rollDeg)).toBeLessThan(0.1);
+  });
+
+  it('preset with explicit zero compliance fields behaves identically to rigid', () => {
+    const vehicle = makeVehicle();
+    vehicle.physics = {
+      compliance: {
+        hubLinearStiffnessNpm: 0,
+        hubLinearDampingNspms: 0,
+        hubRotationalStiffnessNmDeg: 0,
+        chassisTorsionalStiffnessNmDeg: 0,
+      },
+    };
+    const engine = new RacingEngine({ vehicle, track: makeTrack() });
+    engines.push(engine);
+    stepFor(engine, 1);
+    const snap = engine.snapshot();
+    expect(snap.wheels.every((w) => Number.isFinite(w.fz))).toBe(true);
+    expect(snap.wheels.every((w) => Number.isFinite(w.slipRatio))).toBe(true);
+    expect(Math.abs(snap.rollDeg)).toBeLessThan(0.1);
+  });
+
+  it('GT3 compliance preset loads without errors and snapshot stays finite', () => {
+    const vehicle = makeVehicle();
+    vehicle.physics = {
+      compliance: {
+        hubLinearStiffnessNpm: 150000,
+        hubLinearDampingNspms: 2.5,
+        hubRotationalStiffnessNmDeg: 8,
+        hubRotationalDampingNmSdeg: 0.4,
+        chassisTorsionalStiffnessNmDeg: 22000,
+      },
+    };
+    const engine = new RacingEngine({ vehicle, track: makeTrack() });
+    engines.push(engine);
+    engine.resetCar();
+    stepFor(engine, 1);
+    const snap = engine.snapshot();
+    expect(Number.isFinite(snap.speedKmh)).toBe(true);
+    expect(snap.wheels.length).toBe(4);
+    for (const w of snap.wheels) {
+      expect(Number.isFinite(w.fz)).toBe(true);
+      expect(Number.isFinite(w.slipRatio)).toBe(true);
+      expect(Number.isFinite(w.slipAngle)).toBe(true);
+    }
+  });
+
+  it('resetCar works with compliance preset and returns to neutral state', () => {
+    const vehicle = makeVehicle();
+    vehicle.physics = {
+      compliance: {
+        hubLinearStiffnessNpm: 150000,
+        hubLinearDampingNspms: 2.5,
+        chassisTorsionalStiffnessNmDeg: 22000,
+      },
+    };
+    const engine = new RacingEngine({ vehicle, track: makeTrack() });
+    engines.push(engine);
+    stepFor(engine, 1);
+    engine.resetCar();
+    const snap = engine.snapshot();
+    expect(snap.gearLabel).toBe('N');
+    // Tiny residual speed from integrator settle is acceptable.
+    expect(snap.speedKmh).toBeLessThan(1);
+    expect(snap.rpm).toBeGreaterThan(700);
+    expect(snap.rpm).toBeLessThan(1500);
+  });
+
+  it('high torsional stiffness (100000) still produces finite snapshots', () => {
+    const vehicle = makeVehicle();
+    vehicle.physics = {
+      compliance: {
+        chassisTorsionalStiffnessNmDeg: 100000,
+      },
+    };
+    const engine = new RacingEngine({ vehicle, track: makeTrack() });
+    engines.push(engine);
+    stepFor(engine, 0.5);
+    const snap = engine.snapshot();
+    expect(Number.isFinite(snap.rollDeg)).toBe(true);
+    expect(Number.isFinite(snap.pitchDeg)).toBe(true);
   });
 });

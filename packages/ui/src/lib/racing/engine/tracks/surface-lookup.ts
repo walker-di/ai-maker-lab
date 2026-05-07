@@ -7,10 +7,20 @@
  *
  * Zones are stored axis-aligned with an optional rotation. We test points by
  * inverse-rotating into the zone-local frame and checking the half-extents.
+ *
+ * M4: The lookup also exposes `groundYAt` which resolves the surface height
+ * at a world (x, z) position by combining the optional `TerrainContact`
+ * resolver with a kerb height override when the point lands on a CURB strip.
+ * Flat-ground fallback (y = 0) is preserved when no terrain data is provided.
  */
 
 import type { SurfaceId } from '../../types.js';
 import type { SampledPoint } from './catmull-rom.js';
+import { type TerrainContact } from './elevation.js';
+import {
+  kerbContactFromLateralOffset,
+  type KerbProfile,
+} from './kerb-geometry.js';
 
 export interface SurfaceZoneInput {
   x: number;
@@ -29,6 +39,16 @@ export interface SurfaceLookupConfig {
   marblesWidth: number;
   defaultOffTrack: SurfaceId;
   zones: ReadonlyArray<SurfaceZoneInput>;
+  /**
+   * M4: optional terrain contact resolver for authored elevation / height
+   * field data.  When absent the lookup returns y = 0 (flat ground).
+   */
+  terrain?: TerrainContact | null;
+  /**
+   * M4: optional kerb profile used to compute the raised-kerb ground height
+   * for points that fall on a CURB strip.  When absent kerbs return y = 0.
+   */
+  kerbProfile?: KerbProfile | null;
 }
 
 export class SurfaceLookup {
@@ -46,6 +66,59 @@ export class SurfaceLookup {
     if (distLat <= this.cfg.halfWidth) return 'ASPHALT';
     if (distLat <= this.cfg.halfWidth + this.cfg.curbWidth) return 'CURB';
     return this.cfg.defaultOffTrack;
+  }
+
+  /**
+   * M4: Ground height (m, +Y up) at world position (x, z).
+   *
+   * Resolution order:
+   *   1. If a `terrain` resolver is configured, delegate to it (heightField
+   *      or elevation-map, whichever is non-null).
+   *   2. If the point falls on a CURB strip and a `kerbProfile` is
+   *      configured, overlay the kerb ramp height on top of the terrain
+   *      height from step 1.
+   *   3. Otherwise return 0 (flat-ground fallback).
+   *
+   * The kerb height is ADDED to the terrain baseline so authored elevation
+   * and kerb geometry compose correctly (e.g., a kerb on a hill).
+   */
+  groundYAt(x: number, z: number): number {
+    const closest = this.closestPointOnCenterline(x, z);
+
+    let baseY = 0;
+    if (this.cfg.terrain && !this.cfg.terrain.isFlat) {
+      const fracIndex = closest.index + closest.along;
+      baseY = this.cfg.terrain.groundY(x, z, fracIndex);
+    }
+
+    if (this.cfg.kerbProfile) {
+      const kerbContact = kerbContactFromLateralOffset(
+        closest.lateral,
+        this.cfg.halfWidth,
+        this.cfg.kerbProfile,
+      );
+      if (kerbContact) {
+        baseY += kerbContact.groundY;
+      }
+    }
+
+    return baseY;
+  }
+
+  /**
+   * M4: Kerb bump impulse (N) for a wheel at world position (x, z).
+   * Returns 0 when no kerb profile is configured or the wheel is not on a
+   * CURB strip.
+   */
+  kerbBumpImpulseAt(x: number, z: number): number {
+    if (!this.cfg.kerbProfile) return 0;
+    const closest = this.closestPointOnCenterline(x, z);
+    const kerbContact = kerbContactFromLateralOffset(
+      closest.lateral,
+      this.cfg.halfWidth,
+      this.cfg.kerbProfile,
+    );
+    return kerbContact?.bumpImpulseN ?? 0;
   }
 
   closestPointOnCenterline(x: number, z: number): {

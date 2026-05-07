@@ -13,6 +13,14 @@ const sceneryAssetMatchers = {
 	barrier: [/^barrier(?:Red|White|Wall)\.glb$/],
 	light: [/^(?:lightPost(?:Large|Modern)|lightRed(?:Double)?)\.glb$/],
 	billboard: [/^billboard\.glb$/],
+	flag: [/^flag(?:Checkers(?:Small)?|Green|Red)\.glb$/],
+	fence: [/^fence(?:Straight|Curved)\.glb$/],
+	grandStand: [/^grandStand(?:Awning|Covered)?\.glb$/],
+	pitBuilding: [/^pits(?:Garage(?:Closed)?|Office|OfficeRoof)\.glb$/],
+	pylon: [/^pylon\.glb$/],
+	banner: [/^bannerTower(?:Green|Red)\.glb$/],
+	radar: [/^radarEquipment\.glb$/],
+	overhead: [/^overhead(?:Lights)?\.glb$/],
 } as const;
 
 describe('racing Kenney asset bundle', () => {

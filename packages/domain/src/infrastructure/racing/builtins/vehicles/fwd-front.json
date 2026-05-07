@@ -42,6 +42,10 @@
     "sprungCgHeightM": 0.57,
     "unsprungCgHeightM": 0.32,
     "unsprungMassFrontKg": 86,
-    "unsprungMassRearKg": 78
+    "unsprungMassRearKg": 78,
+    "wakeLengthM": 18,
+    "wakeWidthM": 4,
+    "wakeReductionPct": 0.22,
+    "wheelInertiaKgM2": 1.3
   }
 }

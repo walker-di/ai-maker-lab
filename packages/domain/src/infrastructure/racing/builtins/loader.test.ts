@@ -4,10 +4,10 @@ import { BuiltInRacingCatalogSource } from './loader.js';
 describe('BuiltInRacingCatalogSource', () => {
   const source = new BuiltInRacingCatalogSource();
 
-  it('loads three vehicle presets and validates them', async () => {
+  it('loads four vehicle presets and validates them', async () => {
     const vehicles = await source.listVehicles();
     expect(vehicles.map((v) => v.id).sort()).toEqual(
-      ['awd-rear-biased', 'fwd-front', 'rwd-front-mid'].sort(),
+      ['awd-rear-biased', 'fwd-front', 'gt3-rigid-tub', 'rwd-front-mid'].sort(),
     );
     for (const v of vehicles) {
       expect(v.gears.length).toBeGreaterThanOrEqual(3);
@@ -15,6 +15,18 @@ describe('BuiltInRacingCatalogSource', () => {
       expect(v.physics?.massKg).toBeGreaterThan(1000);
       expect(v.physics?.brakeBiasFront).toBeGreaterThan(0.5);
     }
+  });
+
+  it('gt3-rigid-tub preset has nonzero compliance fields', async () => {
+    const vehicle = await source.findVehicle('gt3-rigid-tub');
+    expect(vehicle).not.toBeUndefined();
+    const c = vehicle!.physics?.compliance;
+    expect(c).not.toBeUndefined();
+    expect(c!.hubLinearStiffnessNpm).toBe(150000);
+    expect(c!.hubLinearDampingNspms).toBe(2.5);
+    expect(c!.hubRotationalStiffnessNmDeg).toBe(8);
+    expect(c!.hubRotationalDampingNmSdeg).toBe(0.4);
+    expect(c!.chassisTorsionalStiffnessNmDeg).toBe(22000);
   });
 
   it('loads three track presets and validates them', async () => {

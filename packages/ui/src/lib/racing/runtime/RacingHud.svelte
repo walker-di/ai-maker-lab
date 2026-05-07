@@ -10,8 +10,21 @@
   import DebugTrace from './components/DebugTrace.svelte';
   import GgPlot from './components/GgPlot.svelte';
   import BrakeBalancePanel from './components/BrakeBalancePanel.svelte';
+  import TirePressurePanel from './components/TirePressurePanel.svelte';
+  import FfbPanel from './components/FfbPanel.svelte';
+  import SuspensionDiagram from './components/SuspensionDiagram.svelte';
+  import TrackSurfacePanel from './components/TrackSurfacePanel.svelte';
+  import AeroPanel from './components/AeroPanel.svelte';
+  import BoostBar from './components/BoostBar.svelte';
 
   let { model }: { model: RacingHudModel } = $props();
+
+  function trackTempColor(c: number): string {
+    if (c < 15) return '#77cfff';
+    if (c < 45) return '#66f09f';
+    if (c < 60) return '#f1c86b';
+    return '#ff7070';
+  }
 
   function formatLap(ms: number | null): string {
     if (ms == null) return '--:--.---';
@@ -100,15 +113,8 @@
         <div class="debug-row"><span>RL/RR drv</span><span>{model.state.wheels[2].driveTorqueNm.toFixed(0)} / {model.state.wheels[3].driveTorqueNm.toFixed(0)}</span></div>
       </div>
     </div>
-    <div class="panel aero-card" data-testid="hud-aero">
-      <span class="label">Aero</span>
-      <div class="debug-grid">
-        <div class="debug-row"><span>DF Front</span><span>{model.state.aero.frontDownforceN.toFixed(0)} N</span></div>
-        <div class="debug-row"><span>DF Rear</span><span>{model.state.aero.rearDownforceN.toFixed(0)} N</span></div>
-        <div class="debug-row"><span>Total DF</span><span>{(model.state.aero.frontDownforceN + model.state.aero.rearDownforceN).toFixed(0)} N</span></div>
-        <div class="debug-row"><span>Drag</span><span>{model.state.aero.dragN.toFixed(0)} N</span></div>
-      </div>
-    </div>
+    <AeroPanel aero={model.state.aero} />
+    <BoostBar drivetrain={model.state.drivetrain} />
     <div class="panel tire-card" data-testid="hud-tire-utilization">
       <span class="label">Tire utilization</span>
       <div class="debug-grid">
@@ -124,12 +130,19 @@
       </div>
     </div>
     <BrakeBalancePanel wheels={model.state.wheels} />
+    <TirePressurePanel wheels={model.state.wheels} />
+    <FfbPanel ffb={model.state.ffb} />
+    <SuspensionDiagram wheels={model.state.wheels} />
+    <TrackSurfacePanel trackCondition={model.state.trackCondition} />
   {/if}
 
   <div class="hud-bottom" data-testid="hud-bottom">
     <span class="badge meta">Track: {model.state.trackLabel || model.state.trackId || '—'}</span>
     <span class="badge meta">Car: {model.state.vehicleLabel || model.state.vehicleId || '—'}</span>
     <span class="badge meta">Cam: {model.state.cameraMode}</span>
+    <span class="badge temp" style="--tc: {trackTempColor(model.state.trackCondition.trackTempC)}">{Math.round(model.state.trackCondition.trackTempC)} °C</span>
+    {#if model.state.trackCondition.rubberLineGrip > 1.005}<span class="badge rubber">Rubber {model.state.trackCondition.rubberLineGrip.toFixed(2)}×</span>{/if}
+    {#if model.state.trackCondition.terrainActive}<span class="badge terrain">Elevation</span>{/if}
     {#if model.state.paused}<span class="badge danger">Paused</span>{/if}
     {#if model.state.muted}<span class="badge muted">Muted</span>{/if}
     {#if model.state.showDebug}<span class="badge info">Debug</span>{/if}
@@ -217,14 +230,39 @@
     display: grid;
     gap: 8px;
   }
-  .aero-card {
+  :global(.aero-panel) {
     position: absolute;
     bottom: 100px;
     left: 14px;
-    padding: 12px;
-    width: 200px;
-    display: grid;
-    gap: 8px;
+  }
+  :global(.boost-shift-panel) {
+    position: absolute;
+    bottom: 100px;
+    left: 250px;
+  }
+  :global(.tire-pressure-panel) {
+    position: absolute;
+    bottom: 14px;
+    left: 312px;
+    width: 260px;
+  }
+  :global(.ffb-panel) {
+    position: absolute;
+    bottom: 230px;
+    left: 590px;
+    width: 220px;
+  }
+  :global(.suspension-diagram) {
+    position: absolute;
+    bottom: 230px;
+    left: 820px;
+    width: 280px;
+  }
+  :global(.track-surface-panel) {
+    position: absolute;
+    bottom: 230px;
+    left: 1110px;
+    width: 240px;
   }
   .tire-card {
     position: absolute;
@@ -311,6 +349,12 @@
   .badge.danger { color: #ff7070; border-color: rgba(255, 112, 112, 0.5); }
   .badge.muted { color: #f1c86b; border-color: rgba(241, 200, 107, 0.45); }
   .badge.info { color: #77cfff; border-color: rgba(119, 207, 255, 0.45); }
+  .badge.temp {
+    color: var(--tc, #66f09f);
+    border-color: color-mix(in srgb, var(--tc, #66f09f) 45%, transparent);
+  }
+  .badge.rubber { color: #7be4cd; border-color: rgba(123, 228, 205, 0.4); }
+  .badge.terrain { color: #66f09f; border-color: rgba(102, 240, 159, 0.4); }
 
   @media (max-width: 1200px) {
     :global(.wheel-card .row .v) {

@@ -19,3 +19,4 @@ export { default as WheelCard } from './components/WheelCard.svelte';
 export { default as DriftPanel } from './components/DriftPanel.svelte';
 export { default as DebugTrace } from './components/DebugTrace.svelte';
 export { default as GgPlot } from './components/GgPlot.svelte';
+export { default as TirePressurePanel } from './components/TirePressurePanel.svelte';

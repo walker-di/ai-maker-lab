@@ -1,6 +1,19 @@
 /**
- * Camber thrust contribution. A tilted tire generates extra lateral force.
- * Effective camber = static + a roll-induced term + caster-induced camber.
+ * Camber thrust contribution — geometry helper for resolving effective camber.
+ *
+ * M1 note: camber thrust is now integrated into the Pacejka MF evaluator via
+ * the `pCy2` coefficient and the `camberRad` field on `Pacejka56Input`. The
+ * MF path applies combined-slip weighting to the full lateral output, which
+ * is physically more accurate than a downstream add-on.
+ *
+ * `computeCamberThrust` is kept for:
+ *   - resolving the effective camber angle (its primary geometric purpose);
+ *   - use as a fallback when the MF path is not available (e.g. legacy tests);
+ *   - any caller that genuinely needs the thrust as a separate term.
+ *
+ * New `RacingEngine` code passes `camberRad` into `evaluatePacejka56Combined`
+ * and uses `computeCamberThrust().camberRad` only for the geometry; the
+ * `thrust` field is no longer added on top of the MF lateral output.
  *
  * Sign convention: camber is stored wheel-relative (-2.5° = "top tilts
  * inboard" on BOTH sides). The lateral axis (`wheelLat`) is the same
@@ -8,8 +21,6 @@
  * `lateralSign` to mirror it correctly. With this factor a symmetric
  * negative-camber setup at zero roll cancels to zero net side force, while
  * each wheel still pulls toward the chassis centre through a corner.
- *
- * Returns the lateral-force contribution (newtons) along `wheelLat`.
  */
 
 export interface CamberInput {

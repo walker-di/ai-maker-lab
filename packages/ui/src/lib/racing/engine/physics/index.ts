@@ -27,10 +27,39 @@ export {
   type Pacejka56Result,
 } from './pacejka.js';
 export {
+  GT3_RWD_SLICK_TIRE_DATASET,
+  GT3_RWD_SLICK_PACEJKA56_PARAMS,
+  resolveTireAxleParams,
+  tireDatasetFingerprint,
+  type TireDatasetMetadata,
+  type TireDatasetSourceKind,
+  type TirePressureDataset,
+  type TireRelaxationDataset,
+  type TireThermalDataset,
+  type VersionedTireDataset,
+} from './tire-dataset.js';
+export {
+  computeContactPatchPressureDistribution,
+  computeLoadSensitiveRelaxationLength,
+  computeOverturningMomentNm,
+  computeSlidingGripScale,
+  type ContactPatchDistributionInput,
+  type LoadSensitiveRelaxationInput,
+  type PressureDistribution,
+  type SlidingGripInput,
+} from './contact-patch.js';
+export {
   ENGINE_CURVE,
   ENGINE_REDLINE,
   ENGINE_IDLE,
   engineTorqueAt,
+  sampleEngineTorqueMap,
+  sampleTorqueCurve,
+  engineTorqueAtWithMap,
+  engineBrakeTorqueAt,
+  type EngineTorqueMap,
+  type EngineBrakingParams,
+  type EngineCurvePoint,
 } from './engine-curve.js';
 export { computeAckermannAngles, type AckermannPair } from './ackermann.js';
 export {
@@ -75,11 +104,17 @@ export {
   computeAeroDownforce,
   computeAeroDrag,
   computeYawRestoringMoment,
+  computeWakeEffect,
+  sampleAeroTable,
   type AeroDownforceInput,
   type AeroDownforceResult,
   type AeroDragInput,
   type AeroDragResult,
   type YawRestoringInput,
+  type AeroTableMap,
+  type AeroMapPreset,
+  type WakeEffectInput,
+  type WakeEffectResult,
 } from './aero.js';
 export {
   computeAligningMoment,
@@ -119,6 +154,23 @@ export {
   type EngineStepInput,
   type SalisburyDiffInput,
   type SalisburyDiffResult,
+  // M6 shift logic + compliance
+  evaluateShiftRequest,
+  stepShiftDelay,
+  requestShift,
+  makeShiftState,
+  stepDrivelineCompliance,
+  makeDrivelineComplianceState,
+  type ShiftDirection,
+  type ShiftRefusalResult,
+  type ShiftLogicParams,
+  type ShiftState,
+  type ShiftStepInput,
+  type ShiftStepResult,
+  type DrivelineComplianceParams,
+  type DrivelineComplianceState,
+  type DrivelineComplianceStepInput,
+  type DrivelineComplianceResult,
 } from './drivetrain.js';
 export {
   applyAbs,
@@ -138,10 +190,84 @@ export {
 export {
   tireTempMu,
   stepTireTemperature,
+  stepTireTemperatureZones,
+  tireZoneAvgTemp,
+  tireTempMuZones,
   TIRE_AMBIENT_C,
   TIRE_OPTIMAL_C,
   TIRE_HEAT_K,
   TIRE_COOL_K,
   TIRE_COOL_V,
   type TireThermalStep,
+  type TireThermalZones,
+  type TireThermalZoneStep,
 } from './tire-thermal.js';
+export {
+  stepTirePressure,
+  tirePressureMu,
+  tirePressurePatchWidthScale,
+  TIRE_PRESSURE_COLD_KPA,
+  TIRE_PRESSURE_OPTIMAL_KPA,
+  type TirePressureState,
+  type TirePressureInput,
+} from './tire-pressure.js';
+export {
+  stepTireVertical,
+  effectiveSeriesStiffness,
+  effectiveWheelRate,
+  TIRE_RADIAL_STIFFNESS_NPM,
+  TIRE_RADIAL_DAMPING_NSPM,
+  type TireVerticalInput,
+  type TireVerticalResult,
+} from './tire-vertical.js';
+export {
+  computeDamperForce,
+  bumKneeForce,
+  reboundKneeForce,
+  DEFAULT_DAMPER_KNEE_PARAMS,
+  DEFAULT_DAMPER_KNEE_PARAMS_REAR,
+  type DamperKneeParams,
+} from './damper-curve.js';
+export {
+  interpolateKinematic,
+  computeBumpSteerToe,
+  computeCamberVsTravel,
+  computeCasterVsTravel,
+  computeRollCenterHeight,
+  computeJackingForce,
+  computeProgressiveBumpStop,
+  resolveWheelKinematics,
+  DEFAULT_ROLL_CENTER_HEIGHT_M,
+  type KinematicPoint,
+  type KinematicTable,
+  type BumpSteerInput,
+  type CamberVsTravelInput,
+  type CasterVsTravelInput,
+  type RollCenterInput,
+  type JackingForceInput,
+  type ProgressiveBumpStopInput,
+  type WheelKinematicsInput,
+  type WheelKinematicsResult,
+} from './suspension-kinematics.js';
+// M6: turbo spool/boost
+export {
+  stepTurbo,
+  makeTurboState,
+  type TurboParams,
+  type TurboState,
+  type TurboStepInput,
+} from './turbo.js';
+// M8: gyroscopic torque from spinning wheels
+export {
+  computeGyroscopicTorque,
+  type GyroscopicTorqueInput,
+  type GyroscopicTorqueResult,
+} from './gyroscopic.js';
+// M9: chassis compliance math
+export {
+  hubNaturalFrequencyHz,
+  hubCriticalDampingNspm,
+  torsionalRestoringTorqueNm,
+  chassisRollFromRightY,
+  DEFAULT_TIRE_CARCASS_STIFFNESS_NPM,
+} from './compliance-math.js';

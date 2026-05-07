@@ -32,11 +32,47 @@ export interface WheelEventPayload {
   kind: 'lockup' | 'spinout' | 'curb' | 'gravel';
 }
 
+/**
+ * M2 — Force feedback rack-force event, emitted every simulation step.
+ *
+ * `rackForce` is the device-independent normalized output in [-1, 1]; +1
+ * represents a full-strength centering/resistance force for a left-turn input.
+ * The frontend device adapter is the only consumer that multiplies this by a
+ * physical torque magnitude.
+ *
+ * Diagnostic fields allow HUD debug panels and tests to inspect individual
+ * pipeline stages without importing ffb.ts directly.
+ *
+ * Device APIs MUST NOT be called inside any handler of this event within
+ * packages/ui/src/lib/racing/engine/ or packages/domain/src/**.
+ */
+export interface FfbRackForcePayload {
+  /** Simulation time at which this payload was produced (s). */
+  simTime: number;
+  /**
+   * Normalized rack force in [-1, 1].
+   * Positive = resisting a left-turn input.
+   */
+  rackForce: number;
+  /** KPI/SAI centering torque before assist shaping (Nm). */
+  kpiTorqueNm: number;
+  /** Aligning moment contribution from both front tires (Nm). */
+  mzContributionNm: number;
+  /** Fx scrub+caster coupling torque (Nm). */
+  fxCouplingNm: number;
+  /** Total raw torque before gain/clip (Nm). */
+  totalRawNm: number;
+  /** Power-steering assist scale this step (0..1). */
+  assistScale: number;
+}
+
 export type EngineEventMap = {
   tick: TickPayload;
   lapStarted: LapStartedPayload;
   lapFinished: LapFinishedPayload;
   wheelEvent: WheelEventPayload;
+  /** M2 — FFB rack-force output, emitted every simulation step. */
+  ffbRackForce: FfbRackForcePayload;
 };
 
 type Listener<T> = (payload: T) => void;

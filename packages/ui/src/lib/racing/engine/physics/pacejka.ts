@@ -15,6 +15,7 @@
  * delegate to the new pure-slip helpers using the default front-axle params.
  */
 import { tireD } from './tire-load.js';
+import { GT3_RWD_SLICK_PACEJKA56_PARAMS } from './tire-dataset.js';
 
 export type Pacejka56Axle = 'front' | 'rear';
 
@@ -57,6 +58,15 @@ export interface Pacejka56AxleParams {
   /** Curvature: Ey = (pEy1 + pEy2 * dfz). */
   pEy1: number;
   pEy2: number;
+  /**
+   * Camber thrust gain (MF camber stiffness coefficient). Contributes a
+   * lateral force proportional to effective camber angle and vertical load:
+   * `Fy_gamma = pCy2 * camberRad * Fz`. Equivalent to the MF `Cy_gamma0`
+   * term. Default 1.5 rad⁻¹ matches a typical sport tire. Zero disables
+   * the MF camber path and falls back to the legacy standalone add-on if
+   * the caller uses `computeCamberThrust` externally.
+   */
+  pCy2: number;
 
   // ---- Combined slip weighting ----------------------------------------
   /**
@@ -86,33 +96,10 @@ export interface Pacejka56AxleParams {
  * same baseline; the type allows distinct front/rear when the vehicle preset
  * supplies overrides.
  */
-export const DEFAULT_PACEJKA56_PARAMS: Pacejka56AxleParams = {
-  fz0: 3500,
+export const DEFAULT_PACEJKA56_PARAMS: Pacejka56AxleParams = { ...GT3_RWD_SLICK_PACEJKA56_PARAMS.front };
 
-  pCx1: 1.65,
-  pDx1: 1.0,
-  pDx2: -0.12,
-  pKx1: 25,
-  pKx2: 0,
-  pEx1: 0.95,
-  pEx2: 0,
-
-  pCy1: 1.3,
-  pDy1: 1.0,
-  pDy2: -0.12,
-  pKy1: 22.5,
-  pKy2: 1.5,
-  pEy1: -1.4,
-  pEy2: 0,
-
-  rBx1: 2.5,
-  rCx1: 1.0,
-  rBy1: 2.5,
-  rCy1: 1.0,
-};
-
-export const DEFAULT_PACEJKA56_FRONT: Pacejka56AxleParams = { ...DEFAULT_PACEJKA56_PARAMS };
-export const DEFAULT_PACEJKA56_REAR: Pacejka56AxleParams = { ...DEFAULT_PACEJKA56_PARAMS };
+export const DEFAULT_PACEJKA56_FRONT: Pacejka56AxleParams = { ...GT3_RWD_SLICK_PACEJKA56_PARAMS.front };
+export const DEFAULT_PACEJKA56_REAR: Pacejka56AxleParams = { ...GT3_RWD_SLICK_PACEJKA56_PARAMS.rear };
 
 export interface Pacejka56Input {
   /** Slip ratio, kappa = (omega * R - vx) / |vx|. Sign convention: + on drive. */
@@ -127,6 +114,15 @@ export interface Pacejka56Input {
   axle: Pacejka56Axle;
   /** Optional per-axle parameter overrides merged on top of the defaults. */
   params?: Partial<Pacejka56AxleParams>;
+  /**
+   * Effective camber angle (rad) for the MF camber-thrust path. When
+   * supplied, the lateral force includes the MF camber thrust contribution
+   * (`Fy_camber = pCy2 * camberRad * Fz`) integrated into the Dy term so
+   * the combined-slip weighting applies to the full lateral output. If
+   * omitted or zero, the camber path is bypassed and behaviour matches the
+   * pre-M1 evaluator exactly (existing tests stay green).
+   */
+  camberRad?: number;
 }
 
 export interface Pacejka56Result {
@@ -241,6 +237,7 @@ function evaluatePureLateral(
   fz: number,
   muScale: number,
   p: Pacejka56AxleParams,
+  camberRad = 0,
 ): PureLateral {
   const dfz = (fz - p.fz0) / p.fz0;
   const Cy = p.pCy1;
@@ -254,7 +251,12 @@ function evaluatePureLateral(
   const Ey = p.pEy1 + p.pEy2 * dfz;
   // SAE tire convention uses tan(alpha) inside the magic formula so the
   // input behaves linearly in the small-angle regime where Ky was derived.
-  const fy = magicFormula(Math.tan(alphaRad), By, Cy, Dy, Ey);
+  const fySlip = magicFormula(Math.tan(alphaRad), By, Cy, Dy, Ey);
+  // MF camber-thrust contribution: integrated into the lateral force here
+  // (instead of a downstream add-on) so combined-slip weighting applies to
+  // the full output. `pCy2 = 0` or `camberRad = 0` makes this term zero.
+  const fyCamber = (p.pCy2 ?? 0) * camberRad * fz;
+  const fy = fySlip + fyCamber;
   return { fy, By, Cy, Dy, Ey };
 }
 
@@ -277,7 +279,7 @@ export function evaluatePacejka56Combined(input: Pacejka56Input): Pacejka56Resul
 
   const params = mergeParams(input.axle, input.params);
   const pureLong = evaluatePureLongitudinal(input.kappa, fz, muScale, params);
-  const pureLat = evaluatePureLateral(input.alphaRad, fz, muScale, params);
+  const pureLat = evaluatePureLateral(input.alphaRad, fz, muScale, params, input.camberRad ?? 0);
 
   const tanAlpha = Math.tan(input.alphaRad);
   const gxAlpha = Math.cos(params.rCx1 * Math.atan(params.rBx1 * tanAlpha));

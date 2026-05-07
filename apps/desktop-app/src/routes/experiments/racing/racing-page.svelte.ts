@@ -49,6 +49,7 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 	let isLoading = $state(false);
 	let errorMessage = $state<string | null>(null);
 	let runActive = $state(false);
+	let firstRunReady = $state(false);
 	let paused = $state(false);
 	let muted = $state(false);
 	let showDebug = $state(false);
@@ -211,7 +212,7 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 		const track = findTrack(selectedTrackId);
 		if (!vehicle || !track) return;
 		autoStartRequested = false;
-		startRun({
+		void startRun({
 			canvas: pendingMount.canvas,
 			focusTarget: pendingMount.focusTarget,
 			width: pendingMount.width,
@@ -221,14 +222,14 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 		});
 	}
 
-	function startRun(args: {
+	async function startRun(args: {
 		canvas: HTMLCanvasElement;
 		focusTarget: HTMLElement;
 		width: number;
 		height: number;
 		vehicle: VehiclePreset;
 		track: TrackPreset;
-	}): void {
+	}): Promise<void> {
 		stopRun({ invalidate: false });
 		const runToken = ++activeRunToken;
 		activeSessionId = null;
@@ -236,7 +237,16 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 		activeVehicleId = args.vehicle.id;
 		setError(null);
 		try {
-			engine = new RacingEngine({ vehicle: args.vehicle, track: args.track, setup });
+			// M9: preload Jolt when the vehicle preset carries compliance params.
+			let physicsContext: Racing.Engine.PhysicsContext | undefined = undefined;
+			if (args.vehicle.physics?.compliance) {
+				try {
+					physicsContext = await Racing.Engine.createPhysicsContext();
+				} catch {
+					/* Jolt not available — engine falls back to software compliance */
+				}
+			}
+			engine = new RacingEngine({ vehicle: args.vehicle, track: args.track, setup, physicsContext });
 			engine.resetCar();
 			engine.setAbsEnabled(absEnabled);
 			engine.setTcEnabled(tcEnabled);
@@ -252,13 +262,14 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 			hud.setPaused(false);
 			hud.setMuted(muted);
 			hud.setShowDebug(showDebug);
+			runActive = true;
+			firstRunReady = true;
 			unsubLap = engine.events.on('lapFinished', (event) => {
 				void persistLap(event.lapMs, runToken);
 			});
 			unsubTick = engine.events.on('tick', (event) => {
 				lastSimTime = event.simTime;
 			});
-			runActive = true;
 			paused = false;
 			void recordSessionStart(runToken, args.vehicle.id, args.track.id);
 			void seedBestLap(runToken, args.vehicle.id, args.track.id);
@@ -420,12 +431,38 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 				surface: w.surface,
 				tempC: w.tempC,
 				brakeTempC: w.brakeTempC,
+				tireWear: w.tireWear,
+				flatSpotSignal: w.flatSpotSignal,
 				bumpStopPct: w.bumpStopPct,
 				airborne: w.fz < 1,
 				brakeTorqueApplied: w.brakeTorqueApplied,
 				absScale: w.absScale,
 				absActive: w.absActive,
 				yawContribution: w.yawContribution,
+				// M1 thermal/pressure/diagnostics
+				tempInner: w.tempInner,
+				tempMiddle: w.tempMiddle,
+				tempOuter: w.tempOuter,
+				pressureKpa: w.pressureKpa,
+				kappaPeak: w.kappaPeak,
+				alphaPeakRad: w.alphaPeakRad,
+				tireDeflection: w.tireDeflection,
+				relaxationLengthLongM: w.relaxationLengthLongM,
+				relaxationLengthLatM: w.relaxationLengthLatM,
+				slidingGripScale: w.slidingGripScale,
+				slidingSpeedMps: w.slidingSpeedMps,
+				pressureInner: w.pressureInner,
+				pressureMiddle: w.pressureMiddle,
+				pressureOuter: w.pressureOuter,
+				pressureCentroidM: w.pressureCentroidM,
+				overturningMomentNm: w.overturningMomentNm,
+				// M3 suspension kinematics & damper diagnostics
+				suspensionTravel: w.suspensionTravel,
+				damperVelocity: w.damperVelocity,
+				rollCenterHeightM: w.rollCenterHeightM,
+				jackingForceN: w.jackingForceN,
+				toeDeg: w.toeDeg,
+				camberDeg: w.camberDeg,
 			})),
 		);
 		hud.setDrivetrain({
@@ -435,12 +472,36 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 			clutchMode: snap.drivetrain.clutchMode,
 			engineDriveTorqueNm: snap.drivetrain.engineDriveTorqueNm,
 			engineDragTorqueNm: snap.drivetrain.engineDragTorqueNm,
+			// M6 drivetrain depth fields
+			boostBar: snap.drivetrain.boostBar,
+			turboSpoolRatio: snap.drivetrain.turboSpoolRatio,
+			boostTorqueMultiplier: snap.drivetrain.boostTorqueMultiplier,
+			isOverboost: snap.drivetrain.isOverboost,
+			shiftRefused: snap.drivetrain.shiftRefused,
+			shiftRefusalReason: snap.drivetrain.shiftRefusalReason,
+			shiftInProgress: snap.drivetrain.shiftInProgress,
+			shiftRemainingS: snap.drivetrain.shiftRemainingS,
+			drivelineComplianceTwistRad: snap.drivetrain.drivelineComplianceTwistRad,
+			drivelineComplianceSpringNm: snap.drivetrain.drivelineComplianceSpringNm,
 		});
 		hud.setAero({
 			frontDownforceN: snap.aero.frontDownforceN,
 			rearDownforceN: snap.aero.rearDownforceN,
 			dragN: snap.aero.dragN,
+			// M5 aero map telemetry
+			hasAeroMap: snap.aero.hasAeroMap,
+			effectiveClAreaFront: snap.aero.effectiveClAreaFront,
+			effectiveClAreaRear: snap.aero.effectiveClAreaRear,
+			copFraction: snap.aero.copFraction,
+			frontStalled: snap.aero.frontStalled,
+			rearStalled: snap.aero.rearStalled,
+			frontRideHeightM: snap.aero.frontRideHeightM,
+			rearRideHeightM: snap.aero.rearRideHeightM,
+			// M8 wake-field drag reduction
+			wakeReduction: snap.aero.wakeReduction,
 		});
+		hud.setFfb(snap.ffb);
+		hud.setTrackCondition(snap.trackCondition);
 		// Telemetry trace lane: pick the value that matches the active mode
 		// so the trace line's vertical scale stays meaningful when the user
 		// toggles between load / slip / utilization.
@@ -630,6 +691,7 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 		get isLoading() { return isLoading; },
 		get errorMessage() { return errorMessage; },
 		get runActive() { return runActive; },
+		get firstRunReady() { return firstRunReady; },
 		get paused() { return paused; },
 		get muted() { return muted; },
 		get showDebug() { return showDebug; },

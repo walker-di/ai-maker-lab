@@ -32,5 +32,18 @@
     { "x": 98, "z": 54, "w": 10, "h": 22, "rot": 0.52, "surface": "MARBLES" }
   ],
   "apexes": [70, 200],
-  "propCadence": { "cones": 8, "barriers": 10, "lights": 48, "billboards": 70 }
+  "propCadence": {
+  "cones": 8,
+  "barriers": 12,
+  "lights": 48,
+  "billboards": 20,
+  "flags": 2,
+  "fences": 80,
+  "grandStands": 2,
+  "pitBuildings": 3,
+  "pylons": 4,
+  "banners": 4,
+  "radars": 1,
+  "overheads": 1
+}
 }

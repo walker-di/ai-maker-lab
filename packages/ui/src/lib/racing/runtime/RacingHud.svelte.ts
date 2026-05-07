@@ -1,4 +1,5 @@
 import type { SurfaceId } from '../types.js';
+import { DEFAULT_ROLL_CENTER_HEIGHT_M } from '../engine/physics/suspension-kinematics.js';
 
 // 'utilization' shows the Phase 7 tire-utilization bar: how close each
 // tire is to its current friction-circle ceiling. Useful for tuning
@@ -20,12 +21,47 @@ export interface RacingHudWheelState {
   surface: SurfaceId | null;
   tempC: number;
   brakeTempC: number;
+  /** Normalized tire-wear accumulation. */
+  tireWear: number;
+  /** Normalized flat-spot signal from locked-wheel braking. */
+  flatSpotSignal: number;
   bumpStopPct: number;
   airborne: boolean;
   brakeTorqueApplied: number;
   absScale: number;
   absActive: boolean;
   yawContribution: number;
+  // M1 additions
+  tempInner: number;
+  tempMiddle: number;
+  tempOuter: number;
+  pressureKpa: number;
+  kappaPeak: number;
+  alphaPeakRad: number;
+  tireDeflection: number;
+  // Contact-patch diagnostics
+  relaxationLengthLongM?: number;
+  relaxationLengthLatM?: number;
+  slidingGripScale?: number;
+  slidingSpeedMps?: number;
+  pressureInner?: number;
+  pressureMiddle?: number;
+  pressureOuter?: number;
+  pressureCentroidM?: number;
+  overturningMomentNm?: number;
+  // M3 additions
+  /** Suspension travel (m, positive = compression). */
+  suspensionTravel: number;
+  /** Damper shaft velocity (m/s, positive = compression). */
+  damperVelocity: number;
+  /** Roll-center height (m) from kinematics table. */
+  rollCenterHeightM: number;
+  /** Jacking force contribution (N, positive = lifts chassis). */
+  jackingForceN: number;
+  /** Travel-resolved toe angle (deg) including bump-steer. */
+  toeDeg: number;
+  /** Travel-resolved camber angle (deg). */
+  camberDeg: number;
 }
 
 export interface RacingHudDrivetrainState {
@@ -35,12 +71,68 @@ export interface RacingHudDrivetrainState {
   clutchMode: 'locked' | 'slipping';
   engineDriveTorqueNm: number;
   engineDragTorqueNm: number;
+  // M6 additions
+  boostBar: number;
+  turboSpoolRatio: number;
+  boostTorqueMultiplier: number;
+  isOverboost: boolean;
+  shiftRefused: boolean;
+  shiftRefusalReason: string;
+  shiftInProgress: boolean;
+  shiftRemainingS: number;
+  drivelineComplianceTwistRad: number;
+  drivelineComplianceSpringNm: number;
+}
+
+export interface RacingHudFfbState {
+  /** Normalized rack force in [-1, 1]. Positive = resisting left-turn input. */
+  rackForce: number;
+  /** KPI/SAI centering torque before assist shaping (Nm). */
+  kpiTorqueNm: number;
+  /** Aligning moment contribution from both front tires (Nm). */
+  mzContributionNm: number;
+  /** Fx scrub+caster coupling torque (Nm). */
+  fxCouplingNm: number;
+  /** Total raw torque before gain/clip (Nm). */
+  totalRawNm: number;
+  /** Power-steering assist scale this step (0..1). */
+  assistScale: number;
 }
 
 export interface RacingHudAeroState {
   frontDownforceN: number;
   rearDownforceN: number;
   dragN: number;
+  // M5 aero map telemetry — undefined when no aeroMap preset is authored
+  /** True when an authored aero map preset is active (false for scalar-only presets). */
+  hasAeroMap?: boolean;
+  effectiveClAreaFront?: number;
+  effectiveClAreaRear?: number;
+  /** Centre-of-pressure fraction (0 = all front, 1 = all rear). */
+  copFraction?: number;
+  frontStalled?: boolean;
+  rearStalled?: boolean;
+  frontRideHeightM?: number;
+  rearRideHeightM?: number;
+  // M8 wake-field drag reduction
+  /** Current wake drag reduction fraction (0 = no reduction). */
+  wakeReduction?: number;
+}
+
+/** M4 — Track surface condition fields forwarded from the engine snapshot. */
+export interface RacingHudTrackConditionState {
+  /** Track surface temperature (°C); 28 when the preset omits it. */
+  trackTempC: number;
+  /** Rubber-line grip multiplier; 1.0 = no rubber laid down. */
+  rubberLineGrip: number;
+  /** True when authored elevation data is active (not flat-ground fallback). */
+  terrainActive: boolean;
+  /** Micro-bump amplitude (m); 0 when the preset omits it. */
+  bumpAmplitudeM: number;
+  /** Normalized wetness 0..1; 0 when the preset omits it. */
+  wetness: number;
+  /** Human-readable condition label; `dry` when omitted. */
+  condition: string;
 }
 
 export interface RacingHudInputState {
@@ -114,6 +206,9 @@ export interface RacingHudState {
   aero: RacingHudAeroState;
   traceSamples: RacingTraceSample[];
   ggTrail: RacingGgPoint[];
+  ffb: RacingHudFfbState;
+  // M4
+  trackCondition: RacingHudTrackConditionState;
 }
 
 export class RacingHudModel {
@@ -159,10 +254,10 @@ export class RacingHudModel {
     input: { throttle: 0, brake: 0, steer: 0, handbrake: 0 },
     lap: { bestMs: null, lastMs: null, currentMs: null },
     wheels: [
-      { index: 0, fz: 0, fx: 0, fy: 0, slipRatio: 0, slipAngle: 0, combinedSlip: 0, tireUtilization: 0, driveTorqueNm: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false, brakeTorqueApplied: 0, absScale: 1, absActive: false, yawContribution: 0 },
-      { index: 1, fz: 0, fx: 0, fy: 0, slipRatio: 0, slipAngle: 0, combinedSlip: 0, tireUtilization: 0, driveTorqueNm: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false, brakeTorqueApplied: 0, absScale: 1, absActive: false, yawContribution: 0 },
-      { index: 2, fz: 0, fx: 0, fy: 0, slipRatio: 0, slipAngle: 0, combinedSlip: 0, tireUtilization: 0, driveTorqueNm: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false, brakeTorqueApplied: 0, absScale: 1, absActive: false, yawContribution: 0 },
-      { index: 3, fz: 0, fx: 0, fy: 0, slipRatio: 0, slipAngle: 0, combinedSlip: 0, tireUtilization: 0, driveTorqueNm: 0, surface: null, tempC: 30, brakeTempC: 30, bumpStopPct: 0, airborne: false, brakeTorqueApplied: 0, absScale: 1, absActive: false, yawContribution: 0 },
+      { index: 0, fz: 0, fx: 0, fy: 0, slipRatio: 0, slipAngle: 0, combinedSlip: 0, tireUtilization: 0, driveTorqueNm: 0, surface: null, tempC: 30, brakeTempC: 30, tireWear: 0, flatSpotSignal: 0, bumpStopPct: 0, airborne: false, brakeTorqueApplied: 0, absScale: 1, absActive: false, yawContribution: 0, tempInner: 30, tempMiddle: 30, tempOuter: 30, pressureKpa: 200, kappaPeak: 0, alphaPeakRad: 0, tireDeflection: 0, suspensionTravel: 0, damperVelocity: 0, rollCenterHeightM: DEFAULT_ROLL_CENTER_HEIGHT_M, jackingForceN: 0, toeDeg: 0, camberDeg: -1.5 },
+      { index: 1, fz: 0, fx: 0, fy: 0, slipRatio: 0, slipAngle: 0, combinedSlip: 0, tireUtilization: 0, driveTorqueNm: 0, surface: null, tempC: 30, brakeTempC: 30, tireWear: 0, flatSpotSignal: 0, bumpStopPct: 0, airborne: false, brakeTorqueApplied: 0, absScale: 1, absActive: false, yawContribution: 0, tempInner: 30, tempMiddle: 30, tempOuter: 30, pressureKpa: 200, kappaPeak: 0, alphaPeakRad: 0, tireDeflection: 0, suspensionTravel: 0, damperVelocity: 0, rollCenterHeightM: DEFAULT_ROLL_CENTER_HEIGHT_M, jackingForceN: 0, toeDeg: 0, camberDeg: -1.5 },
+      { index: 2, fz: 0, fx: 0, fy: 0, slipRatio: 0, slipAngle: 0, combinedSlip: 0, tireUtilization: 0, driveTorqueNm: 0, surface: null, tempC: 30, brakeTempC: 30, tireWear: 0, flatSpotSignal: 0, bumpStopPct: 0, airborne: false, brakeTorqueApplied: 0, absScale: 1, absActive: false, yawContribution: 0, tempInner: 30, tempMiddle: 30, tempOuter: 30, pressureKpa: 200, kappaPeak: 0, alphaPeakRad: 0, tireDeflection: 0, suspensionTravel: 0, damperVelocity: 0, rollCenterHeightM: DEFAULT_ROLL_CENTER_HEIGHT_M, jackingForceN: 0, toeDeg: 0, camberDeg: -1.5 },
+      { index: 3, fz: 0, fx: 0, fy: 0, slipRatio: 0, slipAngle: 0, combinedSlip: 0, tireUtilization: 0, driveTorqueNm: 0, surface: null, tempC: 30, brakeTempC: 30, tireWear: 0, flatSpotSignal: 0, bumpStopPct: 0, airborne: false, brakeTorqueApplied: 0, absScale: 1, absActive: false, yawContribution: 0, tempInner: 30, tempMiddle: 30, tempOuter: 30, pressureKpa: 200, kappaPeak: 0, alphaPeakRad: 0, tireDeflection: 0, suspensionTravel: 0, damperVelocity: 0, rollCenterHeightM: DEFAULT_ROLL_CENTER_HEIGHT_M, jackingForceN: 0, toeDeg: 0, camberDeg: -1.5 },
     ],
     drivetrain: {
       engineOmega: 0,
@@ -171,6 +266,16 @@ export class RacingHudModel {
       clutchMode: 'slipping',
       engineDriveTorqueNm: 0,
       engineDragTorqueNm: 0,
+      boostBar: 0,
+      turboSpoolRatio: 0,
+      boostTorqueMultiplier: 1,
+      isOverboost: false,
+      shiftRefused: false,
+      shiftRefusalReason: '',
+      shiftInProgress: false,
+      shiftRemainingS: 0,
+      drivelineComplianceTwistRad: 0,
+      drivelineComplianceSpringNm: 0,
     },
     aero: {
       frontDownforceN: 0,
@@ -179,6 +284,22 @@ export class RacingHudModel {
     },
     traceSamples: [],
     ggTrail: [],
+    ffb: {
+      rackForce: 0,
+      kpiTorqueNm: 0,
+      mzContributionNm: 0,
+      fxCouplingNm: 0,
+      totalRawNm: 0,
+      assistScale: 0,
+    },
+    trackCondition: {
+      trackTempC: 28,
+      rubberLineGrip: 1,
+      terrainActive: false,
+      bumpAmplitudeM: 0,
+      wetness: 0,
+      condition: 'dry',
+    },
   });
 
   setSpeed(kmh: number): void { this.state.speedKmh = kmh; }
@@ -259,8 +380,14 @@ export class RacingHudModel {
   setDrivetrain(state: RacingHudDrivetrainState): void {
     this.state.drivetrain = { ...state };
   }
+  setFfb(state: RacingHudFfbState): void {
+    this.state.ffb = { ...state };
+  }
   setAero(state: RacingHudAeroState): void {
     this.state.aero = { ...state };
+  }
+  setTrackCondition(state: RacingHudTrackConditionState): void {
+    this.state.trackCondition = { ...state };
   }
   pushTelemetry(sample: RacingTraceSample, gg: RacingGgPoint): void {
     this.state.traceSamples = [...this.state.traceSamples.slice(-119), sample];

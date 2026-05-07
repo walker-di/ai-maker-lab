@@ -22,6 +22,13 @@ import {
   pacejkaLat,
   stepBrakeTemperature,
   stepTireTemperature,
+  stepTireTemperatureZones,
+  stepTirePressure,
+  stepTireVertical,
+  tirePressureMu,
+  tirePressurePatchWidthScale,
+  tireZoneAvgTemp,
+  tireTempMuZones,
   tireD,
   tireTempMu,
 } from './index.js';
@@ -265,5 +272,113 @@ describe('racing physics module edge coverage', () => {
     }
     expect(temp).toBeGreaterThanOrEqual(35);
     expect(temp).toBeLessThan(50);
+  });
+});
+
+describe('M1 tire modules', () => {
+  it('multi-zone thermal: three strips converge toward ambient with no heat input', () => {
+    let zones = { inner: 80, middle: 90, outer: 70 };
+    // Run ~50 seconds; cooling is intentionally slow (carcass heat retention).
+    for (let i = 0; i < 12000; i++) {
+      zones = stepTireTemperatureZones({ zones, slidePower: 0, contactSpeed: 5, dt: 1 / 240 });
+    }
+    // All strips must have cooled significantly from their starting temps.
+    expect(zones.inner).toBeLessThan(60);
+    expect(zones.middle).toBeLessThan(60);
+    expect(zones.outer).toBeLessThan(60);
+    // Conduction equalises the strip temps — they must be close to each other.
+    expect(Math.abs(zones.inner - zones.middle)).toBeLessThan(5);
+    expect(Math.abs(zones.middle - zones.outer)).toBeLessThan(5);
+  });
+
+  it('multi-zone thermal: lateral bias concentrates heat to the inner strip', () => {
+    const basePower = 15000;
+    const dt = 1 / 240;
+    let zonesSymmetric = { inner: 30, middle: 30, outer: 30 };
+    let zonesBiasedInner = { inner: 30, middle: 30, outer: 30 };
+    for (let i = 0; i < 240; i++) {
+      zonesSymmetric = stepTireTemperatureZones({ zones: zonesSymmetric, slidePower: basePower, contactSpeed: 5, lateralBias: 0, dt });
+      zonesBiasedInner = stepTireTemperatureZones({ zones: zonesBiasedInner, slidePower: basePower, contactSpeed: 5, lateralBias: -1, dt });
+    }
+    expect(zonesBiasedInner.inner).toBeGreaterThan(zonesSymmetric.inner);
+    expect(zonesBiasedInner.outer).toBeLessThan(zonesSymmetric.outer);
+  });
+
+  it('multi-zone grip average: cold tires give ~0.45 mu, optimal gives 1.0', () => {
+    const cold = { inner: 30, middle: 30, outer: 30 };
+    const opt = { inner: 90, middle: 90, outer: 90 };
+    expect(tireTempMuZones(cold)).toBeCloseTo(0.45, 2);
+    expect(tireTempMuZones(opt)).toBeCloseTo(1.0, 5);
+  });
+
+  it('tireZoneAvgTemp uses 25/50/25 weighting', () => {
+    expect(tireZoneAvgTemp({ inner: 100, middle: 60, outer: 0 })).toBeCloseTo(100 * 0.25 + 60 * 0.5 + 0 * 0.25, 8);
+  });
+
+  it('tire pressure: ideal-gas step raises pressure as temperature rises', () => {
+    const p0 = stepTirePressure({ pressureKpa: 200, tempAvgC: 30, coldKpa: 200, dt: 10 });
+    expect(p0).toBeCloseTo(200, 2);
+    const p1 = stepTirePressure({ pressureKpa: 200, tempAvgC: 90, coldKpa: 200, dt: 10 });
+    expect(p1).toBeGreaterThan(200);
+  });
+
+  it('tirePressureMu: returns 1.0 at optimal, decays symmetrically above/below', () => {
+    expect(tirePressureMu(200, 200)).toBe(1.0);
+    const above = tirePressureMu(240, 200);
+    const below = tirePressureMu(160, 200);
+    expect(above).toBeCloseTo(below, 5);
+    expect(above).toBeLessThan(1.0);
+    expect(above).toBeGreaterThan(0.8);
+  });
+
+  it('tirePressurePatchWidthScale: under-inflation widens patch, over-inflation narrows it', () => {
+    const atOptimal = tirePressurePatchWidthScale(200, 200);
+    const underInflated = tirePressurePatchWidthScale(160, 200);
+    const overInflated = tirePressurePatchWidthScale(240, 200);
+    expect(atOptimal).toBeCloseTo(1.0, 5);
+    expect(underInflated).toBeGreaterThan(atOptimal);
+    expect(overInflated).toBeLessThan(atOptimal);
+  });
+
+  it('tire vertical: deflection is positive under small contact and increases with compression', () => {
+    // A wheel 10 mm from the ground on a 320 mm radius tire: deflection = 320 - 310 = 10 mm.
+    const light = stepTireVertical({
+      contactDistance: 0.31,
+      radius: 0.32,
+      kTireNpm: 160000,
+      cTireNspm: 400,
+      deflectionRate: 0,
+      prevDeflection: 0,
+      pressureKpa: 200,
+      dt: 1 / 240,
+    });
+    // More compressed: contactDistance = 0.29 (30 mm deflection).
+    const heavy = stepTireVertical({
+      contactDistance: 0.29,
+      radius: 0.32,
+      kTireNpm: 160000,
+      cTireNspm: 400,
+      deflectionRate: 0,
+      prevDeflection: 0,
+      pressureKpa: 200,
+      dt: 1 / 240,
+    });
+    expect(light.deflection).toBeGreaterThan(0);
+    expect(light.fzContact).toBeGreaterThan(0);
+    expect(heavy.deflection).toBeGreaterThan(light.deflection);
+    expect(heavy.fzContact).toBeGreaterThan(light.fzContact);
+
+    // Higher pressure makes the tire stiffer (less deflection for same load).
+    const highPressure = stepTireVertical({
+      contactDistance: 0.31,
+      radius: 0.32,
+      kTireNpm: 160000,
+      cTireNspm: 400,
+      deflectionRate: 0,
+      prevDeflection: 0,
+      pressureKpa: 240,
+      dt: 1 / 240,
+    });
+    expect(highPressure.fzContact).toBeGreaterThan(light.fzContact);
   });
 });

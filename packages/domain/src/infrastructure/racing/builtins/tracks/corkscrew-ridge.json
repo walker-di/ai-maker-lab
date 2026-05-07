@@ -30,5 +30,18 @@
     { "x": -38, "z": 28, "w": 12, "h": 8, "rot": -0.5235987755982988 }
   ],
   "apexes": [70, 160, 220],
-  "propCadence": { "cones": 5, "barriers": 6, "lights": 36, "billboards": 70 }
+  "propCadence": {
+  "cones": 10,
+  "barriers": 14,
+  "lights": 36,
+  "billboards": 16,
+  "flags": 2,
+  "fences": 70,
+  "grandStands": 1,
+  "pitBuildings": 2,
+  "pylons": 5,
+  "banners": 3,
+  "radars": 1,
+  "overheads": 1
+}
 }

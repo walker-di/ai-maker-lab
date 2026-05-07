@@ -19,18 +19,78 @@
 	const selectedVehicle = $derived(model.vehicles.find((vehicle) => vehicle.id === model.selectedVehicleId));
 	const selectedTrack = $derived(model.tracks.find((track) => track.id === model.selectedTrackId));
 
-	const setupFields = [
-		{ key: 'frontToeDeg', label: 'Front toe', min: -2, max: 2, step: 0.1, unit: 'deg' },
-		{ key: 'rearToeDeg', label: 'Rear toe', min: -2, max: 2, step: 0.1, unit: 'deg' },
-		{ key: 'casterDeg', label: 'Caster', min: 0, max: 12, step: 0.5, unit: 'deg' },
-		{ key: 'ackermannPct', label: 'Ackermann', min: 0, max: 1, step: 0.05, unit: '' },
-		{ key: 'motionRatioFront', label: 'Front motion ratio', min: 0.4, max: 1.5, step: 0.05, unit: '' },
-		{ key: 'motionRatioRear', label: 'Rear motion ratio', min: 0.4, max: 1.5, step: 0.05, unit: '' },
-		{ key: 'bumpStopGapFrontMm', label: 'Front bump gap', min: 50, max: 350, step: 5, unit: 'mm' },
-		{ key: 'bumpStopGapRearMm', label: 'Rear bump gap', min: 50, max: 350, step: 5, unit: 'mm' },
-		{ key: 'bumpStopRateFrontNmm', label: 'Front bump rate', min: 0, max: 600, step: 10, unit: 'N/mm' },
-		{ key: 'bumpStopRateRearNmm', label: 'Rear bump rate', min: 0, max: 600, step: 10, unit: 'N/mm' },
-	] as const;
+	type SetupField = {
+		key: keyof typeof model.setup;
+		label: string;
+		min: number;
+		max: number;
+		step: number;
+		unit: string;
+	};
+	type SetupSection = { label: string; fields: readonly SetupField[] };
+
+	const setupSections = [
+		{
+			label: 'Alignment & steering',
+			fields: [
+				{ key: 'frontToeDeg', label: 'Front toe', min: -2, max: 2, step: 0.1, unit: 'deg' },
+				{ key: 'rearToeDeg', label: 'Rear toe', min: -2, max: 2, step: 0.1, unit: 'deg' },
+				{ key: 'casterDeg', label: 'Caster', min: 0, max: 12, step: 0.5, unit: 'deg' },
+				{ key: 'ackermannPct', label: 'Ackermann', min: 0, max: 1, step: 0.05, unit: '' },
+				{ key: 'camberFrontDeg', label: 'Front camber', min: -4.5, max: 0.5, step: 0.1, unit: 'deg' },
+				{ key: 'camberRearDeg', label: 'Rear camber', min: -4.5, max: 0.5, step: 0.1, unit: 'deg' },
+			],
+		},
+		{
+			label: 'Suspension geometry',
+			fields: [
+				{ key: 'motionRatioFront', label: 'Front motion ratio', min: 0.4, max: 1.5, step: 0.05, unit: '' },
+				{ key: 'motionRatioRear', label: 'Rear motion ratio', min: 0.4, max: 1.5, step: 0.05, unit: '' },
+				{ key: 'rideHeightFrontMm', label: 'Front ride height', min: -30, max: 30, step: 1, unit: 'mm' },
+				{ key: 'rideHeightRearMm', label: 'Rear ride height', min: -30, max: 30, step: 1, unit: 'mm' },
+			],
+		},
+		{
+			label: 'Bump stops',
+			fields: [
+				{ key: 'bumpStopGapFrontMm', label: 'Front bump gap', min: 50, max: 350, step: 5, unit: 'mm' },
+				{ key: 'bumpStopGapRearMm', label: 'Rear bump gap', min: 50, max: 350, step: 5, unit: 'mm' },
+				{ key: 'bumpStopRateFrontNmm', label: 'Front bump rate', min: 0, max: 600, step: 10, unit: 'N/mm' },
+				{ key: 'bumpStopRateRearNmm', label: 'Rear bump rate', min: 0, max: 600, step: 10, unit: 'N/mm' },
+			],
+		},
+		{
+			label: 'Springs & dampers',
+			fields: [
+				{ key: 'springFrontNpm', label: 'Front spring', min: 0, max: 300000, step: 5000, unit: 'N/m' },
+				{ key: 'springRearNpm', label: 'Rear spring', min: 0, max: 300000, step: 5000, unit: 'N/m' },
+				{ key: 'damperBumpFrontScale', label: 'Front bump damping', min: 0.5, max: 2, step: 0.05, unit: '' },
+				{ key: 'damperReboundFrontScale', label: 'Front rebound damping', min: 0.5, max: 2, step: 0.05, unit: '' },
+				{ key: 'damperBumpRearScale', label: 'Rear bump damping', min: 0.5, max: 2, step: 0.05, unit: '' },
+				{ key: 'damperReboundRearScale', label: 'Rear rebound damping', min: 0.5, max: 2, step: 0.05, unit: '' },
+			],
+		},
+		{
+			label: 'Differential & gearing',
+			fields: [
+				{ key: 'diffPowerRamp', label: 'Diff power ramp', min: 0, max: 1, step: 0.05, unit: '' },
+				{ key: 'diffCoastRamp', label: 'Diff coast ramp', min: 0, max: 1, step: 0.05, unit: '' },
+				{ key: 'diffPreloadNm', label: 'Diff preload', min: 0, max: 200, step: 5, unit: 'Nm' },
+				{ key: 'finalDriveScale', label: 'Final drive scale', min: 0.7, max: 1.5, step: 0.01, unit: '' },
+			],
+		},
+		{
+			label: 'Tires, brakes & fuel',
+			fields: [
+				{ key: 'tirePressureFLKpa', label: 'FL tire pressure', min: 130, max: 280, step: 1, unit: 'kPa' },
+				{ key: 'tirePressureFRKpa', label: 'FR tire pressure', min: 130, max: 280, step: 1, unit: 'kPa' },
+				{ key: 'tirePressureRLKpa', label: 'RL tire pressure', min: 130, max: 280, step: 1, unit: 'kPa' },
+				{ key: 'tirePressureRRKpa', label: 'RR tire pressure', min: 130, max: 280, step: 1, unit: 'kPa' },
+				{ key: 'brakeBiasFront', label: 'Front brake bias', min: 0.3, max: 0.8, step: 0.01, unit: '' },
+				{ key: 'fuelLoad', label: 'Fuel load', min: 0, max: 1, step: 0.05, unit: '' },
+			],
+		},
+	] as const satisfies readonly SetupSection[];
 
 	let canvas = $state<HTMLCanvasElement | undefined>(undefined);
 	let canvasHost = $state<HTMLDivElement | undefined>(undefined);
@@ -73,7 +133,7 @@
 	}
 
 	function updateSetupField(
-		key: (typeof setupFields)[number]['key'],
+		key: SetupField['key'],
 		event: Event,
 	): void {
 		const target = event.currentTarget;
@@ -189,7 +249,7 @@
 		<canvas bind:this={canvas} class="racing-canvas"></canvas>
 		<RacingHud model={model.hud} />
 
-		{#if model.isLoading}
+		{#if model.isLoading || (!model.firstRunReady && !model.errorMessage)}
 			<div class="loading-overlay" data-testid="racing-loading">
 				<div class="loading-box panel-surface">
 					<div class="eyebrow">AML Racing</div>
@@ -268,21 +328,26 @@
 
 			{#if showAdvancedSetup}
 				<div class="setup-sliders">
-					{#each setupFields as field (field.key)}
-						<label class="slider-field">
-							<div class="slider-head">
-								<span>{field.label}</span>
-								<span class="v">{model.setup[field.key].toFixed(field.step < 1 ? 2 : 0)}{field.unit}</span>
-							</div>
-							<input
-								type="range"
-								min={field.min}
-								max={field.max}
-								step={field.step}
-								value={model.setup[field.key]}
-								oninput={(event) => updateSetupField(field.key, event)}
-							/>
-						</label>
+					{#each setupSections as section (section.label)}
+						<section class="setup-slider-section" aria-label={section.label}>
+							<div class="setup-section-title">{section.label}</div>
+							{#each section.fields as field (field.key)}
+								<label class="slider-field">
+									<div class="slider-head">
+										<span>{field.label}</span>
+										<span class="v">{model.setup[field.key].toFixed(field.step < 1 ? 2 : 0)}{field.unit}</span>
+									</div>
+									<input
+										type="range"
+										min={field.min}
+										max={field.max}
+										step={field.step}
+										value={model.setup[field.key]}
+										oninput={(event) => updateSetupField(field.key, event)}
+									/>
+								</label>
+							{/each}
+						</section>
 					{/each}
 				</div>
 			{/if}
@@ -340,6 +405,7 @@
 		display: block;
 		width: 100%;
 		height: 100%;
+		background: #06090d;
 	}
 
 	.panel-surface {
@@ -450,6 +516,7 @@
 	}
 
 	.setup-field span,
+	.setup-section-title,
 	.slider-head span:first-child {
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
@@ -555,6 +622,16 @@
 	.setup-stat .v.small {
 		font-size: 10px;
 		line-height: 1.35;
+	}
+
+	.setup-slider-section {
+		display: grid;
+		gap: 6px;
+	}
+
+	.setup-section-title {
+		color: #77cfff;
+		padding-top: 4px;
 	}
 
 	.slider-field {

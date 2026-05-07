@@ -1,30 +1,25 @@
 import type { IDbClient } from '../../../core/interfaces/IDbClient.js';
 import type { IRacingSetupRepository } from '../../../application/racing/index.js';
 import type { SetupValues } from '../../../shared/racing/index.js';
+import { clampSetup } from '../../../shared/racing/index.js';
 import { isMissingTableError } from '../error-helpers.js';
 import { createRecordId } from '../record-id.js';
 
 const TABLE = 'racing_setup';
 
-interface SetupRow extends SetupValues {
+interface SetupRow extends Partial<SetupValues> {
   id?: unknown;
   user_id: string;
   updated_at: string;
 }
 
+/**
+ * Deserialise a database row using clampSetup() so old pre-M7 rows (missing
+ * the new fields) receive safe defaults and are never returned with undefined
+ * values. New rows pass through unchanged after clamping.
+ */
 function fromRow(row: SetupRow): SetupValues {
-  return {
-    frontToeDeg: row.frontToeDeg,
-    rearToeDeg: row.rearToeDeg,
-    casterDeg: row.casterDeg,
-    ackermannPct: row.ackermannPct,
-    motionRatioFront: row.motionRatioFront,
-    motionRatioRear: row.motionRatioRear,
-    bumpStopGapFrontMm: row.bumpStopGapFrontMm,
-    bumpStopGapRearMm: row.bumpStopGapRearMm,
-    bumpStopRateFrontNmm: row.bumpStopRateFrontNmm,
-    bumpStopRateRearNmm: row.bumpStopRateRearNmm,
-  };
+  return clampSetup(row);
 }
 
 export class SurrealRacingSetupRepository implements IRacingSetupRepository {

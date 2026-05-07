@@ -500,3 +500,350 @@ export function stepEngineOmega(input: EngineStepInput): number {
   if (omega > input.redlineOmega) omega = input.redlineOmega;
   return omega;
 }
+
+// =====================================================================
+// M6 — Shift logic (refusal / delay) and driveshaft compliance
+// =====================================================================
+
+/**
+ * Authored shift-logic parameters.  All fields are optional; omitting them
+ * gives the pre-M6 instantaneous-shift behaviour as the default.
+ */
+export interface ShiftLogicParams {
+  /**
+   * Upshift refusal: minimum engine speed (rpm) required to accept an upshift.
+   * Requests below this speed are refused and `shiftRefused` is flagged.
+   * Default: 0 (no refusal — pre-M6 behaviour).
+   */
+  upshiftMinRpm?: number;
+  /**
+   * Upshift refusal: maximum engine speed (rpm) at which an upshift is allowed.
+   * Protects against over-rev on blipped double-shifts. Default: Infinity.
+   */
+  upshiftMaxRpm?: number;
+  /**
+   * Downshift refusal: minimum engine speed (rpm) required to accept a
+   * downshift (prevents over-rev on a heel-toe skip downshift).
+   * Default: 0.
+   */
+  downshiftMinRpm?: number;
+  /**
+   * Downshift refusal: maximum engine speed (rpm) above which a downshift is
+   * refused (would cause over-rev). Default: Infinity.
+   */
+  downshiftMaxRpm?: number;
+  /**
+   * Time (seconds) from a shift request to gear engagement.
+   * During this window the clutch is forced open and drive torque drops to
+   * zero, simulating dog-box engagement lag or synchromesh travel time.
+   * Default: 0 (instantaneous — pre-M6 behaviour).
+   */
+  shiftTimeS?: number;
+  /**
+   * Optional throttle-cut fraction applied during the shift window.
+   * 1 = full cut, 0 = no cut. Default: 0.8 (80 % blip cut).
+   */
+  shiftThrottleCutFraction?: number;
+}
+
+/** Shift direction (used by `evaluateShiftRequest`). */
+export type ShiftDirection = 'up' | 'down';
+
+/** Result of a shift-refusal evaluation. */
+export interface ShiftRefusalResult {
+  /** True when the shift request is refused by the rpm-window check. */
+  refused: boolean;
+  /** Human-readable reason when `refused = true`. */
+  reason: string;
+}
+
+/**
+ * Evaluate whether a shift request should be accepted or refused given the
+ * current engine rpm and the authored `ShiftLogicParams`.
+ *
+ * This is a pure function — it does not mutate any state. The engine
+ * orchestrator calls this on every shift input event and only advances the
+ * gear index when `refused = false`.
+ */
+export function evaluateShiftRequest(
+  direction: ShiftDirection,
+  engineRpm: number,
+  params: ShiftLogicParams,
+): ShiftRefusalResult {
+  if (direction === 'up') {
+    const minRpm = params.upshiftMinRpm ?? 0;
+    const maxRpm = params.upshiftMaxRpm ?? Infinity;
+    if (engineRpm < minRpm) {
+      return { refused: true, reason: `upshift refused: rpm ${engineRpm.toFixed(0)} < min ${minRpm}` };
+    }
+    if (engineRpm > maxRpm) {
+      return { refused: true, reason: `upshift refused: rpm ${engineRpm.toFixed(0)} > max ${maxRpm}` };
+    }
+  } else {
+    const minRpm = params.downshiftMinRpm ?? 0;
+    const maxRpm = params.downshiftMaxRpm ?? Infinity;
+    if (engineRpm < minRpm) {
+      return { refused: true, reason: `downshift refused: rpm ${engineRpm.toFixed(0)} < min ${minRpm}` };
+    }
+    if (engineRpm > maxRpm) {
+      return { refused: true, reason: `downshift refused: rpm ${engineRpm.toFixed(0)} > max ${maxRpm}` };
+    }
+  }
+  return { refused: false, reason: '' };
+}
+
+/** Per-step shift state carried by `RacingEngine`. */
+export interface ShiftState {
+  /** True while a shift delay window is active. */
+  inProgress: boolean;
+  /** Elapsed time since the shift was triggered (s). */
+  elapsedS: number;
+  /** Total delay time for this shift (s), from `ShiftLogicParams.shiftTimeS`. */
+  totalTimeS: number;
+  /**
+   * Target gear index to move to once the delay window expires.
+   * -1 when no shift is in progress.
+   */
+  targetGearIndex: number;
+  /** True when the most recent shift request was refused. */
+  lastRefused: boolean;
+  /** Human-readable refusal reason for HUD/debug. Empty when not refused. */
+  lastRefusalReason: string;
+}
+
+export function makeShiftState(): ShiftState {
+  return {
+    inProgress: false,
+    elapsedS: 0,
+    totalTimeS: 0,
+    targetGearIndex: -1,
+    lastRefused: false,
+    lastRefusalReason: '',
+  };
+}
+
+export interface ShiftStepInput {
+  /** Current mutable shift state. Will be updated in-place. */
+  shiftState: ShiftState;
+  /** Current gear index BEFORE any pending shift completes. */
+  currentGearIndex: number;
+  /** Maximum valid gear index (gears.length - 1). */
+  maxGearIndex: number;
+  /** Simulation step dt (s). */
+  dt: number;
+  /** Throttle-cut fraction applied to drive torque while `inProgress`. */
+  throttleCutFraction: number;
+}
+
+export interface ShiftStepResult {
+  /** The effective gear index to use for drivetrain calculations this step. */
+  effectiveGearIndex: number;
+  /**
+   * Throttle scale this step [0..1]. 1 when no shift, < 1 during the cut
+   * window.
+   */
+  throttleScale: number;
+  /** True when the shift window just completed and the gear changed. */
+  gearJustChanged: boolean;
+}
+
+/**
+ * Advance the shift state machine by one simulation step.
+ *
+ * - When `inProgress`: count down the delay; apply throttle cut; change gear
+ *   when the window expires.
+ * - When not `inProgress`: return current gear with no throttle cut.
+ */
+export function stepShiftDelay(input: ShiftStepInput): ShiftStepResult {
+  const { shiftState, currentGearIndex, dt, throttleCutFraction } = input;
+
+  if (!shiftState.inProgress) {
+    return {
+      effectiveGearIndex: currentGearIndex,
+      throttleScale: 1,
+      gearJustChanged: false,
+    };
+  }
+
+  shiftState.elapsedS += dt;
+
+  if (shiftState.elapsedS >= shiftState.totalTimeS) {
+    // Delay window expired — commit the gear change.
+    shiftState.inProgress = false;
+    shiftState.elapsedS = 0;
+    const newGear = shiftState.targetGearIndex;
+    shiftState.targetGearIndex = -1;
+    return {
+      effectiveGearIndex: newGear,
+      throttleScale: 1,
+      gearJustChanged: true,
+    };
+  }
+
+  // Still in the shift window — hold old gear, apply throttle cut.
+  const cutScale = Math.max(0, 1 - throttleCutFraction);
+  return {
+    effectiveGearIndex: currentGearIndex,
+    throttleScale: cutScale,
+    gearJustChanged: false,
+  };
+}
+
+/**
+ * Request a gear change.  Respects shift logic params for refusal and delay.
+ * Call this instead of mutating `gearIndex` directly when `ShiftLogicParams`
+ * are authored.
+ *
+ * Returns `true` when the shift was accepted (may be deferred), `false` when
+ * it was refused.
+ */
+export function requestShift(
+  direction: ShiftDirection,
+  currentGearIndex: number,
+  gearCount: number,
+  engineRpm: number,
+  shiftState: ShiftState,
+  params: ShiftLogicParams,
+): boolean {
+  // Do not stack shifts.
+  if (shiftState.inProgress) return false;
+
+  const targetIndex =
+    direction === 'up'
+      ? Math.min(currentGearIndex + 1, gearCount - 1)
+      : Math.max(currentGearIndex - 1, 0);
+
+  if (targetIndex === currentGearIndex) return false; // already at limit
+
+  const refusal = evaluateShiftRequest(direction, engineRpm, params);
+  shiftState.lastRefused = refusal.refused;
+  shiftState.lastRefusalReason = refusal.reason;
+
+  if (refusal.refused) return false;
+
+  const delay = params.shiftTimeS ?? 0;
+  if (delay <= 0) {
+    // Instantaneous shift — directly signal gear change via targetGearIndex
+    // but mark inProgress=false so the engine applies it immediately.
+    shiftState.inProgress = false;
+    shiftState.targetGearIndex = targetIndex;
+    shiftState.elapsedS = 0;
+    shiftState.totalTimeS = 0;
+    return true;
+  }
+
+  shiftState.inProgress = true;
+  shiftState.elapsedS = 0;
+  shiftState.totalTimeS = delay;
+  shiftState.targetGearIndex = targetIndex;
+  return true;
+}
+
+// =====================================================================
+// Driveshaft compliance (torsional spring + damper)
+// =====================================================================
+
+/**
+ * Authored driveshaft compliance parameters.  Omit entirely for the legacy
+ * rigid-shaft behaviour (pre-M6 default).
+ */
+export interface DrivelineComplianceParams {
+  /**
+   * Torsional stiffness of the driveshaft (N·m/rad).
+   * Typical values: 5 000–20 000 Nm/rad for sports cars.
+   * Default: 0 (rigid shaft — pre-M6 behaviour).
+   */
+  shaftStiffnessNmRad?: number;
+  /**
+   * Torsional damping coefficient (N·m·s/rad).
+   * Default: 0.
+   */
+  shaftDampingNmSRad?: number;
+  /**
+   * Optional torsional backlash (angular play in the driveshaft, rad).
+   * The spring force is zero while the relative twist is within ±backlash.
+   * Default: 0 (no play).
+   */
+  backlashRad?: number;
+}
+
+export interface DrivelineComplianceState {
+  /** Accumulated twist angle of the driveshaft (rad). */
+  twistRad: number;
+  /** Rate of twist change (rad/s). */
+  twistRateRadS: number;
+}
+
+export function makeDrivelineComplianceState(): DrivelineComplianceState {
+  return { twistRad: 0, twistRateRadS: 0 };
+}
+
+export interface DrivelineComplianceStepInput {
+  state: DrivelineComplianceState;
+  /** Differential (driving end) angular velocity (rad/s). */
+  inputOmega: number;
+  /** Average driven-wheel angular velocity (rad/s). */
+  outputOmega: number;
+  params: DrivelineComplianceParams;
+  dt: number;
+}
+
+export interface DrivelineComplianceResult {
+  /** Spring torque transmitted through the shaft (Nm). Positive = driving. */
+  springTorqueNm: number;
+  /** Updated twist angle (rad). */
+  twistRad: number;
+  /** Updated twist rate (rad/s). */
+  twistRateRadS: number;
+}
+
+/**
+ * Step the driveshaft compliance model.
+ *
+ * The shaft is modelled as a torsional spring + damper between the gearbox
+ * output (input shaft side) and the average wheel hub (output shaft side).
+ * Backlash introduces a dead-band where no spring torque is transmitted.
+ *
+ * The result `springTorqueNm` should be subtracted from the gearbox input
+ * and added to the driven wheels (net-zero on the drivetrain; just shifts
+ * when the torque appears).
+ */
+export function stepDrivelineCompliance(
+  input: DrivelineComplianceStepInput,
+): DrivelineComplianceResult {
+  const { state, inputOmega, outputOmega, params, dt } = input;
+
+  const k = params.shaftStiffnessNmRad ?? 0;
+  const c = params.shaftDampingNmSRad ?? 0;
+  const backlash = params.backlashRad ?? 0;
+
+  if (k <= 0 && c <= 0) {
+    // Rigid shaft — no compliance.
+    return { springTorqueNm: 0, twistRad: 0, twistRateRadS: 0 };
+  }
+
+  // Rate of change of twist = difference in angular velocities.
+  const twistRate = inputOmega - outputOmega;
+  const newTwist = state.twistRad + twistRate * dt;
+
+  // Backlash dead-band: no torque while |twist| <= backlash.
+  let activeTwist = newTwist;
+  if (backlash > 0) {
+    if (Math.abs(newTwist) <= backlash) {
+      activeTwist = 0;
+    } else {
+      activeTwist = newTwist - Math.sign(newTwist) * backlash;
+    }
+  }
+
+  const springTorque = k * activeTwist + c * twistRate;
+
+  state.twistRad = newTwist;
+  state.twistRateRadS = twistRate;
+
+  return {
+    springTorqueNm: springTorque,
+    twistRad: newTwist,
+    twistRateRadS: twistRate,
+  };
+}

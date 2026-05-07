@@ -15,7 +15,7 @@ import {
   type VehiclePreset,
 } from '../../../shared/racing/index.js';
 
-const VEHICLE_FILES = ['rwd-front-mid.json', 'fwd-front.json', 'awd-rear-biased.json'];
+const VEHICLE_FILES = ['rwd-front-mid.json', 'fwd-front.json', 'awd-rear-biased.json', 'gt3-rigid-tub.json'];
 const TRACK_FILES = ['classic-twist.json', 'lakeside-gp.json', 'corkscrew-ridge.json'];
 
 export interface IRacingCatalogSource {

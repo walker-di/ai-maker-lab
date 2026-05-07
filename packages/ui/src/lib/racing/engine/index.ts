@@ -7,11 +7,15 @@
 
 export * as Physics from './physics/index.js';
 export * as Tracks from './tracks/index.js';
+export * as Validation from './validation/gt3-physics-bench.js';
 
 export { RacingEngine } from './RacingEngine.js';
 export type {
   RacingEngineConfig,
   RacingEngineSnapshot,
+  RacingTelemetryExport,
+  RacingTelemetrySample,
+  RacingTelemetryWheelSample,
 } from './RacingEngine.js';
 export { CameraRig, CAMERA_MODES, type CameraMode } from './cameras.js';
 export { FixedStepLoop, type FixedStepLoopOptions } from './fixed-step-loop.js';
@@ -25,5 +29,23 @@ export {
   type LapStartedPayload,
   type TickPayload,
   type WheelEventPayload,
+  type FfbRackForcePayload,
 } from './events.js';
 export { loadJolt, createPhysicsContext, COLLISION_LAYERS, NUM_OBJECT_LAYERS, type PhysicsContext } from './jolt-loader.js';
+export {
+  resolveCompliance,
+  hasCompliance,
+  createChassisBody,
+  createHubBodies,
+  createComplianceConstraints,
+  destroyComplianceBodies,
+  readJoltBodyPose,
+  writeJoltBodyPose,
+  createSoftwareHubStates,
+  stepComplianceSoftware,
+  applyTorsionalRestoringTorque,
+  applyTorsionalRestoringTorqueToVector,
+  type ResolvedCompliance,
+  type JoltHubBodies,
+  type SoftwareHubState,
+} from './compliance.js';

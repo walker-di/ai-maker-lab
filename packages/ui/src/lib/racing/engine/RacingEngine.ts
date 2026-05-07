@@ -15,17 +15,33 @@
  * for both backends because force application happens through the
  * `addChassisForceAtPoint` / `applyChassisTorque` shims.
  *
- * Track contact uses an analytic flat-ground raycast (the prototype's same
- * approach) — terrain elevation is a follow-up.
+ * M4: Track contact uses `SurfaceLookup.groundYAt` to resolve ground height
+ * from optional authored elevation/kerb data.  Tracks without elevation data
+ * continue to use a flat y = 0 ground plane (flat fallback preserved).
  */
 
 import { Quaternion, Vector3 } from 'three';
 import { EngineEmitter } from './events.js';
+import { computeRackForce, type FfbGeometry } from './ffb.js';
+import {
+  computeDamperForce,
+  DEFAULT_DAMPER_KNEE_PARAMS,
+  DEFAULT_DAMPER_KNEE_PARAMS_REAR,
+  type DamperKneeParams,
+} from './physics/damper-curve.js';
+import {
+  resolveWheelKinematics,
+  computeJackingForce,
+  computeProgressiveBumpStop,
+  DEFAULT_ROLL_CENTER_HEIGHT_M,
+  type KinematicTable,
+} from './physics/suspension-kinematics.js';
 import { CameraRig, type CameraMode } from './cameras.js';
 import { FixedStepLoop } from './fixed-step-loop.js';
 import { NullAudioBus, type AudioBus } from './audio-bus.js';
 import { RacingInput } from './input.js';
 import { SurfaceLookup } from './tracks/surface-lookup.js';
+import { ElevationMap, TerrainContact } from './tracks/elevation.js';
 import { sampleCentripetal, type SampledPoint } from './tracks/catmull-rom.js';
 import {
   applyAbs,
@@ -36,18 +52,24 @@ import {
   computeAckermannAngles,
   computeAeroDownforce,
   computeAeroDrag,
+  type AeroMapPreset,
   computeAligningMoment,
   computeAntiPitchVertical,
   computeAxleArb,
-  computeBumpStopForce,
   computeCamberThrust,
   computeCasterCamber,
+  computeContactPatchPressureDistribution,
   computeEscBrakeTargets,
   computeFrontRollStiffnessShare,
+  computeGyroscopicTorque,
   computeLateralLoadTransfer,
+  computeLoadSensitiveRelaxationLength,
   computeLongitudinalLoadTransfer,
+  computeOverturningMomentNm,
+  computeSlidingGripScale,
   computeTcCut,
   computeToeSlipOffset,
+  computeWakeEffect,
   computeWheelHeadingBasis,
   computeWheelSlipTargets,
   computeYawRestoringMoment,
@@ -64,6 +86,48 @@ import {
   type DrivetrainParams,
   type DrivetrainWheelInput,
 } from './physics/index.js';
+import {
+  stepTireTemperatureZones,
+  tireZoneAvgTemp,
+  tireTempMuZones,
+  type TireThermalZones,
+} from './physics/tire-thermal.js';
+import {
+  stepTirePressure,
+  tirePressureMu,
+  tirePressurePatchWidthScale,
+  TIRE_PRESSURE_COLD_KPA,
+  TIRE_PRESSURE_OPTIMAL_KPA,
+} from './physics/tire-pressure.js';
+import {
+  stepTireVertical,
+  TIRE_RADIAL_STIFFNESS_NPM,
+  TIRE_RADIAL_DAMPING_NSPM,
+} from './physics/tire-vertical.js';
+import {
+  stepTurbo,
+  makeTurboState,
+  type TurboParams,
+  type TurboState,
+} from './physics/turbo.js';
+import {
+  evaluateShiftRequest,
+  stepShiftDelay,
+  requestShift,
+  makeShiftState,
+  stepDrivelineCompliance,
+  makeDrivelineComplianceState,
+  type ShiftLogicParams,
+  type ShiftState,
+  type DrivelineComplianceParams,
+  type DrivelineComplianceState,
+} from './physics/drivetrain.js';
+import {
+  engineTorqueAtWithMap,
+  engineBrakeTorqueAt,
+  type EngineTorqueMap,
+  type EngineBrakingParams,
+} from './physics/engine-curve.js';
 import type {
   DiffType,
   DriveLayout,
@@ -72,6 +136,22 @@ import type {
   TrackPreset,
   VehiclePreset,
 } from '../types.js';
+import type { PhysicsContext } from './jolt-loader.js';
+import {
+  resolveCompliance,
+  hasCompliance,
+  createChassisBody,
+  createHubBodies,
+  createComplianceConstraints,
+  destroyComplianceBodies,
+  writeJoltBodyPose,
+  readJoltBodyPose,
+  createSoftwareHubStates,
+  stepComplianceSoftware,
+  applyTorsionalRestoringTorqueToVector,
+  type ResolvedCompliance,
+  type SoftwareHubState,
+} from './compliance.js';
 
 const DEFAULT_SETUP: SetupValues = {
   frontToeDeg: 0,
@@ -84,7 +164,31 @@ const DEFAULT_SETUP: SetupValues = {
   bumpStopGapRearMm: 220,
   bumpStopRateFrontNmm: 0,
   bumpStopRateRearNmm: 0,
+  // M7 fields
+  springFrontNpm: 0,
+  springRearNpm: 0,
+  damperBumpFrontScale: 1.0,
+  damperReboundFrontScale: 1.0,
+  damperBumpRearScale: 1.0,
+  damperReboundRearScale: 1.0,
+  diffPowerRamp: 0.45,
+  diffCoastRamp: 0.30,
+  diffPreloadNm: 60,
+  tirePressureFLKpa: 200,
+  tirePressureFRKpa: 200,
+  tirePressureRLKpa: 200,
+  tirePressureRRKpa: 200,
+  camberFrontDeg: -1.5,
+  camberRearDeg: -1.5,
+  brakeBiasFront: 0.565,
+  rideHeightFrontMm: 0,
+  rideHeightRearMm: 0,
+  fuelLoad: 0,
+  finalDriveScale: 1.0,
 };
+
+/** Maximum fuel mass (kg) — tuned for a GT-class car. */
+const MAX_FUEL_MASS_KG = 80;
 const RAD = Math.PI / 180;
 const DEG = 180 / Math.PI;
 
@@ -176,6 +280,27 @@ const SURFACE_TABLE: Record<SurfaceId, { mu: number; roll: number }> = {
   GRAVEL: { mu: 0.3, roll: 0.18 },
 };
 
+const WHEEL_CHANNEL_NAMES = ['FL', 'FR', 'RL', 'RR'] as const;
+
+function surfaceWearMultiplier(surface: SurfaceId): number {
+  switch (surface) {
+    case 'GRAVEL': return 1.9;
+    case 'GRASS': return 1.45;
+    case 'MARBLES': return 1.25;
+    case 'CURB': return 1.15;
+    case 'DAMP': return 0.85;
+    default: return 1;
+  }
+}
+
+function sanitizeTrackWetness(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? clamp(value, 0, 1) : 0;
+}
+
+function sanitizeTrackCondition(value: unknown): string {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : 'dry';
+}
+
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
 interface WheelState {
@@ -237,6 +362,57 @@ interface WheelState {
   tempC: number;
   brakeTempC: number;
   brakeFade: number;
+  /** Deterministic normalized tire-wear accumulation. 0 = fresh, 1 = worn out. */
+  tireWear: number;
+  /** Normalized flat-spot severity/signal from locked-wheel braking. */
+  flatSpotSignal: number;
+
+  // ---- M3 kinematic state ----------------------------------------------
+  /** Roll-center height resolved from table this step (m). */
+  rollCenterHeightM: number;
+  /** Jacking vertical force this step (N, positive = lifts chassis). */
+  jackingForceN: number;
+  /** Travel-resolved camber (deg) including table delta. */
+  camberDeg: number;
+  // NOTE: toeDeg (above, in Setup-driven) is reused to carry the
+  // travel-resolved value; it is updated each step by resolveWheelKinematics.
+
+  // ---- M1 multi-zone thermal + pressure + vertical ----------------------
+  /** Three-zone tire temperatures (inner / middle / outer strip). */
+  thermalZones: TireThermalZones;
+  /** Current inflation pressure (kPa). */
+  pressureKpa: number;
+  /** Tire carcass deflection from the previous step (m). Carried for damping. */
+  tireDeflection: number;
+  /** Tire carcass deflection rate (m/s). Carried for damping. */
+  tireDeflectionRate: number;
+  /**
+   * Peak slip ratio diagnostic from the most recent Pacejka evaluation.
+   * Exposed in the snapshot for telemetry / normalization displays.
+   */
+  kappaPeak: number;
+  /**
+   * Peak slip angle (rad) diagnostic from the most recent Pacejka evaluation.
+   */
+  alphaPeakRad: number;
+  /** Runtime-adjusted longitudinal relaxation length (m). */
+  relaxationLengthLongM: number;
+  /** Runtime-adjusted lateral relaxation length (m). */
+  relaxationLengthLatM: number;
+  /** Sliding-speed grip scale applied before Pacejka. */
+  slidingGripScale: number;
+  /** Contact-patch sliding speed magnitude (m/s). */
+  slidingSpeedMps: number;
+  /** Contact-patch pressure share on the inner strip. */
+  pressureInner: number;
+  /** Contact-patch pressure share on the middle strip. */
+  pressureMiddle: number;
+  /** Contact-patch pressure share on the outer strip. */
+  pressureOuter: number;
+  /** Contact-patch pressure centroid, negative = inner/chassis side (m). */
+  pressureCentroidM: number;
+  /** Overturning moment from pressure centroid (N·m). */
+  overturningMomentNm: number;
 
   absRelease: number;
   absActive: boolean;
@@ -274,6 +450,12 @@ interface WheelState {
    *  handbrake + ESC, fed into the drivetrain solver. Drive torque is
    *  applied by `stepDrivetrain` and is NOT included here. */
   _externalTorque: number;
+
+  // ---- M9 compliance scratch -------------------------------------------
+  /** Total force vector (N) applied to this wheel's hub this step. */
+  _wheelForce: Vector3;
+  /** Total torque vector (N·m) applied to this wheel's hub this step. */
+  _wheelTorque: Vector3;
 }
 
 interface DriverAidsState {
@@ -304,6 +486,11 @@ export interface RacingEngineConfig {
   track: TrackPreset;
   setup?: SetupValues;
   audio?: AudioBus;
+  /** Optional Jolt physics context. When provided and the preset carries
+   * nonzero compliance, the engine creates Jolt hub bodies and constraints.
+   * When absent (or compliance is zero) the engine uses the rigid fallback.
+   */
+  physicsContext?: PhysicsContext;
 }
 
 export interface RacingEngineSnapshot {
@@ -369,6 +556,10 @@ export interface RacingEngineSnapshot {
     surface: SurfaceId;
     tempC: number;
     brakeTempC: number;
+    /** Normalized tire wear. 0 = fresh, 1 = worn out. */
+    tireWear: number;
+    /** Normalized flat-spot signal produced by lock-up / heavy braking. */
+    flatSpotSignal: number;
     bumpStopPct: number;
     brakeTorqueApplied: number;
     absScale: number;
@@ -376,6 +567,55 @@ export interface RacingEngineSnapshot {
     yawContribution: number;
     /** Drive torque (Nm) routed to this wheel by the drivetrain solver. */
     driveTorqueNm: number;
+    // ---- M1 additions ---------------------------------------------------
+    /** Inner strip temperature (°C) — chassis / camber side. */
+    tempInner: number;
+    /** Middle strip (crown) temperature (°C). */
+    tempMiddle: number;
+    /** Outer strip temperature (°C) — kerb / shoulder side. */
+    tempOuter: number;
+    /** Current inflation pressure (kPa). */
+    pressureKpa: number;
+    /** Pure-slip peak slip ratio diagnostic. */
+    kappaPeak: number;
+    /** Pure-slip peak slip angle (rad) diagnostic. */
+    alphaPeakRad: number;
+    /** Tire carcass radial deflection this step (m). */
+    tireDeflection: number;
+    /** Runtime-adjusted longitudinal relaxation length (m). */
+    relaxationLengthLongM: number;
+    /** Runtime-adjusted lateral relaxation length (m). */
+    relaxationLengthLatM: number;
+    /** Sliding-speed grip scale applied before Pacejka. */
+    slidingGripScale: number;
+    /** Contact-patch sliding speed magnitude (m/s). */
+    slidingSpeedMps: number;
+    /** Contact-patch pressure share on the inner strip. */
+    pressureInner: number;
+    /** Contact-patch pressure share on the middle strip. */
+    pressureMiddle: number;
+    /** Contact-patch pressure share on the outer strip. */
+    pressureOuter: number;
+    /** Contact-patch pressure centroid, negative = inner/chassis side (m). */
+    pressureCentroidM: number;
+    /** Overturning moment from pressure centroid (N·m). */
+    overturningMomentNm: number;
+    // ---- M3 additions ---------------------------------------------------
+    /** Suspension travel (m, positive = compression). */
+    suspensionTravel: number;
+    /** Damper shaft velocity (m/s, positive = compression) after motion-ratio transform. */
+    damperVelocity: number;
+    /** Roll-center height (m) resolved from kinematics table this step. */
+    rollCenterHeightM: number;
+    /** Jacking vertical force contribution this step (N, positive = lifts chassis). */
+    jackingForceN: number;
+    /** Travel-resolved toe angle (deg) including bump-steer delta. */
+    toeDeg: number;
+    /** Travel-resolved camber angle (deg). */
+    camberDeg: number;
+    // ---- M9 additions ---------------------------------------------------
+    /** Bushing deflection magnitude (mm, 0 when rigid). */
+    hubDeflectionMm: number;
   }>;
   drivetrain: {
     /** Engine crank angular speed (rad/s). */
@@ -390,6 +630,27 @@ export interface RacingEngineSnapshot {
     engineDriveTorqueNm: number;
     /** Engine pumping + friction drag magnitude this step (Nm). */
     engineDragTorqueNm: number;
+    // ---- M6 drivetrain depth additions ----------------------------------
+    /** Current boost gauge pressure (bar). 0 for NA vehicles. */
+    boostBar: number;
+    /** Normalised turbo spool ratio [0..1]. 0 for NA vehicles. */
+    turboSpoolRatio: number;
+    /** Torque multiplier applied by the turbo model this step (1.0 = NA). */
+    boostTorqueMultiplier: number;
+    /** True when boost exceeds the overboost protection threshold. */
+    isOverboost: boolean;
+    /** True when the most recent shift request was refused by rpm-window logic. */
+    shiftRefused: boolean;
+    /** Human-readable shift refusal reason (empty when not refused). */
+    shiftRefusalReason: string;
+    /** True while a shift-delay window is active (gear not yet engaged). */
+    shiftInProgress: boolean;
+    /** Remaining shift delay (s). 0 when no shift is in progress. */
+    shiftRemainingS: number;
+    /** Driveshaft torsional twist angle (rad). 0 when no compliance authored. */
+    drivelineComplianceTwistRad: number;
+    /** Driveshaft torsional spring torque this step (Nm). */
+    drivelineComplianceSpringNm: number;
   };
   aero: {
     /** Front-axle aero downforce magnitude (N). */
@@ -398,8 +659,101 @@ export interface RacingEngineSnapshot {
     rearDownforceN: number;
     /** Magnitude of chassis-frame aero drag this step (N). */
     dragN: number;
+    // ---- M5 aero map telemetry -----------------------------------------------
+    /** True when an authored aero map preset is loaded (false for scalar-only presets). */
+    hasAeroMap: boolean;
+    /** Effective front Cl·A used this step (m²). Reflects map lookup or scalar. */
+    effectiveClAreaFront: number;
+    /** Effective rear Cl·A used this step (m²). */
+    effectiveClAreaRear: number;
+    /**
+     * Centre-of-pressure position as fraction of wheelbase (0 = front, 1 = rear).
+     * Shifts rearward when more rear downforce is generated.
+     */
+    copFraction: number;
+    /** True when the front underbody is below the authored stall ride-height. */
+    frontStalled: boolean;
+    /** True when the rear underbody is below the authored stall ride-height. */
+    rearStalled: boolean;
+    /** Average front ride-height (m) used for aero map lookup this step. */
+    frontRideHeightM: number;
+    /** Average rear ride-height (m) used for aero map lookup this step. */
+    rearRideHeightM: number;
+    /** M8: current wake drag reduction fraction (0 = no reduction). */
+    wakeReduction: number;
   };
   lap: { lastMs: number | null; bestMs: number | null; t0: number | null };
+  /**
+   * M2 — Last FFB pipeline result for this step. Available in snapshots so
+   * HUD debug panels can read rack-force without subscribing to the event.
+   */
+  ffb: {
+    rackForce: number;
+    kpiTorqueNm: number;
+    mzContributionNm: number;
+    fxCouplingNm: number;
+    totalRawNm: number;
+    assistScale: number;
+  };
+  /**
+   * M4 — Track surface condition telemetry.  Fields are snapshot-safe (no
+   * Three.js references).  `trackTempC` and `rubberLineGrip` are read
+   * directly from the active track preset; `terrainActive` flags whether
+   * authored elevation data is present so UI can show an indicator.
+   */
+  trackCondition: {
+    /** Current track surface temperature (\u00b0C) from preset; 28 when absent. */
+    trackTempC: number;
+    /** Rubber-line grip multiplier; 1 when absent. */
+    rubberLineGrip: number;
+    /** True when authored elevation data is active (not flat-ground). */
+    terrainActive: boolean;
+    /** Micro-bump amplitude (m); 0 when absent. */
+    bumpAmplitudeM: number;
+    /** Normalized wetness 0..1; defaults to 0 when the preset omits it. */
+    wetness: number;
+    /** Human-readable condition label; defaults to `dry`. */
+    condition: string;
+  };
+}
+
+export interface RacingTelemetryWheelSample {
+  index: number;
+  tireWear: number;
+  flatSpotSignal: number;
+  slipRatio: number;
+  slipAngle: number;
+  slidingSpeedMps: number;
+  slidingGripScale: number;
+  relaxationLengthLongM: number;
+  relaxationLengthLatM: number;
+  pressureInner: number;
+  pressureMiddle: number;
+  pressureOuter: number;
+  overturningMomentNm: number;
+  tempC: number;
+  brakeTempC: number;
+  surface: SurfaceId;
+}
+
+export interface RacingTelemetrySample {
+  lap: { lastMs: number | null; bestMs: number | null; currentStartS: number | null };
+  timeS: number;
+  speedKmh: number;
+  rpm: number;
+  accelLongG: number;
+  accelLatG: number;
+  wheels: RacingTelemetryWheelSample[];
+}
+
+export interface RacingTelemetryExport {
+  version: 1;
+  trackId: string;
+  vehicleId: string;
+  exportedAtSimTimeS: number;
+  lap: { lastMs: number | null; bestMs: number | null; currentStartS: number | null };
+  samples: RacingTelemetrySample[];
+  channels: Record<string, number[]>;
 }
 
 export class RacingEngine {
@@ -475,6 +829,44 @@ export class RacingEngine {
   private aeroDragMagN = 0;
   private drivetrainParams: DrivetrainParams = makeDefaultDrivetrainParams('clutchLSD');
 
+  // ---- M6 drivetrain depth state ---------------------------------------
+  /** Turbo state; undefined = NA vehicle (turboMultiplier stays 1). */
+  private turboState: TurboState | undefined = undefined;
+  /** Authored turbo params resolved from preset. */
+  private turboParams: TurboParams | undefined = undefined;
+  /** Authored throttle×rpm engine torque map (M6). */
+  private engineTorqueMap: EngineTorqueMap | undefined = undefined;
+  /** Authored per-vehicle torque curve override (M6). */
+  private engineTorqueCurveOverride: ReadonlyArray<readonly [number, number]> | undefined = undefined;
+  /** Authored engine-braking params (M6). */
+  private engineBrakingParams: EngineBrakingParams | undefined = undefined;
+  /** Shift logic params (M6). */
+  private shiftLogicParams: ShiftLogicParams = {};
+  /** Shift state machine (M6). */
+  private shiftState: ShiftState = makeShiftState();
+  /** Driveshaft compliance state (M6). */
+  private complianceState: DrivelineComplianceState = makeDrivelineComplianceState();
+  /** Authored compliance params (M6). */
+  private complianceParams: DrivelineComplianceParams = {};
+  /** Last driveline compliance spring torque this step (Nm). */
+  private complianceSpringNm = 0;
+
+  // ---- M9: chassis compliance state -----------------------------------
+  /** Resolved compliance parameters; all zeros when preset omits them. */
+  private complianceConfig: ResolvedCompliance = resolveCompliance({ id: '', label: '', driveLabel: 'RWD', layoutLabel: '', color: 0, wheelbase: 2.6, trackWidth: 1.6, frontMassPct: 0.5, finalDrive: 3.8, gears: [], steerMaxDeg: 30, axleDrive: { front: 0, rear: 1 }, diffType: 'open' });
+  /** True when the active preset has nonzero compliance. */
+  private complianceActive = false;
+  /** True when Jolt bodies are driving integration (false = software fallback). */
+  private useJolt = false;
+  /** Stored physics context reference (when Jolt is active). */
+  private joltCtx: PhysicsContext | null = null;
+  /** Jolt hub bodies and constraints (only when useJolt is true). */
+  private joltHubBodies: { chassisBody: unknown; hubBodies: unknown[]; constraints: unknown[] } | null = null;
+  /** Software hub states (only when complianceActive && !useJolt). */
+  private softwareHubs: SoftwareHubState[] = [];
+  /** Chassis-local pickup points for the four hubs (shared by both paths). */
+  private hubPickupLocal: Vector3[] = [];
+
   // ARB
   private arbFront = 25000;
   private arbRear = 22000;
@@ -482,8 +874,16 @@ export class RacingEngine {
   // Suspension
   private susp = {
     restLen: 0.32,
+    /** Per-axle rest lengths including the ride-height offset from setup. */
+    restLenFront: 0.32,
+    restLenRear: 0.32,
     kFront: 65000,
     kRear: 60000,
+    /** Preset base bump coefficients (before damper-scaler is applied). */
+    kBumpFrontBase: 4200,
+    kReboundFrontBase: 5800,
+    kBumpRearBase: 4400,
+    kReboundRearBase: 6000,
     cBumpFront: 4200,
     cReboundFront: 5800,
     cBumpRear: 4400,
@@ -496,6 +896,14 @@ export class RacingEngine {
     bumpStopRateRear: 0,
   };
 
+  // ---- M7 setup-driven runtime overrides --------------------------------
+  /** Effective brake bias (front fraction) from setup. */
+  private setupBrakeBiasFront = 0.565;
+  /** Effective final-drive multiplier from setup. */
+  private setupFinalDriveScale = 1.0;
+  /** Preset base mass (kg); fuel delta is added on top. */
+  private baseChassisMass = 1240;
+
   // Aero
   private cdA = 0.7;
   private cyYaw = 0.1;
@@ -503,6 +911,8 @@ export class RacingEngine {
   private clAreaFront = 0;
   /** Effective `Cl · A` for the rear axle (m²). 0 = no rear downforce. */
   private clAreaRear = 0;
+  /** M5: Authored aero map preset resolved from the vehicle physics preset. */
+  private aeroMapPreset: AeroMapPreset | undefined = undefined;
   /**
    * Per-axle aerodynamic downforce computed by the wheel pass and consumed
    * by `runAero()` to cancel the chassis-up boost it introduces. Without
@@ -510,6 +920,52 @@ export class RacingEngine {
    * upward force into the rigid body via the contact-force projection.
    */
   private readonly lastAeroDownforce = { front: 0, rear: 0 };
+  /** M5: Last full aero downforce result for snapshot telemetry. */
+  private lastAeroResult = {
+    effectiveClAreaFront: 0,
+    effectiveClAreaRear: 0,
+    copFraction: 0.5,
+    frontStalled: false,
+    rearStalled: false,
+    frontRideHeightM: 0.1,
+    rearRideHeightM: 0.1,
+    wakeReduction: 0,
+  };
+  /** M8: Optional lead car state for slipstream / wake-field computation. */
+  private leadCarState: { pos: Vector3; vel: Vector3 } | null = null;
+
+  // ---- M3 suspension kinematic params (resolved from preset) ----------------
+  private damperParamsFront: DamperKneeParams | undefined = undefined;
+  private damperParamsRear: DamperKneeParams | undefined = undefined;
+  private bumpSteerTableFront: KinematicTable | undefined = undefined;
+  private bumpSteerTableRear: KinematicTable | undefined = undefined;
+  private camberTableFront: KinematicTable | undefined = undefined;
+  private camberTableRear: KinematicTable | undefined = undefined;
+  private casterTableFront: KinematicTable | undefined = undefined;
+  private casterTableRear: KinematicTable | undefined = undefined;
+  private rollCenterTableFront: KinematicTable | undefined = undefined;
+  private rollCenterTableRear: KinematicTable | undefined = undefined;
+  private bumpStopRateTableFront: KinematicTable | undefined = undefined;
+  private bumpStopRateTableRear: KinematicTable | undefined = undefined;
+
+  // ---- M1 tire params (resolved from preset in applyVehiclePhysicsPreset) -----
+  private tireColdKpa = TIRE_PRESSURE_COLD_KPA;
+  private tireOptimalKpa = TIRE_PRESSURE_OPTIMAL_KPA;
+  private tireRadialStiffnessNpm = TIRE_RADIAL_STIFFNESS_NPM;
+  private tireRadialDampingNspm = TIRE_RADIAL_DAMPING_NSPM;
+
+  // ---- M2 FFB pipeline state -------------------------------------------
+  /** FFB geometry resolved from the active vehicle preset. */
+  private ffbGeometry: FfbGeometry = {};
+  /** Last FFB result — carried for snapshot / HUD even between ticks. */
+  private lastFfbResult = {
+    rackForce: 0,
+    kpiTorqueNm: 0,
+    mzContributionNm: 0,
+    fxCouplingNm: 0,
+    totalRawNm: 0,
+    assistScale: 0,
+  };
 
   // Wheels (4)
   private readonly wheels: WheelState[] = [];
@@ -544,6 +1000,7 @@ export class RacingEngine {
   });
 
   private surfaceLookup: SurfaceLookup | null = null;
+  private terrainContact: TerrainContact | null = null;
   private centerline: SampledPoint[] = [];
   private simTime = 0;
 
@@ -577,6 +1034,10 @@ export class RacingEngine {
     this.audio = config.audio ?? new NullAudioBus();
     this.applyVehiclePhysicsPreset();
     this.buildWheels();
+    this.buildCompliance(config.physicsContext);
+    // Apply M7 setup fields (damper scalers, diff, springs override, etc.)
+    // after preset and wheel build so all base values are initialised.
+    this.setSetup(this.setup);
     this.buildSurfaceLookup();
     this.resetCar();
   }
@@ -585,6 +1046,7 @@ export class RacingEngine {
     this.vehicle = preset;
     this.applyVehiclePhysicsPreset();
     this.buildWheels();
+    this.buildCompliance(this.joltCtx ?? undefined);
     this.resetCar();
   }
 
@@ -597,16 +1059,74 @@ export class RacingEngine {
 
   setSetup(setup: SetupValues): void {
     this.setup = setup;
+
+    // ---- pre-M7 suspension geometry ------------------------------------
     this.susp.motionRatioFront = setup.motionRatioFront;
     this.susp.motionRatioRear = setup.motionRatioRear;
     this.susp.bumpStopGapFrontM = setup.bumpStopGapFrontMm * 0.001;
     this.susp.bumpStopGapRearM = setup.bumpStopGapRearMm * 0.001;
     this.susp.bumpStopRateFront = setup.bumpStopRateFrontNmm * 1000;
     this.susp.bumpStopRateRear = setup.bumpStopRateRearNmm * 1000;
+
+    // ---- M7: springs ---------------------------------------------------
+    // 0 = "use preset value" sentinel; non-zero overrides the preset.
+    // Guard against undefined (old pre-M7 setup objects passed at runtime).
+    const physics = this.vehicle.physics;
+    const springFront = setup.springFrontNpm ?? 0;
+    this.susp.kFront = springFront > 0
+      ? springFront
+      : (physics?.springFrontNpm ?? 65000);
+    const springRear = setup.springRearNpm ?? 0;
+    this.susp.kRear = springRear > 0
+      ? springRear
+      : (physics?.springRearNpm ?? 60000);
+
+    // ---- M7: damper scalers --------------------------------------------
+    this.susp.cBumpFront = this.susp.kBumpFrontBase * (setup.damperBumpFrontScale ?? 1.0);
+    this.susp.cReboundFront = this.susp.kReboundFrontBase * (setup.damperReboundFrontScale ?? 1.0);
+    this.susp.cBumpRear = this.susp.kBumpRearBase * (setup.damperBumpRearScale ?? 1.0);
+    this.susp.cReboundRear = this.susp.kReboundRearBase * (setup.damperReboundRearScale ?? 1.0);
+
+    // ---- M7: diff ------------------------------------------------------
+    this.drivetrainParams.diffPowerRamp = setup.diffPowerRamp ?? DEFAULT_SETUP.diffPowerRamp;
+    this.drivetrainParams.diffCoastRamp = setup.diffCoastRamp ?? DEFAULT_SETUP.diffCoastRamp;
+    this.drivetrainParams.diffPreloadNm = setup.diffPreloadNm ?? DEFAULT_SETUP.diffPreloadNm;
+
+    // ---- M7: ride height -----------------------------------------------
+    const rhFront = (setup.rideHeightFrontMm ?? 0) * 0.001;
+    const rhRear = (setup.rideHeightRearMm ?? 0) * 0.001;
+    this.susp.restLenFront = this.susp.restLen + rhFront;
+    this.susp.restLenRear = this.susp.restLen + rhRear;
+
+    // ---- M7: brake bias ------------------------------------------------
+    this.setupBrakeBiasFront = setup.brakeBiasFront ?? DEFAULT_SETUP.brakeBiasFront;
+
+    // ---- M7: fuel load -------------------------------------------------
+    const fuelMassKg = (setup.fuelLoad ?? DEFAULT_SETUP.fuelLoad) * MAX_FUEL_MASS_KG;
+    this.chassisMass = this.baseChassisMass + fuelMassKg;
+
+    // ---- M7: final drive scale -----------------------------------------
+    this.setupFinalDriveScale = setup.finalDriveScale ?? DEFAULT_SETUP.finalDriveScale;
+
+    // ---- per-wheel: toe, camber, per-corner pressure -------------------
+    const flKpa = setup.tirePressureFLKpa ?? DEFAULT_SETUP.tirePressureFLKpa;
+    const frKpa = setup.tirePressureFRKpa ?? DEFAULT_SETUP.tirePressureFRKpa;
+    const rlKpa = setup.tirePressureRLKpa ?? DEFAULT_SETUP.tirePressureRLKpa;
+    const rrKpa = setup.tirePressureRRKpa ?? DEFAULT_SETUP.tirePressureRRKpa;
+    const cornerPressures = [flKpa, frKpa, rlKpa, rrKpa];
     for (let i = 0; i < this.wheels.length; i++) {
       const isFront = i < 2;
-      this.wheels[i].toeDeg = isFront ? setup.frontToeDeg : setup.rearToeDeg;
+      const w = this.wheels[i];
+      w.toeDeg = isFront ? setup.frontToeDeg : setup.rearToeDeg;
+      w.camberStaticDeg = isFront
+        ? (setup.camberFrontDeg ?? DEFAULT_SETUP.camberFrontDeg)
+        : (setup.camberRearDeg ?? DEFAULT_SETUP.camberRearDeg);
+      w.camberDeg = w.camberStaticDeg;
+      w.pressureKpa = cornerPressures[i];
     }
+    // Keep tireColdKpa in sync with the per-corner average so thermal
+    // equilibration targets the correct nominal.
+    this.tireColdKpa = (flKpa + frKpa + rlKpa + rrKpa) * 0.25;
   }
 
   setAbsEnabled(enabled: boolean): void {
@@ -652,6 +1172,20 @@ export class RacingEngine {
     return this.cameraMode;
   }
 
+  /** M8: set the lead car for slipstream / wake-field drag reduction. */
+  setLeadCarState(pos: { x: number; y: number; z: number }, vel: { x: number; y: number; z: number }): void {
+    if (!this.leadCarState) {
+      this.leadCarState = { pos: new Vector3(), vel: new Vector3() };
+    }
+    this.leadCarState.pos.set(pos.x, pos.y, pos.z);
+    this.leadCarState.vel.set(vel.x, vel.y, vel.z);
+  }
+
+  /** M8: clear the lead car so wake-field drag reduction is disabled. */
+  clearLeadCarState(): void {
+    this.leadCarState = null;
+  }
+
   /**
    * Advance the camera rig by one frame using the chassis pose. This avoids
    * exposing Three.js Vector3 to the route layer — callers just provide `dt`.
@@ -686,11 +1220,17 @@ export class RacingEngine {
     steerAngle: number;
   }> {
     return this.wheels.map((wheel) => {
-      const attachLocal = new Vector3(wheel.posLocal.x, wheel.posLocal.y + 0.47, wheel.posLocal.z);
-      const attachWorld = attachLocal.clone().applyQuaternion(this.worldQuat).add(this.worldPos);
-      const downDir = new Vector3(0, -1, 0).applyQuaternion(this.worldQuat).normalize();
-      const suspensionTravel = this.susp.restLen - wheel.compression;
-      const center = attachWorld.clone().addScaledVector(downDir, suspensionTravel);
+      let center: Vector3;
+      if (this.complianceActive) {
+        // M9: hub position is the wheel center when compliance is active.
+        center = wheel.posLocal.clone().applyQuaternion(this.worldQuat).add(this.worldPos);
+      } else {
+        const attachLocal = new Vector3(wheel.posLocal.x, wheel.posLocal.y + 0.47, wheel.posLocal.z);
+        const attachWorld = attachLocal.clone().applyQuaternion(this.worldQuat).add(this.worldPos);
+        const downDir = new Vector3(0, -1, 0).applyQuaternion(this.worldQuat).normalize();
+        const suspensionTravel = this.susp.restLen - wheel.compression;
+        center = attachWorld.clone().addScaledVector(downDir, suspensionTravel);
+      }
       return {
         index: wheel.index,
         position: { x: center.x, y: center.y, z: center.z },
@@ -702,7 +1242,9 @@ export class RacingEngine {
 
   resetCar(): void {
     const spawn = this.computeSpawnPose();
-    this.worldPos.set(spawn.x, this.susp.restLen + 0.34 + 0.05, spawn.z);
+    // M4: spawn height accounts for authored terrain at the spawn point.
+    const spawnGroundY = this.surfaceLookup?.groundYAt(spawn.x, spawn.z) ?? 0;
+    this.worldPos.set(spawn.x, spawnGroundY + this.susp.restLen + 0.34 + 0.05, spawn.z);
     this.worldQuat.copy(spawn.quat);
     this.velocityWS.set(0, 0, 0);
     this.omegaWS.set(0, 0, 0);
@@ -716,6 +1258,13 @@ export class RacingEngine {
     this.engineDragTorqueNm = 0;
     this.steeringAlignFeedback = 0;
     this.gearIndex = 1; // Neutral
+    // M6: reset turbo and shift state on car reset.
+    if (this.turboState) {
+      this.turboState = makeTurboState();
+    }
+    this.shiftState = makeShiftState();
+    this.complianceState = makeDrivelineComplianceState();
+    this.complianceSpringNm = 0;
     for (const w of this.wheels) {
       w.omega = 0;
       w.spinAngle = 0;
@@ -728,6 +1277,8 @@ export class RacingEngine {
       w.tempC = TIRE_AMBIENT_C;
       w.brakeTempC = TIRE_AMBIENT_C;
       w.brakeFade = 1;
+      w.tireWear = 0;
+      w.flatSpotSignal = 0;
       w.prevCompression = 0;
       w.slipRatio = 0;
       w.slipAngle = 0;
@@ -736,6 +1287,54 @@ export class RacingEngine {
       w.slipRatioDynamic = 0;
       w.slipAngleDynamic = 0;
       w._externalTorque = 0;
+      // M1 thermal / pressure / vertical reset
+      w.thermalZones = { inner: TIRE_AMBIENT_C, middle: TIRE_AMBIENT_C, outer: TIRE_AMBIENT_C };
+      // M7: use per-corner cold pressures from setup; fall back to average
+      // tireColdKpa for wheels without individual assignments or when the
+      // setup object pre-dates M7 and these fields are missing.
+      const cornerPressures = [
+        this.setup.tirePressureFLKpa ?? this.tireColdKpa,
+        this.setup.tirePressureFRKpa ?? this.tireColdKpa,
+        this.setup.tirePressureRLKpa ?? this.tireColdKpa,
+        this.setup.tirePressureRRKpa ?? this.tireColdKpa,
+      ];
+      w.pressureKpa = cornerPressures[w.index] ?? this.tireColdKpa;
+      w.tireDeflection = 0;
+      w.tireDeflectionRate = 0;
+      w.kappaPeak = 0;
+      w.alphaPeakRad = 0;
+      w.relaxationLengthLongM = TIRE_RELAXATION_LENGTH_LONG_M;
+      w.relaxationLengthLatM = TIRE_RELAXATION_LENGTH_LAT_M;
+      w.slidingGripScale = 1;
+      w.slidingSpeedMps = 0;
+      w.pressureInner = 0.25;
+      w.pressureMiddle = 0.5;
+      w.pressureOuter = 0.25;
+      w.pressureCentroidM = 0;
+      w.overturningMomentNm = 0;
+      // M3 kinematic reset
+      w.rollCenterHeightM = DEFAULT_ROLL_CENTER_HEIGHT_M;
+      w.jackingForceN = 0;
+    }
+    // M9: reset hub states.
+    if (this.complianceActive) {
+      if (this.useJolt && this.joltCtx && this.joltHubBodies) {
+        const { jolt, bodyInterface } = this.joltCtx;
+        const { chassisBody, hubBodies } = this.joltHubBodies;
+        writeJoltBodyPose(jolt, bodyInterface, chassisBody, this.worldPos, this.worldQuat, this.velocityWS, this.omegaWS);
+        for (let i = 0; i < hubBodies.length; i++) {
+          const pos = this.hubPickupLocal[i].clone().applyQuaternion(this.worldQuat).add(this.worldPos);
+          writeJoltBodyPose(jolt, bodyInterface, hubBodies[i], pos, this.worldQuat, new Vector3(0,0,0), new Vector3(0,0,0));
+        }
+      } else {
+        for (let i = 0; i < this.softwareHubs.length; i++) {
+          const hub = this.softwareHubs[i];
+          hub.pos.copy(this.hubPickupLocal[i].clone().applyQuaternion(this.worldQuat).add(this.worldPos));
+          hub.quat.copy(this.worldQuat);
+          hub.vel.set(0, 0, 0);
+          hub.omega.set(0, 0, 0);
+        }
+      }
     }
     this.lap.t0 = null;
     this.lap.prevSign = 0;
@@ -762,12 +1361,72 @@ export class RacingEngine {
     this.runDrivetrainRotationalStep(dt);
     this.runAero();
     this.lastStepDt = dt;
-    this.integrateChassis(dt);
+
+    // M9: compliance path bifurcation.
+    if (this.complianceActive) {
+      if (this.useJolt && this.joltCtx && this.joltHubBodies) {
+        // Jolt path: apply torsional torque to chassis body, then step Jolt.
+        this.stepJoltCompliance(dt);
+      } else {
+        // Software path: explicit spring-damper compliance + chassis integration.
+        applyTorsionalRestoringTorqueToVector(
+          this.right,
+          this.rollDeg,
+          this.complianceConfig,
+          this.appliedTorque,
+        );
+        const wheelForces = this.wheels.map((w) => w._wheelForce);
+        stepComplianceSoftware(
+          {
+            pos: this.worldPos,
+            quat: this.worldQuat,
+            vel: this.velocityWS,
+            omega: this.omegaWS,
+            mass: this.chassisMass,
+            inertia: this.chassisInertia,
+          },
+          this.softwareHubs,
+          this.hubPickupLocal,
+          wheelForces,
+          this.appliedForce.clone(),
+          this.appliedTorque.clone(),
+          this.complianceConfig,
+          dt,
+        );
+        this.appliedForce.set(0, 0, 0);
+        this.appliedTorque.set(0, 0, 0);
+        this.syncSoftwareHubsToWheels();
+      }
+    } else {
+      // Rigid fallback — exact pre-M9 code path.
+      this.integrateChassis(dt);
+    }
+
     this.updateChassisDerived();
     this.updateLapTimer(this.simTime);
     this.audio.setRpm(this.engineOmega * (60 / (2 * Math.PI)));
 
     this.events.emit('tick', { simTime: this.simTime, dt });
+
+    // M2 FFB pipeline — run after the wheel pass so front-wheel Fz/Fy/Mz/Fx
+    // are fully resolved for this step.
+    this.lastFfbResult = computeRackForce({
+      speedKmh: this.speedKmh,
+      fyFL: this.wheels[0].fy,
+      fyFR: this.wheels[1].fy,
+      fzFL: this.wheels[0].fz,
+      fzFR: this.wheels[1].fz,
+      mzFL: this.wheels[0].mz,
+      mzFR: this.wheels[1].mz,
+      fxFL: this.wheels[0].fx,
+      fxFR: this.wheels[1].fx,
+      steerNorm: this.input.state.steerSmoothed,
+      geometry: this.ffbGeometry,
+    });
+    this.events.emit('ffbRackForce', {
+      simTime: this.simTime,
+      ...this.lastFfbResult,
+    });
   }
 
   snapshot(): RacingEngineSnapshot {
@@ -829,12 +1488,42 @@ export class RacingEngine {
           surface: w.surface,
           tempC: w.tempC,
           brakeTempC: w.brakeTempC,
+          tireWear: w.tireWear,
+          flatSpotSignal: w.flatSpotSignal,
           bumpStopPct: w.bumpStopPct,
           brakeTorqueApplied: w.brakeTorqueApplied,
           absScale: w.absScale,
           absActive: w.absActive,
           yawContribution: w.yawContribution,
           driveTorqueNm: this.driveTorqueByWheel[i] ?? 0,
+          // M1 multi-zone thermal + pressure + slip-peak diagnostics
+          tempInner: w.thermalZones.inner,
+          tempMiddle: w.thermalZones.middle,
+          tempOuter: w.thermalZones.outer,
+          pressureKpa: w.pressureKpa,
+          kappaPeak: w.kappaPeak,
+          alphaPeakRad: w.alphaPeakRad,
+          tireDeflection: w.tireDeflection,
+          relaxationLengthLongM: w.relaxationLengthLongM,
+          relaxationLengthLatM: w.relaxationLengthLatM,
+          slidingGripScale: w.slidingGripScale,
+          slidingSpeedMps: w.slidingSpeedMps,
+          pressureInner: w.pressureInner,
+          pressureMiddle: w.pressureMiddle,
+          pressureOuter: w.pressureOuter,
+          pressureCentroidM: w.pressureCentroidM,
+          overturningMomentNm: w.overturningMomentNm,
+          // M3 suspension kinematics diagnostics
+          suspensionTravel: w.compression,
+          damperVelocity: w.damperVelocity,
+          rollCenterHeightM: w.rollCenterHeightM,
+          jackingForceN: w.jackingForceN,
+          toeDeg: w.toeDeg,
+          camberDeg: w.camberDeg,
+          // M9 compliance telemetry
+          hubDeflectionMm: this.complianceActive
+            ? w.posLocal.clone().sub(this.hubPickupLocal[w.index]).length() * 1000
+            : 0,
         };
       }),
       drivetrain: {
@@ -844,13 +1533,111 @@ export class RacingEngine {
         clutchMode: this.clutchMode,
         engineDriveTorqueNm: this.engineDriveTorqueNm,
         engineDragTorqueNm: this.engineDragTorqueNm,
+        // M6 drivetrain depth
+        boostBar: this.turboState?.boostBar ?? 0,
+        turboSpoolRatio: this.turboState?.spoolRatio ?? 0,
+        boostTorqueMultiplier: this.turboState?.torqueMultiplier ?? 1,
+        isOverboost: this.turboState?.isOverboost ?? false,
+        shiftRefused: this.shiftState.lastRefused,
+        shiftRefusalReason: this.shiftState.lastRefusalReason,
+        shiftInProgress: this.shiftState.inProgress,
+        shiftRemainingS: this.shiftState.inProgress
+          ? Math.max(0, this.shiftState.totalTimeS - this.shiftState.elapsedS)
+          : 0,
+        drivelineComplianceTwistRad: this.complianceState.twistRad,
+        drivelineComplianceSpringNm: this.complianceSpringNm,
       },
       aero: {
         frontDownforceN: this.lastAeroDownforce.front,
         rearDownforceN: this.lastAeroDownforce.rear,
         dragN: this.aeroDragMagN,
+        hasAeroMap: this.aeroMapPreset !== undefined,
+        effectiveClAreaFront: this.lastAeroResult.effectiveClAreaFront,
+        effectiveClAreaRear: this.lastAeroResult.effectiveClAreaRear,
+        copFraction: this.lastAeroResult.copFraction,
+        frontStalled: this.lastAeroResult.frontStalled,
+        rearStalled: this.lastAeroResult.rearStalled,
+        frontRideHeightM: this.lastAeroResult.frontRideHeightM,
+        rearRideHeightM: this.lastAeroResult.rearRideHeightM,
+        wakeReduction: this.lastAeroResult.wakeReduction,
       },
       lap: { lastMs: this.lap.lastMs, bestMs: this.lap.bestMs, t0: this.lap.t0 },
+      ffb: { ...this.lastFfbResult },
+      trackCondition: {
+        trackTempC: this.trackPreset.trackTempC ?? 28,
+        rubberLineGrip: this.trackPreset.rubberLineGrip ?? 1,
+        terrainActive: !(this.terrainContact?.isFlat ?? true),
+        bumpAmplitudeM: this.trackPreset.bumpAmplitudeM ?? 0,
+        wetness: sanitizeTrackWetness(this.trackPreset.wetness),
+        condition: sanitizeTrackCondition(this.trackPreset.condition),
+      },
+    };
+  }
+
+  exportTelemetry(): RacingTelemetryExport {
+    const snap = this.snapshot();
+    const sample: RacingTelemetrySample = {
+      lap: {
+        lastMs: snap.lap.lastMs,
+        bestMs: snap.lap.bestMs,
+        currentStartS: snap.lap.t0,
+      },
+      timeS: this.simTime,
+      speedKmh: snap.speedKmh,
+      rpm: snap.rpm,
+      accelLongG: snap.accelLongG,
+      accelLatG: snap.accelLatG,
+      wheels: snap.wheels.map((w) => ({
+        index: w.index,
+        tireWear: w.tireWear,
+        flatSpotSignal: w.flatSpotSignal,
+        slipRatio: w.slipRatio,
+        slipAngle: w.slipAngle,
+        slidingSpeedMps: w.slidingSpeedMps,
+        slidingGripScale: w.slidingGripScale,
+        relaxationLengthLongM: w.relaxationLengthLongM,
+        relaxationLengthLatM: w.relaxationLengthLatM,
+        pressureInner: w.pressureInner,
+        pressureMiddle: w.pressureMiddle,
+        pressureOuter: w.pressureOuter,
+        overturningMomentNm: w.overturningMomentNm,
+        tempC: w.tempC,
+        brakeTempC: w.brakeTempC,
+        surface: w.surface,
+      })),
+    };
+    const channels: Record<string, number[]> = {
+      timeS: [sample.timeS],
+      speedKmh: [sample.speedKmh],
+      rpm: [sample.rpm],
+      accelLongG: [sample.accelLongG],
+      accelLatG: [sample.accelLatG],
+    };
+    for (const wheel of sample.wheels) {
+      const name = WHEEL_CHANNEL_NAMES[wheel.index] ?? `W${wheel.index}`;
+      channels[`tireWear${name}`] = [wheel.tireWear];
+      channels[`flatSpot${name}`] = [wheel.flatSpotSignal];
+      channels[`slipRatio${name}`] = [wheel.slipRatio];
+      channels[`slipAngle${name}`] = [wheel.slipAngle];
+      channels[`slidingSpeedMps${name}`] = [wheel.slidingSpeedMps];
+      channels[`slidingGripScale${name}`] = [wheel.slidingGripScale];
+      channels[`relaxationLongM${name}`] = [wheel.relaxationLengthLongM];
+      channels[`relaxationLatM${name}`] = [wheel.relaxationLengthLatM];
+      channels[`pressureInner${name}`] = [wheel.pressureInner];
+      channels[`pressureMiddle${name}`] = [wheel.pressureMiddle];
+      channels[`pressureOuter${name}`] = [wheel.pressureOuter];
+      channels[`overturningMomentNm${name}`] = [wheel.overturningMomentNm];
+      channels[`tireTempC${name}`] = [wheel.tempC];
+      channels[`brakeTempC${name}`] = [wheel.brakeTempC];
+    }
+    return {
+      version: 1,
+      trackId: this.trackPreset.id,
+      vehicleId: this.vehicle.id,
+      exportedAtSimTimeS: this.simTime,
+      lap: sample.lap,
+      samples: [sample],
+      channels,
     };
   }
 
@@ -858,40 +1645,105 @@ export class RacingEngine {
     this.events.removeAll();
     this.input.detach();
     this.audio.dispose();
+    this.destroyJoltCompliance();
   }
 
   shiftUp(): void {
-    if (this.gearIndex < this.vehicle.gears.length - 1) this.gearIndex++;
+    const rpm = this.engineOmega * (60 / (2 * Math.PI));
+    const hasShiftLogic = this.shiftLogicParams.shiftTimeS !== undefined ||
+      this.shiftLogicParams.upshiftMinRpm !== undefined ||
+      this.shiftLogicParams.downshiftMinRpm !== undefined;
+    if (hasShiftLogic) {
+      const accepted = requestShift(
+        'up',
+        this.gearIndex,
+        this.vehicle.gears.length,
+        rpm,
+        this.shiftState,
+        this.shiftLogicParams,
+      );
+      // Instantaneous shift (shiftTimeS === 0) applies immediately.
+      if (accepted && !this.shiftState.inProgress && this.shiftState.targetGearIndex >= 0) {
+        this.gearIndex = this.shiftState.targetGearIndex;
+        this.shiftState.targetGearIndex = -1;
+      }
+    } else {
+      if (this.gearIndex < this.vehicle.gears.length - 1) this.gearIndex++;
+    }
   }
   shiftDown(): void {
-    if (this.gearIndex > 0) this.gearIndex--;
+    const rpm = this.engineOmega * (60 / (2 * Math.PI));
+    const hasShiftLogic = this.shiftLogicParams.shiftTimeS !== undefined ||
+      this.shiftLogicParams.upshiftMinRpm !== undefined ||
+      this.shiftLogicParams.downshiftMinRpm !== undefined;
+    if (hasShiftLogic) {
+      const accepted = requestShift(
+        'down',
+        this.gearIndex,
+        this.vehicle.gears.length,
+        rpm,
+        this.shiftState,
+        this.shiftLogicParams,
+      );
+      if (accepted && !this.shiftState.inProgress && this.shiftState.targetGearIndex >= 0) {
+        this.gearIndex = this.shiftState.targetGearIndex;
+        this.shiftState.targetGearIndex = -1;
+      }
+    } else {
+      if (this.gearIndex > 0) this.gearIndex--;
+    }
   }
 
   // ---- internal helpers --------------------------------------------------
 
   private applyVehiclePhysicsPreset(): void {
     const physics = this.vehicle.physics;
-    this.chassisMass = physics?.massKg ?? 1240;
+    this.baseChassisMass = physics?.massKg ?? 1240;
+    this.chassisMass = this.baseChassisMass + (this.setup.fuelLoad ?? DEFAULT_SETUP.fuelLoad) * MAX_FUEL_MASS_KG;
     // Body axes are x=roll, y=yaw, z=pitch.
     this.chassisInertia.set(
       physics?.inertiaRollKgM2 ?? 450,
       physics?.inertiaYawKgM2 ?? 1700,
       physics?.inertiaPitchKgM2 ?? 1500,
     );
+    // Store preset base values; setSetup() applies scalers on top of these.
     this.susp.kFront = physics?.springFrontNpm ?? 65000;
     this.susp.kRear = physics?.springRearNpm ?? 60000;
-    this.susp.cBumpFront = physics?.damperBumpFrontNsPm ?? 4200;
-    this.susp.cReboundFront = physics?.damperReboundFrontNsPm ?? 5800;
-    this.susp.cBumpRear = physics?.damperBumpRearNsPm ?? 4400;
-    this.susp.cReboundRear = physics?.damperReboundRearNsPm ?? 6000;
+    this.susp.kBumpFrontBase = physics?.damperBumpFrontNsPm ?? 4200;
+    this.susp.kReboundFrontBase = physics?.damperReboundFrontNsPm ?? 5800;
+    this.susp.kBumpRearBase = physics?.damperBumpRearNsPm ?? 4400;
+    this.susp.kReboundRearBase = physics?.damperReboundRearNsPm ?? 6000;
+    this.susp.cBumpFront = this.susp.kBumpFrontBase;
+    this.susp.cReboundFront = this.susp.kReboundFrontBase;
+    this.susp.cBumpRear = this.susp.kBumpRearBase;
+    this.susp.cReboundRear = this.susp.kReboundRearBase;
+    // M7: initialise per-axle rest lengths; setSetup() adds the ride-height
+    // offset on top.  Restoring from a preset resets the offset to 0.
+    this.susp.restLenFront = this.susp.restLen;
+    this.susp.restLenRear = this.susp.restLen;
+    // M7: reset setup-driven scalar overrides to neutral.
+    this.setupBrakeBiasFront = this.setup.brakeBiasFront ?? DEFAULT_SETUP.brakeBiasFront;
+    this.setupFinalDriveScale = this.setup.finalDriveScale ?? DEFAULT_SETUP.finalDriveScale;
     this.arbFront = physics?.arbFrontNpm ?? 25000;
     this.arbRear = physics?.arbRearNpm ?? 22000;
     this.cdA = physics?.cdAreaM2 ?? 0.7;
     this.cyYaw = physics?.yawAeroCoeff ?? 0.1;
     this.clAreaFront = Math.max(0, physics?.clAreaFrontM2 ?? 0);
     this.clAreaRear = Math.max(0, physics?.clAreaRearM2 ?? 0);
+    // M5: resolve aero map from preset (cast is safe: structural types match).
+    this.aeroMapPreset = physics?.aeroMap as AeroMapPreset | undefined;
     this.lastAeroDownforce.front = 0;
     this.lastAeroDownforce.rear = 0;
+    this.lastAeroResult = {
+      effectiveClAreaFront: 0,
+      effectiveClAreaRear: 0,
+      copFraction: 0.5,
+      frontStalled: false,
+      rearStalled: false,
+      frontRideHeightM: 0.1,
+      rearRideHeightM: 0.1,
+      wakeReduction: 0,
+    };
     this.cgHeightM = physics?.cgHeightM ?? DEFAULT_CG_HEIGHT_M;
     this.sprungCgHeightM = physics?.sprungCgHeightM ?? this.cgHeightM;
     this.unsprungCgHeightM = physics?.unsprungCgHeightM ?? DEFAULT_UNSPRUNG_CG_HEIGHT_M;
@@ -931,20 +1783,86 @@ export class RacingEngine {
       idleOmega: ENGINE_IDLE_OMEGA,
       redlineOmega: ENGINE_REDLINE_OMEGA,
     };
+    // M1 tire params
+    this.tireColdKpa = physics?.tireColdPressureKpa ?? TIRE_PRESSURE_COLD_KPA;
+    this.tireOptimalKpa = physics?.tireOptimalPressureKpa ?? TIRE_PRESSURE_OPTIMAL_KPA;
+    this.tireRadialStiffnessNpm = physics?.tireRadialStiffnessNpm ?? TIRE_RADIAL_STIFFNESS_NPM;
+    this.tireRadialDampingNspm = physics?.tireRadialDampingNspm ?? TIRE_RADIAL_DAMPING_NSPM;
+    // M2 FFB geometry — pick up any preset-supplied overrides; undefined
+    // fields fall through to the defaults inside computeRackForce.
+    this.ffbGeometry = {
+      kpiDeg: physics?.ffbKpiDeg,
+      saiScale: physics?.ffbSaiScale,
+      scrubRadiusM: physics?.ffbScrubRadiusM,
+      casterTrailM: physics?.ffbCasterTrailM,
+      ffbMaxNm: physics?.ffbMaxNm,
+      ffbGain: physics?.ffbGain,
+      assistPeakKmh: physics?.ffbAssistPeakKmh,
+      assistMin: physics?.ffbAssistMin,
+    };
+    // M3 suspension kinematics — resolve from preset; undefined means
+    // "no table" and falls back to legacy constant-geometry behaviour.
+    this.damperParamsFront = physics?.damperFront;
+    this.damperParamsRear = physics?.damperRear;
+    this.bumpSteerTableFront = physics?.bumpSteerFront as KinematicTable | undefined;
+    this.bumpSteerTableRear = physics?.bumpSteerRear as KinematicTable | undefined;
+    this.camberTableFront = physics?.camberTableFront as KinematicTable | undefined;
+    this.camberTableRear = physics?.camberTableRear as KinematicTable | undefined;
+    this.casterTableFront = physics?.casterTableFront as KinematicTable | undefined;
+    this.casterTableRear = physics?.casterTableRear as KinematicTable | undefined;
+    this.rollCenterTableFront = physics?.rollCenterTableFront as KinematicTable | undefined;
+    this.rollCenterTableRear = physics?.rollCenterTableRear as KinematicTable | undefined;
+    this.bumpStopRateTableFront = physics?.bumpStopRateTableFront as KinematicTable | undefined;
+    this.bumpStopRateTableRear = physics?.bumpStopRateTableRear as KinematicTable | undefined;
+    // M6: resolve turbo, engine map, shift logic, and driveline compliance.
+    this.turboParams = physics?.turbo;
+    if (this.turboParams) {
+      this.turboState = makeTurboState();
+    } else {
+      this.turboState = undefined;
+    }
+    this.engineTorqueMap = physics?.engineTorqueMap as EngineTorqueMap | undefined;
+    this.engineTorqueCurveOverride = physics?.engineTorqueCurve;
+    this.engineBrakingParams = physics?.engineBraking;
+    this.shiftLogicParams = (physics?.shiftLogic as ShiftLogicParams | undefined) ?? {};
+    this.shiftState = makeShiftState();
+    this.complianceParams = (physics?.drivelineCompliance as DrivelineComplianceParams | undefined) ?? {};
+    this.complianceState = makeDrivelineComplianceState();
+    this.complianceSpringNm = 0;
+    // M9: resolve chassis compliance config.
+    this.complianceConfig = resolveCompliance(this.vehicle);
+    this.complianceActive = hasCompliance(this.vehicle);
+  }
+
+  private frontTrackWidthM(): number {
+    return this.vehicle.dimensions?.frontTrackWidthM ?? this.vehicle.trackWidth;
+  }
+
+  private rearTrackWidthM(): number {
+    return this.vehicle.dimensions?.rearTrackWidthM ?? this.vehicle.trackWidth;
+  }
+
+  private frontWheelRadiusM(): number {
+    return (this.vehicle.tires?.frontOverallDiameterM ?? 0.68) * 0.5;
+  }
+
+  private rearWheelRadiusM(): number {
+    return (this.vehicle.tires?.rearOverallDiameterM ?? 0.68) * 0.5;
   }
 
   private buildWheels(): void {
     this.wheels.length = 0;
-    const halfTrack = this.vehicle.trackWidth * 0.5;
+    const halfFrontTrack = this.frontTrackWidthM() * 0.5;
+    const halfRearTrack = this.rearTrackWidthM() * 0.5;
     // Chassis forward = -Z, so front wheels sit at negative Z and rear wheels
     // at positive Z in chassis-local space.
     const frontZ = -this.vehicle.wheelbase * (1 - this.vehicle.frontMassPct);
     const rearZ = this.vehicle.wheelbase * this.vehicle.frontMassPct;
     const positions = [
-      new Vector3(-halfTrack, -0.30, frontZ),
-      new Vector3(halfTrack, -0.30, frontZ),
-      new Vector3(-halfTrack, -0.30, rearZ),
-      new Vector3(halfTrack, -0.30, rearZ),
+      new Vector3(-halfFrontTrack, -0.30, frontZ),
+      new Vector3(halfFrontTrack, -0.30, frontZ),
+      new Vector3(-halfRearTrack, -0.30, rearZ),
+      new Vector3(halfRearTrack, -0.30, rearZ),
     ];
     const drive = [
       0.5 * this.vehicle.axleDrive.front,
@@ -952,20 +1870,23 @@ export class RacingEngine {
       0.5 * this.vehicle.axleDrive.rear,
       0.5 * this.vehicle.axleDrive.rear,
     ];
+    const wheelInertia = this.vehicle.physics?.wheelInertiaKgM2 ?? 1.4;
     for (let i = 0; i < 4; i++) {
       const isFront = i < 2;
       this.wheels.push({
         index: i,
         posLocal: positions[i],
-        radius: 0.34,
-        inertia: 1.4,
+        radius: isFront ? this.frontWheelRadiusM() : this.rearWheelRadiusM(),
+        inertia: wheelInertia,
         lateralSign: positions[i].x >= 0 ? 1 : -1,
         steer: isFront,
         hand: !isFront,
         drive: drive[i] > 0,
         driveShare: drive[i],
         toeDeg: isFront ? this.setup.frontToeDeg : this.setup.rearToeDeg,
-        camberStaticDeg: -1.5,
+        camberStaticDeg: isFront
+          ? (this.setup.camberFrontDeg ?? DEFAULT_SETUP.camberFrontDeg)
+          : (this.setup.camberRearDeg ?? DEFAULT_SETUP.camberRearDeg),
         camberGain: 0.4,
         antiDivePct: isFront ? 0.18 : 0,
         antiSquatPct: isFront ? 0 : 0.14,
@@ -995,6 +1916,8 @@ export class RacingEngine {
         tempC: TIRE_AMBIENT_C,
         brakeTempC: TIRE_AMBIENT_C,
         brakeFade: 1,
+        tireWear: 0,
+        flatSpotSignal: 0,
         absRelease: 0,
         absActive: false,
         escTorque: 0,
@@ -1010,6 +1933,36 @@ export class RacingEngine {
         _frx: 0,
         _vx: 0,
         _externalTorque: 0,
+        // M9 compliance scratch
+        _wheelForce: new Vector3(),
+        _wheelTorque: new Vector3(),
+        // M1 multi-zone thermal + pressure + vertical
+        thermalZones: { inner: TIRE_AMBIENT_C, middle: TIRE_AMBIENT_C, outer: TIRE_AMBIENT_C },
+        pressureKpa: [
+          this.setup.tirePressureFLKpa ?? this.tireColdKpa,
+          this.setup.tirePressureFRKpa ?? this.tireColdKpa,
+          this.setup.tirePressureRLKpa ?? this.tireColdKpa,
+          this.setup.tirePressureRRKpa ?? this.tireColdKpa,
+        ][i],
+        tireDeflection: 0,
+        tireDeflectionRate: 0,
+        kappaPeak: 0,
+        alphaPeakRad: 0,
+        relaxationLengthLongM: TIRE_RELAXATION_LENGTH_LONG_M,
+        relaxationLengthLatM: TIRE_RELAXATION_LENGTH_LAT_M,
+        slidingGripScale: 1,
+        slidingSpeedMps: 0,
+        pressureInner: 0.25,
+        pressureMiddle: 0.5,
+        pressureOuter: 0.25,
+        pressureCentroidM: 0,
+        overturningMomentNm: 0,
+        // M3 kinematic state
+        rollCenterHeightM: DEFAULT_ROLL_CENTER_HEIGHT_M,
+        jackingForceN: 0,
+        camberDeg: isFront
+          ? (this.setup.camberFrontDeg ?? DEFAULT_SETUP.camberFrontDeg)
+          : (this.setup.camberRearDeg ?? DEFAULT_SETUP.camberRearDeg),
       });
     }
   }
@@ -1027,6 +1980,21 @@ export class RacingEngine {
     for (const z of this.trackPreset.surfaceZones ?? []) {
       zones.push({ x: z.x, z: z.z, w: z.w, h: z.h, rot: z.rot ?? 0, surface: z.surface });
     }
+
+    // M4: build terrain contact from authored elevation/height-field data.
+    // Falls back to flat ground (null) for tracks that carry no elevation data.
+    const elevationSamples = this.trackPreset.elevationSamples;
+    const elevationMap = elevationSamples && elevationSamples.length > 0
+      ? new ElevationMap(elevationSamples)
+      : null;
+    // HeightField path wired in M5+ (full terrain import); null until then.
+    this.terrainContact = new TerrainContact(null, elevationMap);
+
+    // M4: kerb profile — use the track-authored profile when present.
+    // When absent, use null so existing tracks get flat kerb behavior
+    // (preserves backward compatibility for all built-in tracks).
+    const kerbProfile = this.trackPreset.kerbProfile ?? null;
+
     this.surfaceLookup = new SurfaceLookup({
       points,
       halfWidth: this.trackPreset.halfWidth,
@@ -1035,7 +2003,88 @@ export class RacingEngine {
       marblesWidth: this.trackPreset.marblesWidth,
       defaultOffTrack: 'GRASS',
       zones,
+      terrain: this.terrainContact,
+      kerbProfile,
     });
+  }
+
+  // ---- M9: compliance helpers ------------------------------------------
+
+  private buildCompliance(physicsContext?: PhysicsContext): void {
+    // Tear down any previous Jolt state.
+    this.destroyJoltCompliance();
+    this.softwareHubs = [];
+    this.hubPickupLocal = [];
+    this.useJolt = false;
+
+    if (!this.complianceActive) return;
+
+    // Build shared pickup-local table.
+    const frontZ = -this.vehicle.wheelbase * (1 - this.vehicle.frontMassPct);
+    const rearZ = this.vehicle.wheelbase * this.vehicle.frontMassPct;
+    this.hubPickupLocal = [
+      new Vector3(-this.frontTrackWidthM() * 0.5, -0.30, frontZ),
+      new Vector3(this.frontTrackWidthM() * 0.5, -0.30, frontZ),
+      new Vector3(-this.rearTrackWidthM() * 0.5, -0.30, rearZ),
+      new Vector3(this.rearTrackWidthM() * 0.5, -0.30, rearZ),
+    ];
+
+    if (physicsContext) {
+      const { jolt, physicsSystem, bodyInterface } = physicsContext;
+      try {
+        const chassisBody = createChassisBody(
+          jolt, bodyInterface, this.chassisMass, this.chassisInertia,
+          this.worldPos, this.worldQuat,
+        );
+        if (chassisBody) {
+          const hubBodies = createHubBodies(
+            jolt, bodyInterface,
+            this.hubPickupLocal.map((p) => p.clone().applyQuaternion(this.worldQuat).add(this.worldPos)),
+          );
+          if (hubBodies && hubBodies.length === 4) {
+            const constraints = createComplianceConstraints(
+              jolt, physicsSystem, chassisBody, hubBodies, this.vehicle,
+            );
+            this.joltHubBodies = { chassisBody, hubBodies, constraints };
+            this.joltCtx = physicsContext;
+            this.useJolt = true;
+          }
+        }
+      } catch {
+        this.useJolt = false;
+      }
+    }
+
+    if (!this.useJolt) {
+      this.softwareHubs = createSoftwareHubStates(
+        this.hubPickupLocal.map((p) => p.clone().applyQuaternion(this.worldQuat).add(this.worldPos)),
+      );
+    }
+  }
+
+  private destroyJoltCompliance(): void {
+    if (!this.joltCtx || !this.joltHubBodies) return;
+    try {
+      const { jolt, physicsSystem, bodyInterface } = this.joltCtx;
+      destroyComplianceBodies(jolt, bodyInterface, physicsSystem, this.joltHubBodies);
+    } catch {
+      /* swallow disposal errors */
+    }
+    this.joltHubBodies = null;
+    this.joltCtx = null;
+    this.useJolt = false;
+  }
+
+  private syncSoftwareHubsToWheels(): void {
+    if (!this.complianceActive || this.useJolt) return;
+    for (let i = 0; i < this.wheels.length; i++) {
+      const w = this.wheels[i];
+      const hub = this.softwareHubs[i];
+      if (!hub) continue;
+      // Update wheel pose from hub state for telemetry and renderer.
+      // The hub position is the wheel center.
+      w.posLocal.copy(hub.pos.clone().sub(this.worldPos).applyQuaternion(this.worldQuat.clone().invert()));
+    }
   }
 
   private computeSpawnPose(): { x: number; z: number; quat: Quaternion } {
@@ -1063,8 +2112,9 @@ export class RacingEngine {
   }
 
   private runArbPrepass(): void {
-    const restLen = this.susp.restLen;
     for (const w of this.wheels) {
+      const isFront = w.index < 2;
+      const restLen = isFront ? this.susp.restLenFront : this.susp.restLenRear;
       const localPos = new Vector3(w.posLocal.x, w.posLocal.y + 0.47, w.posLocal.z);
       const worldAttach = localPos.clone().applyQuaternion(this.worldQuat).add(this.worldPos);
       const downDir = this.up.clone().multiplyScalar(-1);
@@ -1072,7 +2122,8 @@ export class RacingEngine {
       let comp = 0;
       let inContact = false;
       if (downDir.y < 0) {
-        const t = (0 - worldAttach.y) / downDir.y;
+        const groundY = this.surfaceLookup?.groundYAt(worldAttach.x, worldAttach.z) ?? 0;
+        const t = (groundY - worldAttach.y) / downDir.y;
         if (t > 0 && t <= maxLen) {
           comp = restLen - (t - w.radius);
           inContact = true;
@@ -1188,14 +2239,56 @@ export class RacingEngine {
 
     this.effectiveThrottle = driverThrottle * (1 - aids.tcCut);
 
+    // M6: step turbo spool BEFORE computing engine torque so the boost
+    // multiplier is available for this step's torque evaluation.
+    if (this.turboState && this.turboParams) {
+      stepTurbo({
+        state: this.turboState,
+        throttle: this.effectiveThrottle,
+        engineOmega: this.engineOmega,
+        dt,
+        params: this.turboParams,
+      });
+    }
+
+    // M6: step shift delay — may change effective gear index.
+    const shiftResult = stepShiftDelay({
+      shiftState: this.shiftState,
+      currentGearIndex: this.gearIndex,
+      maxGearIndex: this.vehicle.gears.length - 1,
+      dt,
+      throttleCutFraction: this.shiftLogicParams.shiftThrottleCutFraction ?? 0.8,
+    });
+    // Apply completed deferred gear change.
+    if (shiftResult.gearJustChanged) {
+      this.gearIndex = shiftResult.effectiveGearIndex;
+    }
+    const shiftThrottleScale = shiftResult.throttleScale;
+
+    const boostMult = this.turboState?.torqueMultiplier ?? 1;
+
     let engineDriveT = 0;
     if (this.effectiveThrottle > 0) {
       const rpm = Math.max(ENGINE_IDLE, this.engineOmega * (60 / (2 * Math.PI)));
-      const thr = rpm > ENGINE_REDLINE ? this.effectiveThrottle * 0.05 : this.effectiveThrottle;
-      engineDriveT = engineTorqueAt(rpm) * thr;
+      const thrScaled = rpm > ENGINE_REDLINE
+        ? this.effectiveThrottle * 0.05 * shiftThrottleScale
+        : this.effectiveThrottle * shiftThrottleScale;
+      engineDriveT = engineTorqueAtWithMap(
+        rpm,
+        thrScaled,
+        boostMult,
+        this.engineTorqueCurveOverride,
+        this.engineTorqueMap,
+      ) * thrScaled;
     }
-    const offThrottle = clamp(1 - this.effectiveThrottle * 4, 0, 1);
-    const engineDragT = 0.04 * Math.abs(this.engineOmega) + 8 + 20 * offThrottle;
+    // M6: refined engine braking using authored `EngineBrakingParams` when
+    // available; falls back gracefully to the legacy flat model.
+    const engineDragT = this.engineBrakingParams
+      ? engineBrakeTorqueAt(this.engineOmega, this.effectiveThrottle, this.engineBrakingParams)
+      : (() => {
+          const offThrottle = clamp(1 - this.effectiveThrottle * 4, 0, 1);
+          return 0.04 * Math.abs(this.engineOmega) + 8 + 20 * offThrottle;
+        })();
 
     // Stash engine torques. The rotational chain (engine + clutch + gearbox
     // + diff + driven wheels) is integrated together by `stepDrivetrain`
@@ -1203,6 +2296,15 @@ export class RacingEngine {
     this.engineDriveTorqueNm = engineDriveT;
     this.engineDragTorqueNm = engineDragT;
     this.driveTorqueByWheel = [0, 0, 0, 0];
+
+    // R2: auto-clear refused flag when no shift input arrives this step and no
+    // shift is in progress, so the HUD refusal indicator dismisses after the
+    // driver releases the paddle rather than lingering until the next attempt.
+    const noShiftInput = !this.input.state.shiftUp && !this.input.state.shiftDown;
+    if (noShiftInput && !this.shiftState.inProgress) {
+      this.shiftState.lastRefused = false;
+      this.shiftState.lastRefusalReason = '';
+    }
 
     if (this.input.state.shiftUp) {
       this.shiftUp();
@@ -1217,7 +2319,7 @@ export class RacingEngine {
   private runWheelPass(dt: number): void {
     const speed = this.velocityWS.length();
     const maxBrakeTorque = this.vehicle.physics?.brakeTorqueMaxNm ?? 4200;
-    const brakeBiasFront = this.vehicle.physics?.brakeBiasFront ?? 0.565;
+    const brakeBiasFront = this.setupBrakeBiasFront;
     const aids = this.driverAids;
     const steerCmdRad = this.input.state.steerSmoothed * (this.vehicle.steerMaxDeg * RAD);
     const ackermann = computeAckermannAngles(
@@ -1227,7 +2329,15 @@ export class RacingEngine {
       this.setup.ackermannPct,
     );
 
-    // Phase 4 aero downforce: per-axle vertical load that grows with the
+    // M5: derive per-axle ride-height from suspension compression for aero map
+    // lookup. restLen - compression gives the current spring length; subtracting
+    // wheel radius approximates the chassis-to-ground clearance.
+    const frontRideHeightM = Math.max(0,
+      this.susp.restLenFront - (this.wheels[0].compression + this.wheels[1].compression) * 0.5 - this.wheels[0].radius);
+    const rearRideHeightM = Math.max(0,
+      this.susp.restLenRear - (this.wheels[2].compression + this.wheels[3].compression) * 0.5 - this.wheels[2].radius);
+
+    // Phase 4 / M5 aero downforce: per-axle vertical load that grows with the
     // chassis-local longitudinal speed squared. We add the per-wheel half
     // to `fz` BEFORE Pacejka so high-speed corners get the expected grip
     // boost. The matching upward chassis-force boost is canceled inside
@@ -1238,9 +2348,23 @@ export class RacingEngine {
       forwardSpeed: aeroLocalVel.z,
       clAreaFront: this.clAreaFront,
       clAreaRear: this.clAreaRear,
+      aeroMap: this.aeroMapPreset,
+      frontRideHeightM,
+      rearRideHeightM,
+      pitchDeg: this.pitchDeg,
     });
     this.lastAeroDownforce.front = aeroDown.frontDownforceN;
     this.lastAeroDownforce.rear = aeroDown.rearDownforceN;
+    this.lastAeroResult = {
+      effectiveClAreaFront: aeroDown.effectiveClAreaFront,
+      effectiveClAreaRear: aeroDown.effectiveClAreaRear,
+      copFraction: aeroDown.copFraction,
+      frontStalled: aeroDown.frontStalled,
+      rearStalled: aeroDown.rearStalled,
+      frontRideHeightM,
+      rearRideHeightM,
+      wakeReduction: this.lastAeroResult.wakeReduction,
+    };
     const aeroPerWheelFront = aeroDown.frontDownforceN * 0.5;
     const aeroPerWheelRear = aeroDown.rearDownforceN * 0.5;
 
@@ -1312,19 +2436,52 @@ export class RacingEngine {
     let frontAlignMz = 0;
     let frontAlignLoad = 0;
 
+    // M8: accumulate gyroscopic roll torque from steering wheels.
+    let gyroRollTorqueNm = 0;
+
     for (let i = 0; i < this.wheels.length; i++) {
       const w = this.wheels[i];
       const isFront = i < 2;
+
+      // M3: resolve travel-dependent kinematics (toe/camber/caster/roll-center).
+      // At this point `compression` is not yet available for the first iteration
+      // (kinematics need travel from the suspension raycast below), so we resolve
+      // kinematics using the PREVIOUS step's compression. This one-step lag is
+      // negligible at 240 Hz and is the standard real-time practice.
+      const prevTravel = w.prevCompression; // set from last step
+      const kinBumpSteerTable = isFront ? this.bumpSteerTableFront : this.bumpSteerTableRear;
+      const kinCamberTable = isFront ? this.camberTableFront : this.camberTableRear;
+      const kinCasterTable = isFront ? this.casterTableFront : this.casterTableRear;
+      const kinRcTable = isFront ? this.rollCenterTableFront : this.rollCenterTableRear;
+      const staticToe = isFront ? this.setup.frontToeDeg : this.setup.rearToeDeg;
+      const kin = resolveWheelKinematics({
+        staticToeDeg: staticToe,
+        staticCamberDeg: w.camberStaticDeg,
+        staticCasterDeg: this.setup.casterDeg,
+        travel: prevTravel,
+        lateralSign: w.lateralSign,
+        bumpSteerTable: kinBumpSteerTable,
+        camberTable: kinCamberTable,
+        casterTable: kinCasterTable,
+        rollCenterTable: kinRcTable,
+      });
+      // Store resolved kinematic state for snapshot/HUD.
+      w.toeDeg = kin.toeDeg;
+      w.camberDeg = kin.camberDeg;
+      w.rollCenterHeightM = kin.rollCenterHeightM;
+      // Use travel-resolved toe for the wheel-heading and slip-angle calc.
+      const effectiveToe = kin.toeDeg;
 
       // Toe must mirror across chassis sides — toe-in means each front wheel
       // rotates toward chassis centre, so FL gets a negative steer offset and
       // FR a positive one. `computeToeSlipOffset` returns the correctly
       // mirrored offset for the given axle and `lateralSign`.
       const toeOffset = computeToeSlipOffset(
-        w.toeDeg,
+        effectiveToe,
         w.lateralSign,
         isFront ? 'front' : 'rear',
       );
+      const prevSteerAngle = w.steerAngle;
       if (w.steer) {
         w.baseSteerAngle = i === 0 ? ackermann.leftRad : ackermann.rightRad;
         w.steerAngle = w.baseSteerAngle + toeOffset;
@@ -1332,16 +2489,29 @@ export class RacingEngine {
         w.baseSteerAngle = 0;
         w.steerAngle = toeOffset;
       }
+      // M8: gyroscopic torque from steering-induced precession.
+      if (w.steer) {
+        const steerRate = (w.steerAngle - prevSteerAngle) / Math.max(dt, 1e-6);
+        const gyro = computeGyroscopicTorque({
+          wheelOmega: w.omega,
+          wheelInertia: w.inertia,
+          steerRate,
+        });
+        gyroRollTorqueNm += gyro.torqueRollNm;
+      }
 
       const localPos = new Vector3(w.posLocal.x, w.posLocal.y + 0.47, w.posLocal.z);
       const worldAttach = localPos.clone().applyQuaternion(this.worldQuat).add(this.worldPos);
       const downDir = this.up.clone().multiplyScalar(-1);
-      const restLen = this.susp.restLen;
+      const restLen = isFront ? this.susp.restLenFront : this.susp.restLenRear;
       const maxLen = restLen + w.radius;
 
       let hit: { t: number; point: Vector3 } | null = null;
       if (downDir.y < 0) {
-        const t = (0 - worldAttach.y) / downDir.y;
+        // M4: resolve ground height from authored elevation/kerb data; falls
+        // back to 0 for flat-ground tracks without elevation data.
+        const groundY = this.surfaceLookup?.groundYAt(worldAttach.x, worldAttach.z) ?? 0;
+        const t = (groundY - worldAttach.y) / downDir.y;
         if (t > 0 && t <= maxLen) {
           hit = { t, point: worldAttach.clone().add(downDir.clone().multiplyScalar(t)) };
         }
@@ -1366,8 +2536,28 @@ export class RacingEngine {
         w.brakeTorqueApplied = 0;
         w.absScale = 1;
         w.yawContribution = 0;
-        w.tempC = stepTireTemperature({ tempC: w.tempC, slidePower: 0, contactSpeed: speed, dt });
+        // M1 multi-zone thermal cool-down while airborne (no slide energy).
+        w.thermalZones = stepTireTemperatureZones({
+          zones: w.thermalZones,
+          slidePower: 0,
+          contactSpeed: speed,
+          dt,
+        });
+        w.tempC = tireZoneAvgTemp(w.thermalZones);
+        // Update pressure from average temp.
+        w.pressureKpa = stepTirePressure({ pressureKpa: w.pressureKpa, tempAvgC: w.tempC, coldKpa: this.tireColdKpa, dt });
         w.brakeTempC = stepBrakeTemperature({ brakeTempC: w.brakeTempC, brakeTorque: 0, omega: 0, contactSpeed: speed, dt });
+        w.tireDeflection = 0;
+        w.tireDeflectionRate = 0;
+        w.relaxationLengthLongM = TIRE_RELAXATION_LENGTH_LONG_M;
+        w.relaxationLengthLatM = TIRE_RELAXATION_LENGTH_LAT_M;
+        w.slidingGripScale = 1;
+        w.slidingSpeedMps = 0;
+        w.pressureInner = 0.25;
+        w.pressureMiddle = 0.5;
+        w.pressureOuter = 0.25;
+        w.pressureCentroidM = 0;
+        w.overturningMomentNm = 0;
         // No tire / brake torque on an airborne wheel. Drive torque (when
         // the clutch is engaged) is applied by the drivetrain solver in
         // `runDrivetrainRotationalStep()`.
@@ -1381,15 +2571,39 @@ export class RacingEngine {
       w.compression = compression;
 
       const k = isFront ? this.susp.kFront : this.susp.kRear;
-      const cBump = isFront ? this.susp.cBumpFront : this.susp.cBumpRear;
-      const cReb = isFront ? this.susp.cReboundFront : this.susp.cReboundRear;
       const motionRatio = isFront ? this.susp.motionRatioFront : this.susp.motionRatioRear;
       const motionRatioSq = motionRatio * motionRatio;
-      const c = compressionVel >= 0 ? cBump : cReb;
-      const fzSpring = k * motionRatioSq * compression + c * motionRatioSq * compressionVel;
+      // M3 multi-knee damper: use authored DamperKneeParams when available;
+      // fall back to the flat cBump/cRebound already stored in susp.*.
+      const damperVelShaft = compressionVel * motionRatio;
+      const damperParams = isFront ? this.damperParamsFront : this.damperParamsRear;
+      let damperForce: number;
+      if (damperParams) {
+        // computeDamperForce already uses the shaft-velocity convention
+        // (positive = bump). Scale back by motionRatio² to get wheel-frame
+        // force — note the force is computed at shaft velocity so it must
+        // be reflected through the motion-ratio arm to produce a wheel-frame
+        // load. The factor is motionRatio (not motionRatio²) because
+        // computeDamperForce already returns the force at the shaft; the
+        // wheel sees it multiplied by the lever ratio once more.
+        damperForce = computeDamperForce(damperVelShaft, damperParams) * motionRatio;
+      } else {
+        const cBump = isFront ? this.susp.cBumpFront : this.susp.cBumpRear;
+        const cReb = isFront ? this.susp.cReboundFront : this.susp.cReboundRear;
+        const c = compressionVel >= 0 ? cBump : cReb;
+        damperForce = c * motionRatioSq * compressionVel;
+      }
+      const fzSpring = k * motionRatioSq * compression + damperForce;
+      // M3 progressive bump-stop: authored rate table when available.
       const bumpThreshold = isFront ? this.susp.bumpStopGapFrontM : this.susp.bumpStopGapRearM;
       const bumpRate = isFront ? this.susp.bumpStopRateFront : this.susp.bumpStopRateRear;
-      const bumpForce = computeBumpStopForce(compression, bumpThreshold, bumpRate);
+      const bumpStopTable = isFront ? this.bumpStopRateTableFront : this.bumpStopRateTableRear;
+      const bumpForce = computeProgressiveBumpStop({
+        compression,
+        threshold: bumpThreshold,
+        baseRateNpm: bumpRate,
+        rateTable: bumpStopTable,
+      });
       // Aero downforce share: split each axle total equally left/right.
       // Default `clArea*` of 0 keeps `aeroShift = 0` for road-car presets so
       // existing behaviour is preserved unless authoring data opts in.
@@ -1404,7 +2618,10 @@ export class RacingEngine {
       // that axle, mirroring the longitudinal-transfer split.
       const axleLatDelta = isFront ? lateralTransfer.frontDelta : lateralTransfer.rearDelta;
       const lateralShift = w.lateralSign * axleLatDelta * 0.5;
-      const fz = Math.max(0, fzSpring + bumpForce + w._arbDfz + aeroShift + longShift + lateralShift);
+      // M4: kerb bump impulse — additive Fz spike when the wheel rides over a
+      // raised kerb.  Zero on flat tracks or off-kerb positions.
+      const kerbImpulse = this.surfaceLookup?.kerbBumpImpulseAt(hit.point.x, hit.point.z) ?? 0;
+      const fz = Math.max(0, fzSpring + bumpForce + w._arbDfz + aeroShift + longShift + lateralShift + kerbImpulse);
       w.fz = fz;
       w.bumpStopForce = bumpForce;
       w.bumpStopPct = clamp(Math.max(0, compression - bumpThreshold) / 0.05, 0, 1);
@@ -1413,8 +2630,11 @@ export class RacingEngine {
 
       w.surface = this.surfaceLookup?.surfaceAt(hit.point.x, hit.point.z) ?? 'ASPHALT';
       const surf = SURFACE_TABLE[w.surface];
-      const mu = surf.mu * tireTempMu(w.tempC);
-      w.mu = mu;
+      // M1: use multi-zone tire thermal mu so inner/outer strip divergence
+      // affects grip. `tireTempMuZones` averages inner/middle/outer (weighted
+      // 25/50/25) then applies the same inverted parabola as `tireTempMu`.
+      const mu = surf.mu * tireTempMuZones(w.thermalZones);
+      // w.mu is overwritten below after pressure scaling is applied.
 
       const heading = computeWheelHeadingBasis(w.steerAngle);
       const wheelFwd = this.right.clone()
@@ -1429,6 +2649,12 @@ export class RacingEngine {
       const vAtContact = this.velocityWS.clone().add(new Vector3().crossVectors(this.omegaWS, r));
       const vx = vAtContact.dot(wheelFwd);
       const vy = vAtContact.dot(wheelLat);
+      const tireOverride = isFront
+        ? this.vehicle.physics?.tireFront
+        : this.vehicle.physics?.tireRear;
+      const slipVxForPatch = w.omega * w.radius - vx;
+      const slidingSpeedMps = Math.hypot(slipVxForPatch, vy);
+      w.slidingSpeedMps = slidingSpeedMps;
 
       // Phase 1 wheel-frame + relaxation-length pipeline:
       //   1. Compute INSTANTANEOUS slip targets in the project-local SAE
@@ -1446,18 +2672,38 @@ export class RacingEngine {
       });
       w.slipRatioTarget = targets.slipRatio;
       w.slipAngleTarget = targets.slipAngleRad;
+      const slipTargetMagnitude = Math.hypot(targets.slipRatio, targets.slipAngleRad);
+      const relaxationFz0 = tireOverride?.fz0 ?? 3500;
+      w.relaxationLengthLongM = computeLoadSensitiveRelaxationLength({
+        baseLengthM: TIRE_RELAXATION_LENGTH_LONG_M,
+        fz,
+        fz0: relaxationFz0,
+        mu,
+        pressureKpa: w.pressureKpa,
+        optimalPressureKpa: this.tireOptimalKpa,
+        slipMagnitude: slipTargetMagnitude,
+      });
+      w.relaxationLengthLatM = computeLoadSensitiveRelaxationLength({
+        baseLengthM: TIRE_RELAXATION_LENGTH_LAT_M,
+        fz,
+        fz0: relaxationFz0,
+        mu,
+        pressureKpa: w.pressureKpa,
+        optimalPressureKpa: this.tireOptimalKpa,
+        slipMagnitude: slipTargetMagnitude,
+      });
       w.slipRatioDynamic = stepRelaxedSlip({
         slipTarget: targets.slipRatio,
         slipDynamic: w.slipRatioDynamic,
         contactSpeed: targets.contactSpeed,
-        relaxationLength: TIRE_RELAXATION_LENGTH_LONG_M,
+        relaxationLength: w.relaxationLengthLongM,
         dt,
       });
       w.slipAngleDynamic = stepRelaxedSlip({
         slipTarget: targets.slipAngleRad,
         slipDynamic: w.slipAngleDynamic,
         contactSpeed: targets.contactSpeed,
-        relaxationLength: TIRE_RELAXATION_LENGTH_LAT_M,
+        relaxationLength: w.relaxationLengthLatM,
         dt,
       });
       w.slipRatio = w.slipRatioDynamic;
@@ -1466,31 +2712,97 @@ export class RacingEngine {
       const slipAngle = w.slipAngle;
       w.combinedSlip = Math.hypot(slipRatio, slipAngle);
 
+      // M1: resolve camber geometry BEFORE Pacejka so the effective camber
+      // angle can be fed into the MF lateral path (pCy2 term) instead of
+      // being added as a downstream add-on.
+      const rollRad = this.rollDeg * RAD;
+      // M3: use travel-resolved caster from kinematics (kin.casterDeg) when
+      // tables are authored; fall back to the static setup value otherwise.
+      // `kin` was resolved above from the previous step's compression.
+      const effectiveCasterDeg = kin.casterDeg;
+      const casterCamberRad = w.steer
+        ? computeCasterCamber(w.baseSteerAngle, effectiveCasterDeg)
+        : 0;
+      // M3: use travel-resolved camber (kin.camberDeg) as the static input
+      // when a camber table is authored; falls through to camberStaticDeg
+      // when no table is provided (kin.camberDeg === w.camberStaticDeg).
+      const camber = computeCamberThrust({
+        staticCamberRad: kin.camberDeg * RAD,
+        rollRad,
+        camberGain: w.camberGain,
+        casterCamberRad,
+        lateralSign: w.lateralSign,
+        fz,
+      });
+      w.camberRad = camber.camberRad;
+      // M1: camber thrust is only physically meaningful when the tire is
+      // rolling — at a standstill the relaxation-length slip dynamics are
+      // already driving Fy toward zero, but the MF camber path (fyCamber =
+      // pCy2 * camberRad * fz) would inject a spurious lateral force that
+      // creates non-zero Mz and drifts the alignment feedback signal. We
+      // apply the same standstill blend to the camberRad input that the
+      // slip-generated Fy receives below, so both contributions fade
+      // consistently as speed drops below 0.2 m/s.
+      const STANDSTILL_FY_FLOOR_MPS = 0.2;
+      const standstillFyScale = speed < STANDSTILL_FY_FLOOR_MPS
+        ? clamp(speed / STANDSTILL_FY_FLOOR_MPS, 0, 1)
+        : 1;
+      // The `fyCamber = pCy2 * camberRad * fz` term in `evaluatePureLateral`
+      // uses the raw camber angle, but the Pacejka lateral convention
+      // (positive Fy = force toward chassis-right) requires the camber
+      // force to be INWARD for negative camber. Multiplying by `lateralSign`
+      // mirrors the sign correctly: left wheel (lateralSign=-1) with
+      // negative camberRad → positive product → inward force.
+      const camberRadForMF = w.lateralSign * camber.camberRad * standstillFyScale;
+
+      // M1: pressure-sensitive mu: multiply surface×thermal mu by the
+      // pressure deviation factor so under/over-inflated tires lose grip.
+      const pressureMuScale = tirePressureMu(w.pressureKpa, this.tireOptimalKpa);
+      w.slidingGripScale = computeSlidingGripScale({ slidingSpeedMps });
+      const muWithPressure = mu * pressureMuScale * w.slidingGripScale;
+
       // Phase 2 Pacejka MF 5.6 evaluator: pure longitudinal/lateral curves
       // get dfz-based load sensitivity so peak force, slip stiffness, and
       // curvature scale with vertical load. Combined slip is weighted with
       // smooth MF-style cosines (Gxa, Gyk) normalized so they equal `1` at
       // pure slip — there is no `0.35` floor and no isotropic friction-circle
       // clamp downstream, so saturation comes entirely from the tire model.
-      const tireOverride = isFront
-        ? this.vehicle.physics?.tireFront
-        : this.vehicle.physics?.tireRear;
+      // M1: camberRad is now passed in so the MF evaluator integrates camber
+      // thrust into the lateral force (pCy2 path) rather than us adding it
+      // downstream.
       const tire = evaluatePacejka56Combined({
         kappa: slipRatio,
         alphaRad: slipAngle,
         fz,
-        muScale: mu,
+        muScale: muWithPressure,
         axle: isFront ? 'front' : 'rear',
         params: tireOverride,
+        camberRad: camberRadForMF,
       });
       let Fx = tire.fx;
       let Fy = tire.fy;
+      // Store peak diagnostics for snapshot / telemetry.
+      w.kappaPeak = tire.kappaPeak;
+      w.alphaPeakRad = tire.alphaPeakRad;
+      w.mu = muWithPressure;
+
+      // Phase 6F: standstill Fy blend — applied HERE, before Mz computation,
+      // so the aligning moment and feedback signal are both zeroed at rest.
+      // `standstillFyScale` was computed when scaling `camberRadForMF`; the
+      // same factor zeros Fy (slip + camber) as speed drops below 0.2 m/s.
+      // Applying it before `computeAligningMoment` prevents the relaxation-lag
+      // slip-angle carry-over from injecting a spurious Mz at standstill that
+      // would bias the steering-align filter. Fx is NOT scaled here — drive
+      // torque at low speed is the mechanism that accelerates the car from rest.
+      if (standstillFyScale < 1) {
+        Fy *= standstillFyScale;
+      }
 
       // Phase 6A aligning moment: pneumatic trail decays with slip, caster
       // adds mechanical trail at the front, and scrub-radius couples the
       // longitudinal force into yaw. Caster and scrub are front-axle
       // concerns — rear wheels report a pneumatic-only Mz.
-      const alignCasterDeg = w.steer ? this.setup.casterDeg : 0;
+      const alignCasterDeg = w.steer ? kin.casterDeg : 0;
       const alignScrubRadius = w.steer ? this.alignGeometry.scrubRadiusM : 0;
       const alignResult = computeAligningMoment({
         slipAngleRad: slipAngle,
@@ -1510,43 +2822,71 @@ export class RacingEngine {
         frontAlignLoad += fz;
       }
 
-      const rollRad = this.rollDeg * RAD;
-      const casterCamberRad = w.steer
-        ? computeCasterCamber(w.baseSteerAngle, this.setup.casterDeg)
-        : 0;
-      const camber = computeCamberThrust({
-        staticCamberRad: w.camberStaticDeg * RAD,
-        rollRad,
-        camberGain: w.camberGain,
-        casterCamberRad,
-        lateralSign: w.lateralSign,
-        fz,
+      // M1 multi-zone thermal: compute lateral bias from camber angle
+      // (negative camber tilts the load toward the inner strip) and from
+      // lateral load transfer sign (outer wheel runs hotter on the outside
+      // strip). `lateralSign` encodes which chassis side the wheel is on;
+      // the bias sign is: negative camber (inner tilt) → inner strip hotter
+      // → negative bias.
+      const camberBias = clamp(-camber.camberRad * 4, -1, 1);
+      const patchWidthScale = tirePressurePatchWidthScale(w.pressureKpa, this.tireOptimalKpa);
+      const pressureDistribution = computeContactPatchPressureDistribution({
+        camberRad: camber.camberRad,
+        pressureKpa: w.pressureKpa,
+        optimalPressureKpa: this.tireOptimalKpa,
       });
-      w.camberRad = camber.camberRad;
-      Fy += camber.thrust;
-
-      const slipVx = w.omega * w.radius - vx;
+      w.pressureInner = pressureDistribution.inner;
+      w.pressureMiddle = pressureDistribution.middle;
+      w.pressureOuter = pressureDistribution.outer;
+      w.pressureCentroidM = pressureDistribution.centroidM;
+      w.overturningMomentNm = computeOverturningMomentNm(fz, pressureDistribution);
+      const slipVx = slipVxForPatch;
       w.slidePower = Math.abs(Fx * slipVx) + Math.abs(Fy * vy);
-      w.tempC = stepTireTemperature({
-        tempC: w.tempC,
+      w.thermalZones = stepTireTemperatureZones({
+        zones: w.thermalZones,
         slidePower: w.slidePower,
         contactSpeed: Math.abs(vx),
+        lateralBias: camberBias,
+        patchWidthScale,
+        pressureDistribution,
         dt,
       });
-
-      // Phase 6F removed the broad `lowSpeedScale` fade. Dynamic slip with
-      // relaxation lag (Phase 1) + the post-drivetrain wheel-rotation lock
-      // (Phase 6E) now handle low-speed behaviour without the artificial
-      // ramp. We keep a narrow Fy-only standstill blend in the bottom
-      // 0.2 m/s of total chassis speed so a stray atan2-driven sideslip
-      // sample at exact rest cannot inject a tire-side lateral kick;
-      // longitudinal force passes through at full authority so launch
-      // grip is whatever Pacejka and the contact patch can actually
-      // produce.
-      const STANDSTILL_FY_FLOOR_MPS = 0.2;
-      if (speed < STANDSTILL_FY_FLOOR_MPS) {
-        Fy *= clamp(speed / STANDSTILL_FY_FLOOR_MPS, 0, 1);
-      }
+      w.tempC = tireZoneAvgTemp(w.thermalZones);
+      // Update pressure from new average temperature.
+      w.pressureKpa = stepTirePressure({
+        pressureKpa: w.pressureKpa,
+        tempAvgC: w.tempC,
+        coldKpa: this.tireColdKpa,
+        dt,
+      });
+      // M8 tire wear: deterministic, bounded accumulation from slip work and
+      // thermal load. The tiny baseline keeps channels finite and monotonic
+      // while preserving fresh-tire behaviour for short tests and old presets.
+      const normalizedSlideWork = fz > 1
+        ? clamp(w.slidePower / Math.max(1, fz * Math.max(1, targets.contactSpeed)), 0, 4)
+        : 0;
+      const thermalLoad = clamp((w.tempC - 70) / 110, 0, 2);
+      const slipWearLoad = clamp(Math.abs(slipRatio) * 0.55 + Math.abs(slipAngle) * 1.35 + normalizedSlideWork * 0.35, 0, 4);
+      const wearRate = (0.000002 + 0.00008 * slipWearLoad * (1 + thermalLoad)) * surfaceWearMultiplier(w.surface);
+      w.tireWear = clamp(w.tireWear + wearRate * dt, 0, 1);
+      // M1 tire vertical compliance: compute deflection-based contact force
+      // augmentation. The tire spring acts in series with the suspension;
+      // `stepTireVertical` returns the net contact force from the carcass
+      // spring + damper. We do not re-add this to fz (which already came
+      // from the suspension spring pass) but carry the deflection for the
+      // next step's damping rate computation.
+      const vertResult = stepTireVertical({
+        contactDistance: hit.t - w.radius,
+        radius: w.radius,
+        kTireNpm: this.tireRadialStiffnessNpm,
+        cTireNspm: this.tireRadialDampingNspm,
+        deflectionRate: w.tireDeflectionRate,
+        prevDeflection: w.tireDeflection,
+        pressureKpa: w.pressureKpa,
+        dt,
+      });
+      w.tireDeflection = vertResult.deflection;
+      w.tireDeflectionRate = vertResult.deflectionRate;
 
       // Phase 2 removed the isotropic `hypot(Fx, Fy) <= tireD(mu, fz)`
       // friction-circle clamp. Combined-slip MF saturates naturally — the
@@ -1567,19 +2907,47 @@ export class RacingEngine {
         fxAtContact: Fx,
         pct: isFront ? w.antiDivePct : w.antiSquatPct,
       });
-      const fzApplied = fz + fzGeo;
+      // M3 jacking force: lateral tire force acting through the roll-center
+      // height produces a vertical chassis force. We compute it and store it
+      // on the wheel state for telemetry; the actual chassis application is
+      // via the normal force projection (fzApplied) so the sign lifts the
+      // chassis on the loaded side under high lateral load.
+      const jackingForce = computeJackingForce({
+        fy: Fy,
+        rollCenterHeightM: w.rollCenterHeightM,
+        trackHalfM: this.vehicle.trackWidth * 0.5,
+      });
+      w.jackingForceN = jackingForce;
+      const fzApplied = fz + fzGeo + jackingForce;
 
       const force = new Vector3()
         .addScaledVector(this.up, fzApplied)
         .addScaledVector(wheelFwd, Fx)
         .addScaledVector(wheelLat, Fy);
-      totalForce.add(force);
-      const wheelTorque = new Vector3().crossVectors(r, force);
-      totalTorque.add(wheelTorque);
-      // Self-aligning moment about chassis up.
-      totalTorque.add(this.up.clone().multiplyScalar(w.mz));
-      // Diagnostic: this wheel's contribution to the chassis-up yaw axis.
-      w.yawContribution = wheelTorque.dot(this.up) + w.mz;
+      if (this.complianceActive) {
+        w._wheelForce = force;
+        w._wheelTorque = this.up.clone().multiplyScalar(w.mz);
+        w.yawContribution = new Vector3().crossVectors(r, force).dot(this.up) + w.mz;
+        // M9: when Jolt is active, apply forces directly to Jolt hub bodies.
+        if (this.useJolt && this.joltCtx && this.joltHubBodies) {
+          const { jolt, bodyInterface } = this.joltCtx;
+          const hub = this.joltHubBodies.hubBodies[i];
+          // Apply force at contact patch (approximate with hub center for now).
+          (bodyInterface as any).AddForce(hub, new (jolt as any).Vec3(force.x, force.y, force.z));
+          if (w.mz !== 0) {
+            const tq = new (jolt as any).Vec3(0, w.mz, 0);
+            (bodyInterface as any).AddTorque(hub, tq);
+          }
+        }
+      } else {
+        totalForce.add(force);
+        const wheelTorque = new Vector3().crossVectors(r, force);
+        totalTorque.add(wheelTorque);
+        // Self-aligning moment about chassis up.
+        totalTorque.add(this.up.clone().multiplyScalar(w.mz));
+        // Diagnostic: this wheel's contribution to the chassis-up yaw axis.
+        w.yawContribution = wheelTorque.dot(this.up) + w.mz;
+      }
 
       // Stash for the brake-stage second pass.
       w._fxFinal = Fx;
@@ -1602,6 +2970,11 @@ export class RacingEngine {
         : 0;
     const alignAlpha = 1 - Math.exp(-STEERING_ALIGN_FILTER_HZ * dt);
     this.steeringAlignFeedback += (alignNorm - this.steeringAlignFeedback) * alignAlpha;
+
+    // M8: apply accumulated gyroscopic roll torque to chassis.
+    // Project onto the chassis roll axis (this.right) in world space,
+    // not the fixed world-X axis, so the torque follows the car's yaw.
+    totalTorque.addScaledVector(this.right, gyroRollTorqueNm);
 
     this.appliedForce.copy(totalForce);
     this.appliedTorque.copy(totalTorque);
@@ -1655,6 +3028,15 @@ export class RacingEngine {
       w.escTorque = escBrakeTorque;
       const brakeTorque = brakeTorqueRaw + handbrakeTorque + escBrakeTorque;
       w.brakeTorqueApplied = brakeTorque;
+      // M8 flat-spot signal: accumulated only when a contacted tire is sliding
+      // longitudinally under substantial brake torque. ABS reduces the signal
+      // naturally through `abs.scale`; wet/slow defaults stay near zero.
+      const brakeCapacity = Math.max(1, maxBrakeTorque * biasFactor);
+      const brakeSeverity = clamp(brakeTorque / brakeCapacity, 0, 2);
+      const lockSeverity = clamp((Math.abs(w.slipRatio) - 0.22) / 0.78, 0, 1)
+        * clamp(Math.abs(vx) / 8, 0, 1)
+        * brakeSeverity;
+      w.flatSpotSignal = clamp(w.flatSpotSignal + lockSeverity * dt * 0.45, 0, 1);
       w.brakeTempC = stepBrakeTemperature({
         brakeTempC: w.brakeTempC,
         brakeTorque,
@@ -1703,7 +3085,7 @@ export class RacingEngine {
       transmissionOmega: this.transmissionOmega,
       wheels,
       gearRatio: gear.ratio,
-      finalDrive: this.vehicle.finalDrive,
+      finalDrive: this.vehicle.finalDrive * this.setupFinalDriveScale,
       engineDriveTorqueNm: this.engineDriveTorqueNm,
       engineDragTorqueNm: this.engineDragTorqueNm,
       params: this.drivetrainParams,
@@ -1714,17 +3096,36 @@ export class RacingEngine {
     this.driveTorqueByWheel = result.driveTorqueByWheel.slice(0, 4);
     this.clutchTorqueNm = result.clutchTorqueNm;
     this.clutchMode = result.clutchMode;
+
+    // M6: Driveline compliance — compute torsional spring torque between
+    // transmission output and average driven-wheel hub.  When no compliance
+    // is authored the result is zero and behaviour is unchanged.
+    const inGear = gear.ratio !== 0;
+    if (inGear && (this.complianceParams.shaftStiffnessNmRad ?? 0) > 0) {
+      const drivenOmegas = this.wheels
+        .filter(w => w.driveShare > 0)
+        .map(w => result.wheelOmegas[w.index]);
+      const avgWheelOmega = drivenOmegas.length > 0
+        ? drivenOmegas.reduce((s, v) => s + v, 0) / drivenOmegas.length
+        : 0;
+      const compResult = stepDrivelineCompliance({
+        state: this.complianceState,
+        inputOmega: result.transmissionOmega,
+        outputOmega: avgWheelOmega * Math.abs(gear.ratio * this.vehicle.finalDrive * this.setupFinalDriveScale),
+        params: this.complianceParams,
+        dt,
+      });
+      this.complianceSpringNm = compResult.springTorqueNm;
+    } else {
+      this.complianceSpringNm = 0;
+      if (!inGear) {
+        this.complianceState = makeDrivelineComplianceState();
+      }
+    }
+
     for (let i = 0; i < this.wheels.length; i++) {
       const w = this.wheels[i];
       let omega = result.wheelOmegas[i];
-      // Phase 6E low-speed wheel-rotation lock. Below the lock-speed window
-      // the contact patch barely moves, so tiny slip-ratio errors can
-      // otherwise grow into forward/backward chatter (the legacy
-      // `slipEps = 1.5` cliff was masking exactly this). The lock pins the
-      // wheel angular velocity to `vx / r` while drive torque stays small
-      // and clamps it to zero when the brake is firmly applied; both
-      // unlock automatically once real torque is present. Airborne wheels
-      // skip the lock entirely (no contact patch).
       if (w.contact) {
         const lock = applyLowSpeedWheelRotationLock({
           vx: w._vx,
@@ -1739,9 +3140,6 @@ export class RacingEngine {
         });
         omega = lock.omega;
       }
-      // Small per-step damping. Stronger for airborne wheels so a
-      // freely-spinning wheel does not pin the engine to redline forever
-      // through the locked-clutch kinematic coupling.
       const decayRate = w.contact ? 0.05 : 0.5;
       omega *= Math.exp(-decayRate * dt);
       w.omega = omega;
@@ -1750,8 +3148,31 @@ export class RacingEngine {
   }
 
   private runAero(): void {
+    // M8: wake-field drag reduction when following a lead car.
+    let wakeReduction = 0;
+    let effectiveCdA = this.cdA;
+    if (this.leadCarState) {
+      const wake = computeWakeEffect({
+        leadCarPos: this.leadCarState.pos,
+        leadCarVel: this.leadCarState.vel,
+        followerPos: this.worldPos,
+        wakeLengthM: this.vehicle.physics?.wakeLengthM ?? 20,
+        wakeWidthM: this.vehicle.physics?.wakeWidthM ?? 4,
+        wakeReductionPct: this.vehicle.physics?.wakeReductionPct ?? 0.25,
+      });
+      wakeReduction = wake.wakeReduction;
+      effectiveCdA *= (1 - wakeReduction);
+    }
+    this.lastAeroResult.wakeReduction = wakeReduction;
+
     const local = this.velocityWS.clone().applyQuaternion(this.worldQuat.clone().invert());
-    const drag = computeAeroDrag({ forwardSpeed: local.z, sideSpeed: local.x, cdArea: this.cdA });
+    const drag = computeAeroDrag({
+      forwardSpeed: local.z,
+      sideSpeed: local.x,
+      cdArea: effectiveCdA,
+      yawDragMap: this.aeroMapPreset?.yawDragMap,
+      speedKmh: this.speedKmh,
+    });
     this.aeroDragMagN = Math.hypot(drag.fxDragWS, drag.fzDragWS);
     const speed = this.velocityWS.length();
     const yawMoment = computeYawRestoringMoment({
@@ -1792,21 +3213,31 @@ export class RacingEngine {
     const gravity = new Vector3(0, -9.81 * this.chassisMass, 0);
     const totalForce = this.appliedForce.clone().add(gravity);
 
-    // Linear: a = F / m
+    // Semi-implicit Euler linear integration: advance velocity first with
+    // a = F/m, then advance position with the already-updated velocity.
+    // This removes the explicit-Euler energy-injection bias at the cost of
+    // a tiny implicit overshoot that is inconsequential at 240 Hz.
+    // No artificial linear damping is applied; all dissipation comes from
+    // tire rolling resistance, aero drag, and drivetrain losses.
     const accel = totalForce.divideScalar(this.chassisMass);
     this.velocityWS.addScaledVector(accel, dt);
-    // Linear damping (very mild — keeps integration stable at idle).
-    this.velocityWS.multiplyScalar(Math.exp(-0.02 * dt));
     this.worldPos.addScaledVector(this.velocityWS, dt);
 
-    // Don't sink through the ground.
-    const minHeight = this.susp.restLen + 0.34 + 0.05 - 0.4;
+    // Don't sink through the ground (account for authored terrain height).
+    const groundFloor = this.surfaceLookup?.groundYAt(this.worldPos.x, this.worldPos.z) ?? 0;
+    const minHeight = groundFloor + this.susp.restLen + 0.34 + 0.05 - 0.4;
     if (this.worldPos.y < minHeight) {
       this.worldPos.y = minHeight;
       if (this.velocityWS.y < 0) this.velocityWS.y = 0;
     }
 
-    // Angular: alpha = I^-1 * tau (in body frame). Rotate torque into body frame.
+    // Angular semi-implicit Euler: advance omega first, then integrate the
+    // quaternion with the updated omega. Body-frame formulation keeps the
+    // inertia tensor diagonal and avoids a world-frame tensor transform.
+    // A small structural damping (0.02 s⁻¹) replaces the old 0.18 s⁻¹
+    // fudge; at 240 Hz this is exp(-0.02/240) ≈ 0.9999, essentially free.
+    // All meaningful rotational dissipation comes from the tire lateral
+    // forces (Fy × moment arm) rather than from this term.
     const invQ = this.worldQuat.clone().invert();
     const torqueLocal = this.appliedTorque.clone().applyQuaternion(invQ);
     const omegaLocal = this.omegaWS.clone().applyQuaternion(invQ);
@@ -1816,10 +3247,10 @@ export class RacingEngine {
       torqueLocal.z / this.chassisInertia.z,
     );
     omegaLocal.addScaledVector(alpha, dt);
-    omegaLocal.multiplyScalar(Math.exp(-0.18 * dt));
+    omegaLocal.multiplyScalar(Math.exp(-0.02 * dt));
     this.omegaWS.copy(omegaLocal).applyQuaternion(this.worldQuat);
 
-    // Integrate orientation.
+    // Integrate orientation with the updated omega (semi-implicit).
     const dq = new Quaternion(this.omegaWS.x * 0.5 * dt, this.omegaWS.y * 0.5 * dt, this.omegaWS.z * 0.5 * dt, 0);
     const newQ = this.worldQuat.clone();
     newQ.x += dq.x * newQ.w + dq.y * newQ.z - dq.z * newQ.y;
@@ -1831,6 +3262,54 @@ export class RacingEngine {
 
     this.appliedForce.set(0, 0, 0);
     this.appliedTorque.set(0, 0, 0);
+  }
+
+  /** M9: Jolt-backed compliance step. Applies aero + torsion to the Jolt
+   *  chassis body, steps the physics system, then syncs poses back. */
+  private stepJoltCompliance(dt: number): void {
+    if (!this.joltCtx || !this.joltHubBodies) return;
+    const { jolt, physicsSystem, bodyInterface } = this.joltCtx;
+    const { chassisBody } = this.joltHubBodies;
+    const J = jolt as any;
+    const bi = bodyInterface as any;
+    const ps = physicsSystem as any;
+
+    // Sync chassis pose to Jolt (kinematic override so raycast stays
+    // authoritative for ground contact).
+    writeJoltBodyPose(
+      jolt, bi, chassisBody,
+      this.worldPos, this.worldQuat, this.velocityWS, this.omegaWS,
+    );
+
+    // Apply aero and gravity to Jolt chassis.
+    bi.AddForce(chassisBody, new J.Vec3(this.appliedForce.x, this.appliedForce.y, this.appliedForce.z));
+    bi.AddTorque(chassisBody, new J.Vec3(this.appliedTorque.x, this.appliedTorque.y, this.appliedTorque.z));
+    bi.AddForce(chassisBody, new J.Vec3(0, -9.81 * this.chassisMass, 0));
+
+    // Apply torsional restoring torque to chassis.
+    if (this.complianceConfig.chassisTorsionalStiffnessNmDeg > 0) {
+      const kRad = this.complianceConfig.chassisTorsionalStiffnessNmDeg * (Math.PI / 180);
+      const rollRad = this.rollDeg * (Math.PI / 180);
+      const torqueMag = -kRad * rollRad;
+      const torque = this.right.clone().multiplyScalar(torqueMag);
+      bi.AddTorque(chassisBody, new J.Vec3(torque.x, torque.y, torque.z));
+    }
+
+    this.appliedForce.set(0, 0, 0);
+    this.appliedTorque.set(0, 0, 0);
+
+    // Step Jolt. Disable gravity because we applied it manually.
+    const prevGravity = ps.GetGravity();
+    ps.SetGravity(new J.Vec3(0, 0, 0));
+    ps.Update(dt, 1, 1);
+    ps.SetGravity(prevGravity);
+
+    // Read back chassis state.
+    const chassisPose = readJoltBodyPose(jolt, bi, chassisBody);
+    this.worldPos.copy(chassisPose.pos);
+    this.worldQuat.copy(chassisPose.quat);
+    this.velocityWS.copy(chassisPose.vel);
+    this.omegaWS.copy(chassisPose.omega);
   }
 
   private updateChassisDerived(): void {
@@ -1859,9 +3338,13 @@ export class RacingEngine {
     // = right turn, sideslipDeg > 0 = velocity to chassis-right of forward.
     this.accelLongG = -localAccel.z / 9.81;
     this.prevLocalVelocity.copy(localVel);
+    // Sideslip: angle between chassis heading and velocity vector, in the
+    // chassis ground plane. `atan2(x, -z)` gives positive when the velocity
+    // vector leans toward chassis +X (right), which is the automotive/SAE
+    // convention: positive sideslip ↔ rear sliding out to the right.
+    // The speed gate suppresses the noisy atan2 at very low velocities.
     if (Math.abs(localVel.z) > 0.5 || Math.abs(localVel.x) > 0.5) {
-      this.sideslipRad =
-        Math.atan2(localVel.x, Math.max(0.001, Math.abs(localVel.z))) * Math.sign(-localVel.z || 1);
+      this.sideslipRad = Math.atan2(localVel.x, -localVel.z);
     } else {
       this.sideslipRad = 0;
     }

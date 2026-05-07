@@ -5,7 +5,7 @@ import { SurrealDbAdapter } from '../SurrealDbAdapter.js';
 import { SurrealRacingSessionRepository } from './SurrealRacingSessionRepository.js';
 import { SurrealLapResultRepository } from './SurrealLapResultRepository.js';
 import { SurrealRacingSetupRepository } from './SurrealRacingSetupRepository.js';
-import { defaultSetup } from '../../../shared/racing/index.js';
+import { clampSetup, defaultSetup } from '../../../shared/racing/index.js';
 
 describe('Racing Surreal repositories', () => {
   let db: Surreal;
@@ -82,5 +82,64 @@ describe('Racing Surreal repositories', () => {
 
   test('SurrealRacingSetupRepository returns null for missing user', async () => {
     expect(await setups.get('unknown-user')).toBeNull();
+  });
+
+  test('M7 SurrealRacingSetupRepository round-trips full V2 setup', async () => {
+    const v2Setup = {
+      ...defaultSetup(),
+      springFrontNpm: 75000,
+      springRearNpm: 70000,
+      damperBumpFrontScale: 1.2,
+      damperReboundFrontScale: 1.1,
+      damperBumpRearScale: 1.3,
+      damperReboundRearScale: 1.05,
+      diffPowerRamp: 0.6,
+      diffCoastRamp: 0.2,
+      diffPreloadNm: 80,
+      tirePressureFLKpa: 210,
+      tirePressureFRKpa: 215,
+      tirePressureRLKpa: 205,
+      tirePressureRRKpa: 208,
+      camberFrontDeg: -2.0,
+      camberRearDeg: -1.8,
+      brakeBiasFront: 0.58,
+      rideHeightFrontMm: 5,
+      rideHeightRearMm: -5,
+      fuelLoad: 0.75,
+      finalDriveScale: 1.1,
+    };
+    await setups.set('user-v2', v2Setup);
+    const fetched = await setups.get('user-v2');
+    expect(fetched).toEqual(v2Setup);
+  });
+
+  test('M7 SurrealRacingSetupRepository fills M7 defaults when reading old pre-M7 row', async () => {
+    // Simulate writing a pre-M7 row by inserting only the pre-M7 fields directly.
+    const legacyRow = {
+      frontToeDeg: 0.3,
+      rearToeDeg: -0.2,
+      casterDeg: 4.0,
+      ackermannPct: 0.3,
+      motionRatioFront: 1.0,
+      motionRatioRear: 1.0,
+      bumpStopGapFrontMm: 200,
+      bumpStopGapRearMm: 200,
+      bumpStopRateFrontNmm: 50,
+      bumpStopRateRearNmm: 50,
+    };
+    // We write a pre-M7 object; the repo should clamp and fill on read.
+    await setups.set('user-legacy', legacyRow as Parameters<typeof setups.set>[1]);
+    const fetched = await setups.get('user-legacy');
+    expect(fetched).not.toBeNull();
+    // Pre-M7 fields preserved
+    expect(fetched!.frontToeDeg).toBeCloseTo(0.3);
+    // M7 fields filled with defaults
+    expect(fetched!.springFrontNpm).toBe(0);
+    expect(fetched!.camberFrontDeg).toBeCloseTo(-1.5);
+    expect(fetched!.brakeBiasFront).toBeCloseTo(0.565);
+    expect(fetched!.fuelLoad).toBe(0);
+    expect(fetched!.finalDriveScale).toBe(1.0);
+    // Ensure it passes through clampSetup cleanly (idempotent)
+    expect(fetched).toEqual(clampSetup(fetched));
   });
 });

@@ -16,3 +16,17 @@ export {
   type PropPlacement,
   type SceneryPlacementInput,
 } from './scenery-placement.js';
+export {
+  ElevationMap,
+  HeightField,
+  TerrainContact,
+  type ElevationSample,
+  type HeightFieldParams,
+} from './elevation.js';
+export {
+  kerbContactAt,
+  kerbContactFromLateralOffset,
+  DEFAULT_KERB_PROFILE,
+  type KerbProfile,
+  type KerbContact,
+} from './kerb-geometry.js';
