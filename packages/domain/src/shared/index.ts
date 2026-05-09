@@ -1,3 +1,5 @@
+export { clamp } from './clamp.js';
+
 export const workspaceGreeting = 'Bun workspace packages are wired into the desktop app.';
 
 export const workspacePackages = ['desktop-app', 'ui', 'domain'] as const;

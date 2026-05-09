@@ -2,37 +2,28 @@
 
 Status: Draft  
 Date: 2026-05-08  
-Owner: AI Harness Program
+Owner: AI Harness Program  
+**Constraint: No new Pi extension. Use existing extensions, skills, agents, and tools only.**
 
 ---
 
 ## 1. POC Objective
 
-This POC proves that a **package-first harness** can improve Pi coding-agent reliability without changing Pi core. The chosen slice covers the three foundational phases from the PRD:
+This POC proves that the Pi AI Harness architecture (serial loop, deterministic checks, independent evaluators, Engineering Lead / Specialist separation) can be achieved **without building a new extension**. Instead, we compose the existing pi extensions and skills already installed in the environment.
 
-1. **Phase 1 — Documentation and templates** (immediate value, no runtime risk)
-2. **Phase 2 — Safety and audit** (path/command guardrails + `/harness:audit`)
-3. **Phase 3 — Minimal serial loop** (`/harness:run` with planner → generator → deterministic checks → evaluator → retry)
+The POC answers: **"Do we already have enough substrate to run a reliable harness, or are we missing critical pieces?"**
 
-### Why this slice?
-
-- It exercises every major Pi extension API (`tool_call`, `before_agent_start`, custom commands, `appendEntry`, session trees).
-- It produces user-visible value on day one (audit + policy).
-- It validates the core architectural bet: **deterministic checks before inferential judgment, independent evaluators, serial loops before DAGs**.
-- It keeps scope narrow enough for a single implementer to complete in 2–3 weeks.
-
-### POC Success Criteria
+### Success Criteria
 
 | # | Criterion | How Verified |
 |---|---|---|
-| 1 | Installable Pi package with manifest | `npm install` / `pi` package loader recognizes extensions, skills, prompts |
-| 2 | Path/command guardrails block dangerous operations | Extension intercepts `write`/`edit` to `.env`, `rm -rf`, `git push --force` |
-| 3 | `/harness:audit` lists loaded context, extensions, tools, skills, policy | Run command; inspect output |
-| 4 | `/harness:policy` inspects active rules | Run command; inspect output |
-| 5 | `/harness:run` executes serial loop end-to-end | Run command; verify planner → generator → checks → evaluator → report flow |
-| 6 | Evaluator returns structured JSON, does NOT edit files | Inspect evaluator output; confirm no file mutations |
-| 7 | Retry path works: evaluator findings route back to generator | Inject failing code; verify loop retries and fixes |
-| 8 | Raw traces preserved for diagnosis | Inspect session entries or sidecar files |
+| 1 | Inventory all existing harness substrate | This document lists every extension/skill/agent and maps it to a harness role |
+| 2 | Run a full serial loop on a real task | Planner → parallel generators → checks → evaluators → retry → report, end-to-end |
+| 3 | Evaluator does not edit files | Verify `domain-reviewer` output contains zero `edit`/`write` tool calls |
+| 4 | Deterministic checks run before eval | Verify `bun test` / `bun typecheck` executed and captured before reviewer turn |
+| 5 | Structured contract between roles | Planner outputs JSON contract; all downstream agents reference it |
+| 6 | Harness events logged | `pi-qmd-ledger` records loop events in structured JSONL |
+| 7 | Playbook skill exists | `harness-playbook` skill documents the exact orchestration steps|
 
 ---
 
@@ -42,426 +33,495 @@ This POC proves that a **package-first harness** can improve Pi coding-agent rel
 
 | Phase | Deliverable |
 |---|---|
-| Phase 1 | Starter skill templates (planner, generator, evaluator), prompt templates, policy schema doc |
-| Phase 2 | Extension with `tool_call` interception, path/command block/confirm, `/harness:audit`, `/harness:policy` |
-| Phase 3 | `/harness:run` command driving planner → generator → checks → evaluator → reporter (serial, single generator) |
+| Inventory | Map every installed extension, skill, and agent to harness roles |
+| Gap Analysis | Identify what you have vs. what the ideal harness needs |
+| Playbook | Create `harness-playbook` skill with exact orchestration steps |
+| JSON Schemas | Planner contract + evaluator output schemas (enforced via prompts) |
+| Simulation | Run at least one real task through the full serial loop |
 
-### Out of Scope (Deferred)
+### Out of Scope
 
-| Item | Deferred To |
+| Item | Reason |
 |---|---|
-| Multi-generator parallelism | Phase 3+ (measure serial bottleneck first) |
-| Dynamic task routing / DAG engine | Phase 3+ (proven need only) |
-| Multi-session orchestration with `/fork` | Phase 3+ (single-session loop first) |
-| QMD Subconscious integration | Phase 4 (memory package) |
-| Failure-learning extraction pipeline | Phase 4 |
-| Security evaluator agent | Phase 3+ (basic evaluator only) |
-| Hosted/ SaaS orchestration | Permanent non-goal |
+| New TypeScript extension | Constraint: use existing substrate only |
+| `tool_call` code interception | Currently impossible without new extension; simulated via prompt discipline |
+| `/harness:run` slash command | Not available without extension; simulated via natural-language invocation |
+| `/harness:audit` slash command | Simulated via `subagent({ action: "list" })` + `describe_ledger` + `wiki_status` |
+| Multi-session forking | `pi-subagents` `context: "fresh"` provides isolation; true `/fork` deferred |
 
 ---
 
-## 3. Architecture
+## 3. The Substrate You Already Have
 
-### High-Level Flow
+### 3.1 Installed Extensions
+
+| Extension | Path | Harness Role |
+|---|---|---|
+| `pi-subagents` | `npm:pi-subagents` | **Task Router** — `subagent()` with single/parallel/chain/async |
+| `pi-qmd-ledger` | `npm:pi-qmd-ledger` | **Memory / Observability** — structured append-only JSONL logging |
+| `pi-llm-wiki` | `npm:pi-llm-wiki` | **Durable Knowledge** — concepts, entities, post-mortems, learnings |
+| `pi-intercom` | `npm:pi-intercom` | **Cross-session Coordination** — parallel workspace orchestration |
+| `pi-ralph-wiggum` | `npm:@tmustier/pi-ralph-wiggum` | **Iterative Loop Engine** — paced development with checkpoints |
+| `pi-usage-extension` | `npm:@tmustier/pi-usage-extension` | **Telemetry** — token tracking, cost awareness |
+| `pi-cursor-provider` | `npm:pi-cursor-provider` | **Model Provider** — Cursor model access |
+
+### 3.2 Installed Skills
+
+| Skill | Harness Role |
+|---|---|
+| `conductor` | **Orchestration Topology** — adaptive multi-agent decomposition |
+| `plan-implemention` | **Planner Workflow** — investigation → plan handoff |
+| `backend-implementtion` | **Generator Feedforward** — clean architecture rules for backend |
+| `svelte-frontend` | **Generator Feedforward** — Svelte 5 rules for frontend |
+| `use-browser` | **Runtime Verification** — Playwright browser QA |
+| `qmd-ledger` | **Memory Injection** — structured fact tracking |
+| `post-mortem` | **Continuous Improvement** — extract learnings from sessions |
+| `self-evolve` | **Self-Improvement** — evolve AGENTS.md, skills, prompts |
+| `llm-wiki` | **Knowledge Management** — wiki capture, integration, audit |
+
+### 3.3 Defined Agents
+
+| Agent | Harness Role | edits? | Type |
+|---|---|---|---|
+| `context-builder` (builtin) | Context preparation | No | Orchestration |
+| `planner` (builtin) | Produces structured plan | No | Planner |
+| `scout` (builtin) | Codebase reconnaissance | No | Mapper / Investigator |
+| `oracle` (builtin) | Decision-consistency oracle | No | Evaluator/Advisor |
+| `delegate` (builtin) | Lightweight worker | Yes | Generic Generator |
+| `worker` (builtin) | Generic implementation | Yes | Generic Generator |
+| `reviewer` (builtin) | General code review | No | Evaluator |
+| `researcher` (builtin) | Web research | No | Investigator |
+| `backend-worker` (user) | Backend specialist | Yes | Specialist Generator |
+| `frontend-worker` (user) | Frontend specialist | Yes | Specialist Generator |
+| `qa-worker` (user) | Testing + verification | Yes | QA Specialist |
+| `domain-reviewer` (user) | Architecture review | No | Evaluator |
+| `iterative-implementer` (user) | Multi-pass implementation | Yes | Generator with resume |
+| `designer` (user) | Visual design | No | Design Specialist |
+
+### 3.4 Context Files (Harness Policy / Feedforward)
+
+| File | Harness Role |
+|---|---|
+| `~/.pi/agent/AGENTS.md` | **Engineering Lead Protocol** — conductor rules, delegation policy, worker routing, runtime verification mandate |
+| `~/.pi/agent/APPEND_SYSTEM.md` | **Strict Delegation Protocol** — hard rule: conductor never coder, pre-action checkpoints |
+| `~/.pi/agent/settings.json` | **Harness Config** — model defaults, behavior overrides |
+| `qmd-ledger.config.json` | **Memory Config** — ledger schemas, injectors |
+| `~/.pi/agent/SUBAGENT_MODEL_MATRIX.md` | **Model Routing Policy** — difficulty-based model selection |
+
+### 3.5 Chains
+
+| Chain | Harness Role |
+|---|---|
+| `scout-implement-review` | Mapper → Generator → Evaluator (sequential) |
+| `implement-test-review` | Generator → QA → Evaluator (sequential) |
+
+---
+
+## 4. Mapping: Ideal Harness vs. What You Have
+
+### 4.1 The Ideal Harness Architecture
 
 ```mermaid
 flowchart TD
-    User["User"] -->|"/harness:run <request>"| Cmd["/harness:run Command"]
-    Cmd -->|load policy| Policy[".pi/harness-policy.json"]
-    Cmd -->|inject contract| Planner["Planner Skill / Prompt"]
-    Planner -->|JSON contract| Router["Task Router (in-run)"]
-    Router -->|scope + checks| Generator["Generator Skill / Prompt"]
-    Generator -->|diff| Det["Deterministic Checks"]
-    Det -->|pass/fail logs| Eval["Evaluator Skill / Prompt"]
-    Eval -->|structured findings| Retry{"Retry Budget > 0?"}
-    Retry -->|yes| Generator
-    Retry -->|no| Report["Reporter (summary)"]
+    User["User Request"] --> Lead["Engineering Lead<br/>(Supervisor)"]
+    Lead -->|"/harness:run"| Planner["Planner<br/>JSON Contract"]
+    Planner --> Router["Task Router"]
+    Router --> Gen["Specialist Generator"]
+    Gen --> Checks["Deterministic Checks<br/>tsc, lint, tests"]
+    Checks --> Eval["Independent Evaluator<br/>Read-Only"]
+    Eval -->|findings| Retry{"Retry?<br/>budget > 0"}
+    Retry -->|yes| Gen
+    Retry -->|no| Report["Reporter"]
     Report --> User
-
-    Ext["Policy Extension"]
-    Ext -->|intercept| Tool["tool_call hook"]
-    Tool -->|block/confirm/log| Audit["/harness:audit"]
 ```
 
-### Component Definitions
+### 4.2 How to Simulate This Without New Extensions
 
-| Component | Role | Pi Surface |
+| Ideal Component | Simulation Using Existing Tools | Caveat |
 |---|---|---|
-| **Engineering Lead** | User-facing coordinator (internal: supervisor/orchestrator) | `/harness:run` command |  
-| **Planner** | Produces structured contract: goal, constraints, acceptance criteria, scope, risks | `skills/planner/SKILL.md` + prompt template |
-| **Generator** | Scoped implementer; makes one small diff within declared paths | `skills/generator/SKILL.md` + prompt template |
-| **Deterministic Checks** | `tsc`, lint, tests, build, schema validation run BEFORE evaluator | Extension `bash` tool interception or command wrapper |
-| **Evaluator** | Read-only judge; receives contract, diff, check output; returns structured findings | `skills/evaluator/SKILL.md` + prompt template; must NOT call `write`/`edit` |
-| **Reporter** | Final summary + residual risk | Inline in `/harness:run` command logic |
-| **Policy Extension** | `tool_call` interception for path/command guardrails + structured logging | `src/extensions/policy.ts` |
-| **Audit Command** | Inspect loaded harness state | `src/commands/audit.ts` |
+| **Engineering Lead** | Parent session reads `AGENTS.md` + `conductor` skill | Requires discipline; no code enforcement |
+| **Task Router** | `subagent()` from `pi-subagents` | Supports parallel, chain, async; no dynamic routing yet |
+| **Planner** | `planner` agent or `plan-implemention` skill | Freeform text output; need to enforce JSON schema via prompt |
+| **Backend Generator** | `backend-worker` agent + `backend-implementtion` skill | Scope via prompt only; no code-enforced `writes_to` |
+| **Frontend Generator** | `frontend-worker` agent + `svelte-frontend` skill | Scope via prompt only |
+| **QA Generator** | `qa-worker` agent | Scope via prompt only |
+| **Deterministic Checks** | `bash` tool with `bun test`, `bun typecheck`, etc. | Must be manually sequenced before evaluator |
+| **Independent Evaluator** | `domain-reviewer` or `reviewer` agent with `context: "fresh"` | Isolation via context reset; no code-enforced read-only |
+| **Retry Loop** | Parent session routes findings back to generator | Manual routing; budget enforced by parent |
+| **Reporter** | Parent session synthesizes final summary | Manual synthesis |
+| **Audit** | `subagent({ action: "list" })` + `describe_ledger` + `wiki_status` | No single command; manual assembly |
+| **Memory/Observability** | `pi-qmd-ledger` for structured events; `pi-llm-wiki` for learnings | Requires explicit logging calls |
+| **Session Isolation** | `context: "fresh"` in subagent calls | Per-turn isolation; not full branch forking |
+| **Iterative Long Loops** | `ralph_start` / `ralph_done` | Perfect for multi-turn harness loops |
 
 ---
 
-## 4. Implementation Plan
+## 5. The Missing Pieces (Gaps)
 
-### Milestone 1 — Phase 1: Templates & Schemas (Week 1)
-
-| Day | Task | Output |
+| Gap | Impact | What Would Fix It |
 |---|---|---|
-| 1–2 | Scaffold Pi package (`package.json`, `tsconfig.json`, build script) | `package.json` with `pi` manifest |
-| 2–3 | Define policy schema JSON + example | `schemas/harness-policy.schema.json`, `.pi/harness-policy.json` example |
-| 3–4 | Write planner skill + prompt template | `skills/planner/SKILL.md`, `prompts/planner.md` |
-| 4–5 | Write generator skill + prompt template | `skills/generator/SKILL.md`, `prompts/generator.md` |
-| 5 | Write evaluator skill + prompt template | `skills/evaluator/SKILL.md`, `prompts/evaluator.md` |
+| No `tool_call` interception | Cannot code-enforce path protection or read-only evaluators | New extension with `pi.on("tool_call", ...)` |
+| No `/harness:run` command | Must invoke loop manually via prompts | Playbook skill + muscle memory; later a custom extension command |
+| No structured planner JSON enforcement | Planner output is freeform | Strict prompt template + parent parsing; later JSON mode |
+| No automatic audit assembly | Must run 3+ commands to see "what is loaded" | Playbook skill combining `subagent list`, `describe_ledger`, `wiki_status` |
+| No retry budget counter | Parent must count retries manually | Parent discipline; later extension state via `appendEntry` |
+| No diff capture before evaluation | Must manually track what changed | Git diff or session inspection; later extension-sidecar |
 
-### Milestone 2 — Phase 2: Safety & Audit (Week 2)
-
-| Day | Task | Output |
-|---|---|---|
-| 6–7 | Implement policy extension with `tool_call` interception | `src/extensions/policy.ts` |
-| 7–8 | Implement path protection engine | Policy engine: block/confirm/allow logic |
-| 8–9 | Implement command protection engine | Dangerous command block/confirm list |
-| 9–10 | Implement `/harness:audit` command | `src/commands/audit.ts` |
-| 10 | Implement `/harness:policy` command | `src/commands/policy.ts` |
-
-### Milestone 3 — Phase 3: Serial Loop (Week 2–3)
-
-| Day | Task | Output |
-|---|---|---|
-| 11–12 | Implement `/harness:run` command scaffold | `src/commands/run.ts` |
-| 12–13 | Planner invocation + contract parsing | Extract JSON contract from planner output |
-| 13–14 | Generator invocation + diff capture | Run generator; capture changed files |
-| 14–15 | Deterministic checks runner | Execute configured checks; capture stdout/stderr/exit codes |
-| 15–16 | Evaluator invocation + structured output parsing | Parse evaluator JSON; severity sort |
-| 16–17 | Retry loop + budget logic | Route findings to generator; decrement budget |
-| 17–18 | Reporter + final summary | Short structured report with residual risk |
-| 18–19 | End-to-end testing + bug fixes | All 8 success criteria pass |
-| 19–21 | Polish: README, install instructions, package publish prep | README.md, INSTALL.md |
+**Verdict: 6 out of 8 success criteria achievable without new code.** Gaps are in enforcement, not capability.
 
 ---
 
-## 5. Key Technical Decisions
+## 6. Implementation Plan
 
-### 5.1 Package Name & Structure
+### Week 1: Playbook + Schemas
 
-```json
-// package.json
+| Day | Task | Output |
+|---|---|---|
+| 1 | Create `harness-playbook` skill | `~/.pi/agent/skills/harness-playbook/SKILL.md` |
+| 2 | Define planner contract JSON schema | Documented schema; enforced via planner prompt |
+| 3 | Define evaluator output JSON schema | Documented schema; enforced via evaluator prompt |
+| 4 | Add harness section to AGENTS.md | "Harness Mode" workflow section |
+| 5 | Configure `pi-qmd-ledger` for harness events | Ledger schema update if needed |
+
+### Week 2: Run Full Loop on Real Task
+
+| Day | Task | Verification |
+|---|---|---|
+| 6–7 | Pick a real feature to build | User-approved scope |
+| 8 | Run planner → extract contract | Output is parseable JSON |
+| 9 | Run parallel generators with contract | Workers reference contract in output |
+| 10 | Run deterministic checks | Capture exit codes and stdout |
+| 11 | Run evaluators in `fresh` context | No edit tool calls in output |
+| 12 | Retry if findings; route back | Parent manually routes; log retry count |
+| 13 | Final verification with `qa-worker` | Browser/screenshot evidence |
+| 14 | Log events to ledger; capture to wiki | Entries exist in `main.jsonl` and wiki |
+
+---
+
+## 7. The `harness-playbook` Skill (Core Deliverable)
+
+This skill is the **entire POC in one file**. No extension needed.
+
+Create at: `~/.pi/agent/skills/harness-playbook/SKILL.md`
+
+```markdown
+---
+name: harness-playbook
+description: Run the Pi AI Harness serial loop using existing extensions and agents. Use for complex features requiring planner → generator → deterministic checks → evaluator → retry → report. No new extension required.
+---
+
+# Harness Serial Loop (Using Existing Pi Substrate)
+
+## Prerequisites Verified
+- `pi-subagents` installed
+- `pi-qmd-ledger` installed
+- `pi-llm-wiki` installed (optional but recommended)
+- `conductor` skill available
+- `backend-worker`, `frontend-worker`, `qa-worker`, `domain-reviewer` agents defined
+
+## Phase 1 — Plan
+
+Invoke planner to produce structured contract:
+
+```javascript
+subagent({
+  agent: "planner",
+  task: `Create a structured harness contract for: <TASK>
+
+Output MUST be valid JSON matching this schema:
 {
-  "name": "@local/pi-harness-poc",
-  "version": "0.1.0",
-  "keywords": ["pi-package"],
-  "pi": {
-    "extensions": ["./dist/extensions"],
-    "skills": ["./skills"],
-    "prompts": ["./prompts"]
-  }
-}
-```
-
-### 5.2 Policy Schema (`.pi/harness-policy.json`)
-
-```json
-{
-  "$schema": "./node_modules/@local/pi-harness-poc/schemas/harness-policy.schema.json",
   "version": "1.0",
-  "path_protection": {
-    "block": [
-      ".env*",
-      ".ssh/**",
-      ".aws/**",
-      ".git/**",
-      "node_modules/**",
-      "**/secrets/**"
-    ],
-    "confirm": [
-      "*.lock",
-      "package-lock.json",
-      "yarn.lock",
-      "pnpm-lock.yaml"
-    ]
+  "task_id": "<uuid>",
+  "goal": "...",
+  "constraints": ["..."],
+  "acceptance_criteria": ["..."],
+  "scope": {
+    "write_paths": ["..."],
+    "read_paths": ["..."],
+    "cannot_touch": ["..."]
   },
-  "command_protection": {
-    "block": [
-      { "pattern": "rm\\s+-rf\\s+/", "reason": "destructive system delete" },
-      { "pattern": "git\\s+push\\s+.*--force", "reason": "force push" },
-      { "pattern": "chmod\\s+777", "reason": "overly permissive" }
-    ],
-    "confirm": [
-      { "pattern": "rm\\s+-rf", "reason": "recursive delete" },
-      { "pattern": "git\\s+push", "reason": "remote mutation" },
-      { "pattern": "npm\\s+publish", "reason": "publication" }
-    ]
-  },
-  "scope_protection": {
-    "projects": {
-      "my-monorepo": {
-        "backend": ["apps/api/**"],
-        "frontend": ["apps/web/**"]
-      }
-    }
-  },
-  "logging": {
-    "blocked_attempts": true,
-    "confirmations": true,
-    "sidecar_path": ".pi/harness-log.jsonl"
-  }
-}
+  "required_checks": ["bun test", "bun typecheck", "bun lint"],
+  "risks": ["..."],
+  "estimated_effort": "small|medium|large"
+}`
+})
 ```
 
-### 5.3 Planner Contract Schema
+Parent parses JSON from planner output. If invalid, re-invoke with correction prompt.
+
+## Phase 2 — Route (Engineering Lead)
+
+Use conductor skill to choose topology:
+- Single-layer → single specialist
+- Frontend + backend → parallel workers
+- High-risk → add pre-implementation scout
+
+## Phase 3 — Generate
+
+Dispatch workers with contract injected into prompt:
+
+```javascript
+subagent({
+  tasks: [
+    {
+      agent: "backend-worker",
+      task: `Engineering Lead contract: <CONTRACT_JSON>
+
+Implement ONLY within write_paths. Run required_checks after changes. Report: files changed, tests run, results.`,
+      context: "fresh"
+    },
+    {
+      agent: "frontend-worker",
+      task: `Engineering Lead contract: <CONTRACT_JSON>
+
+Implement ONLY within write_paths. Run required_checks after changes. Report: files changed, tests run, results.`,
+      context: "fresh"
+    }
+  ],
+  concurrency: 2
+});
+```
+
+## Phase 4 — Deterministic Checks
+
+Run checks BEFORE evaluator. Capture evidence:
+
+```javascript
+bash({ command: "bun test && bun typecheck && bun lint" });
+```
+
+Record: command, exit code, stdout, stderr.
+
+## Phase 5 — Evaluate (Independent, Read-Only)
+
+Run evaluators in FRESH context with contract + diff + check output:
+
+```javascript
+subagent({
+  tasks: [
+    {
+      agent: "domain-reviewer",
+      task: `Review this diff for clean architecture violations.
+
+Contract: <CONTRACT_JSON>
+Check output: <CHECK_OUTPUT>
+Diff: <GIT_DIFF>
+
+DO NOT EDIT FILES. Report findings only.
+Output valid JSON matching evaluator schema.`,
+      context: "fresh"
+    },
+    {
+      agent: "reviewer",
+      task: `Review this diff for correctness, tests, edge cases.
+
+Contract: <CONTRACT_JSON>
+Check output: <CHECK_OUTPUT>
+Diff: <GIT_DIFF>
+
+DO NOT EDIT FILES. Report findings only.
+Output valid JSON matching evaluator schema.`,
+      context: "fresh"
+    }
+  ],
+  concurrency: 2
+});
+```
+
+## Phase 6 — Retry (if needed)
+
+If any evaluator returns `status: "fail"` and retry_budget > 0:
+
+1. Decrement retry_budget.
+2. Route SEVERITY-ORDERED findings back to generator:
+   - Critical findings → original worker
+   - Architecture findings → domain-reviewer first, then worker
+3. Re-run checks after fix.
+4. Re-run evaluators.
+
+Budget default: 3 retries.
+
+## Phase 7 — Runtime Verification
+
+```javascript
+subagent({
+  agent: "qa-worker",
+  task: `Verify feature works in running dev server.
+
+Contract: <CONTRACT_JSON>
+Run browser checks if UI. Capture screenshots at checkpoints.
+Return: tested paths, screenshots, pass/fail.`,
+  context: "fresh"
+});
+```
+
+## Phase 8 — Report & Log
+
+Parent synthesizes final report:
+- What changed
+- Check results
+- Evaluator findings (resolved/unresolved)
+- Screenshots / runtime evidence
+- Residual risk
+
+Log harness event:
+
+```javascript
+append_ledger({
+  ledger: "main",
+  mode: "autopilot",
+  entry: {
+    type: "harness_run",
+    task_id: "...",
+    status: "pass|partial|fail",
+    retries_used: 1,
+    evaluators_run: ["domain-reviewer", "reviewer"],
+    checks_passed: ["bun test", "bun typecheck"],
+    checks_failed: [],
+    residual_risk: "...",
+    timestamp: new Date().toISOString()
+  }
+});
+```
+
+## Audit (Simulated)
+
+When asked "what is loaded?" or "audit harness":
+
+```javascript
+subagent({ action: "list" });           // agents, chains, capabilities
+describe_ledger({ ledger: "main" });     // event history
+wiki_status();                           // wiki state
+```
+
+Synthesize into single audit summary.
+```
+
+---
+
+## 8. JSON Schemas for the Simulation
+
+### 8.1 Planner Contract
 
 ```json
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "HarnessPlannerContract",
-  "type": "object",
-  "required": ["version", "goal", "acceptance_criteria", "scope"],
-  "properties": {
-    "version": { "type": "string", "const": "1.0" },
-    "task_id": { "type": "string" },
-    "goal": { "type": "string", "maxLength": 500 },
-    "constraints": {
-      "type": "array",
-      "items": { "type": "string" }
-    },
-    "acceptance_criteria": {
-      "type": "array",
-      "items": { "type": "string" },
-      "minItems": 1
-    },
-    "scope": {
-      "type": "object",
-      "required": ["write_paths", "read_paths"],
-      "properties": {
-        "write_paths": { "type": "array", "items": { "type": "string" } },
-        "read_paths": { "type": "array", "items": { "type": "string" } },
-        "cannot_touch": { "type": "array", "items": { "type": "string" } }
-      }
-    },
-    "required_checks": {
-      "type": "array",
-      "items": { "type": "string" }
-    },
-    "risks": {
-      "type": "array",
-      "items": { "type": "string" }
-    },
-    "estimated_effort": {
-      "type": "string",
-      "enum": ["trivial", "small", "medium", "large"]
-    }
-  }
+  "version": "1.0",
+  "task_id": "uuid-v4",
+  "goal": "string (max 500 chars)",
+  "constraints": ["string"],
+  "acceptance_criteria": ["string (min 1)"],
+  "scope": {
+    "write_paths": ["glob pattern"],
+    "read_paths": ["glob pattern"],
+    "cannot_touch": ["glob pattern"]
+  },
+  "required_checks": ["command string"],
+  "risks": ["string"],
+  "estimated_effort": "trivial|small|medium|large"
 }
 ```
 
-### 5.4 Evaluator Output Schema
+### 8.2 Evaluator Output
 
 ```json
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "HarnessEvaluatorOutput",
-  "type": "object",
-  "required": ["version", "status"],
-  "properties": {
-    "version": { "type": "string", "const": "1.0" },
-    "status": {
-      "type": "string",
-      "enum": ["pass", "fail", "needs_inspection"]
-    },
-    "checks_run": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "command": { "type": "string" },
-          "exit_code": { "type": "integer" },
-          "passed": { "type": "boolean" }
-        }
-      }
-    },
-    "findings": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["severity", "message"],
-        "properties": {
-          "severity": {
-            "type": "string",
-            "enum": ["critical", "high", "medium", "low", "info"]
-          },
-          "category": {
-            "type": "string",
-            "enum": ["functionality", "security", "performance", "architecture", "tests", "ux", "scope_creep"]
-          },
-          "message": { "type": "string" },
-          "file": { "type": "string" },
-          "line": { "type": "integer" },
-          "repro_steps": {
-            "type": "array",
-            "items": { "type": "string" }
-          },
-          "expected": { "type": "string" },
-          "actual": { "type": "string" },
-          "suggested_fix": { "type": "string" }
-        }
-      }
-    },
-    "meta": {
-      "type": "object",
-      "properties": {
-        "evaluator_model": { "type": "string" },
-        "evaluator_tokens_used": { "type": "integer" },
-        "time_ms": { "type": "integer" }
-      }
+  "version": "1.0",
+  "status": "pass|fail|needs_inspection",
+  "findings": [
+    {
+      "severity": "critical|high|medium|low|info",
+      "category": "functionality|security|performance|architecture|tests|ux|scope_creep",
+      "message": "string",
+      "file": "string (optional)",
+      "line": "integer (optional)",
+      "repro_steps": ["string"],
+      "expected": "string",
+      "actual": "string",
+      "suggested_fix": "string"
     }
-  }
+  ]
 }
 ```
 
-### 5.5 Evaluator Rules (Enforced by Policy Extension)
+---
 
-The evaluator skill MUST NOT call `write`, `edit`, `bash` with destructive commands, or any file-mutating tool. The policy extension enforces this by:
+## 9. Recommended AGENTS.md Update
 
-1. Detecting evaluator role via prompt template metadata or session state.
-2. Blocking all `write`/`edit` calls from evaluator context.
-3. Returning structured error if evaluator attempts mutation.
+Add this section to `~/.pi/agent/AGENTS.md`:
+
+```markdown
+## Harness Mode Activation
+
+When the user request is complex (multi-file, cross-layer, or high-risk), activate harness mode:
+
+1. **Read `harness-playbook` skill** before orchestrating.
+2. **Always plan first** — use `planner` agent to produce structured contract.
+3. **Always isolate evaluators** — use `context: "fresh"` for `domain-reviewer`, `reviewer`, `oracle`.
+4. **Always run checks before evaluators** — `bun test`, `bun typecheck`, etc.
+5. **Never route evaluator findings back without retry budget check** — max 3 retries.
+6. **Always log** — `append_ledger` for every harness run event.
+7. **Always verify runtime** — `qa-worker` with browser skill for UI, shell commands for API.
+```
 
 ---
 
-## 6. Concrete File Inventory
+## 10. Test Strategy for the POC
 
-### Package Root
+### Test 1: End-to-End Feature Build
+Pick a real feature (e.g., "Add a user settings endpoint + UI panel"). Run full loop:
+- Planner produces JSON contract ✓
+- Parallel backend + frontend workers execute ✓
+- Checks run and pass ✓
+- Evaluators return structured JSON, no edits ✓
+- Runtime verification captures screenshots ✓
+- Event logged to ledger ✓
 
-| File | Purpose |
-|---|---|
-| `package.json` | Pi package manifest with `pi` key |
-| `tsconfig.json` | TypeScript config for extension build |
-| `README.md` | Install, configure, usage docs |
-| `INSTALL.md` | Step-by-step install for new projects |
+### Test 2: Evaluator Isolation
+Deliberately try to trick evaluator into editing. Verify `domain-reviewer` prompt says "Do not edit" and output contains no `edit`/`write` tool calls.
 
-### Extensions
+### Test 3: Retry Path
+Introduce a known bug in generator output. Verify evaluator catches it, parent routes back, generator fixes, final pass.
 
-| File | Purpose |
-|---|---|
-| `src/extensions/policy.ts` | Core `tool_call` interceptor; path + command protection |
-| `src/extensions/audit.ts` | Collects harness state for audit command |
-| `src/extensions/run.ts` | Orchestration state manager for `/harness:run` |
-
-### Commands
-
-| File | Purpose |
-|---|---|
-| `src/commands/audit.ts` | `/harness:audit` — list context, extensions, tools, skills, policy, session state |
-| `src/commands/policy.ts` | `/harness:policy` — inspect active rules |
-| `src/commands/run.ts` | `/harness:run <request>` — drive serial loop |
-
-### Skills
-
-| File | Purpose |
-|---|---|
-| `skills/planner/SKILL.md` | Produce structured contract from user request |
-| `skills/generator/SKILL.md` | Make small diff within declared scope |
-| `skills/evaluator/SKILL.md` | Read-only review against contract + check output |
-| `skills/reporter/SKILL.md` | Summarize loop result + residual risk (lightweight) |
-
-### Prompts
-
-| File | Purpose |
-|---|---|
-| `prompts/planner.md` | Feedforward prompt: contract structure, anti-patterns |
-| `prompts/generator.md` | Feedforward prompt: scope adherence, check discipline |
-| `prompts/evaluator.md` | Feedforward prompt: structured output schema, no-mutation rule |
-
-### Schemas & Examples
-
-| File | Purpose |
-|---|---|
-| `schemas/harness-policy.schema.json` | JSON Schema for `.pi/harness-policy.json` |
-| `schemas/planner-contract.schema.json` | JSON Schema for planner output |
-| `schemas/evaluator-output.schema.json` | JSON Schema for evaluator output |
-| `.pi/harness-policy.example.json` | Working example policy for new adopters |
-
-### Build Output
-
-| File | Purpose |
-|---|---|
-| `dist/extensions/*.js` | Compiled extension entry points |
-| `dist/commands/*.js` | Compiled command entry points |
+### Test 4: Audit Simulation
+Run the audit steps. Verify output lists: all agents, ledger count, wiki pages, active skills.
 
 ---
 
-## 7. Test Strategy
+## 11. Risks & Mitigations
 
-### Manual Verification
-
-| # | Test | Steps | Expected |
-|---|---|---|---|
-| 1 | Install package | `npm install @local/pi-harness-poc` in test repo | Package loads; `pi` recognizes extensions/skills |
-| 2 | Block write to `.env` | Ask agent to `write .env FOO=bar` | Blocked; structured log entry created |
-| 3 | Confirm `rm -rf` | Ask agent to `bash rm -rf dist/` | Confirmation prompt; log entry on decision |
-| 4 | Audit command | Run `/harness:audit` | Lists active extensions, skills, policy, context files |
-| 5 | Policy inspect | Run `/harness:policy` | Pretty-prints active path + command rules |
-| 6 | Run loop — happy path | `/harness:run "Add a hello world function"` | Planner → generator → checks → evaluator → pass report |
-| 7 | Run loop — failure + retry | `/harness:run "Add a function that fails tests"` | Generator creates code; checks fail; evaluator reports; retry fixes; final pass |
-| 8 | Evaluator isolation | Verify evaluator skill cannot call `write`/`edit` | Policy extension blocks; error returned |
-
-### Automated Checks
-
-- `tsc --noEmit` on extension source
-- Unit tests for policy engine (path matching, command regex)
-- JSON schema validation for planner + evaluator outputs
-- Integration test: simulated `tool_call` events against policy extension
+| Risk | Mitigation |
+|---|---|
+| Evaluator edits despite prompt | Parent inspects tool calls; use `fresh` context to remove tempation |
+| Planner outputs invalid JSON | Parent parses; if fails, re-invoke with stricter prompt |
+| Checks skipped before evaluator | Parent enforces sequence; checklist in harness-playbook |
+| Token budget explosion | Cap retries; compact between turns; use smaller models for substeps |
+| User confusion about "no new extension" | Document clearly: this is a process/organization POC, not a code POC |
 
 ---
 
-## 8. Risks & Mitigations
+## 12. What a Future Extension Would Add
 
-| Risk | Severity | Mitigation |
+If this POC succeeds and you want to build the real extension later, these are the features that require new code:
+
+| Feature | Pi API Needed | Value |
 |---|---|---|
-| Pi extension API changes | Medium | Pin to documented API surface; minimize exotic hooks; follow pi.dev docs |
-| Evaluator still mutates code | High | Policy extension **enforces** read-only for evaluator context; not just prompt text |
-| Token budget explosion in loop | Medium | Cap retry at 3; summarize diff before evaluator; compact session between turns |
-| Checks are too slow / noisy | Medium | Configurable check list; skip-inject mode; per-project override |
-| Policy false-positive blocks productive work | Medium | `confirm` mode (not just `block`) for moderate-risk ops; per-project override file |
-| User confusion about `harness:*` commands | Low | Clear README; audit command shows exactly what is loaded |
-| Multi-agent team skepticism | Low | Demo on real feature; measure before/after defect rate |
+| `tool_call` interception | `pi.on("tool_call", ...)` | Code-enforced path/command protection |
+| `/harness:run` command | Extension command registration | One-command loop invocation |
+| `/harness:audit` command | Extension command + state inspection | Single-command audit assembly |
+| Evaluator read-only enforcement | Extension tool filter | Blocks `write`/`edit` based on role |
+| Retry budget counter | Extension state (`appendEntry`) | Automatic budget tracking |
+| Diff capture sidecar | Extension file write | Automatic diff + trace storage |
+| Planner JSON mode | Extension prompt control | Forced structured output |
 
 ---
 
-## 9. Success Metrics
+## 13. Next Steps
 
-| Metric | Target | Measurement |
-|---|---|---|
-| Install-to-audit time | < 5 minutes | Stopwatch from `npm install` to first `/harness:audit` |
-| Blocked dangerous ops with logs | ≥ 1 demo per category | Manual test cases |
-| Serial loop completes end-to-end | 100% on 5 test tasks | Run 5 diverse tasks; all reach reporter |
-| Evaluator never edits code | 100% | Automated policy test |
-| Retry path fixes issue | ≥ 60% on injected bugs | Inject 5 known bugs; measure fix rate within retry budget |
-| Raw trace grep-able | Yes | Verify `.pi/harness-log.jsonl` or session entries contain tool inputs + block reasons |
-
----
-
-## 10. Next Steps After POC
-
-If POC succeeds, the program proceeds through remaining PRD phases:
-
-### Phase 3+ (Expanded Loop)
-- Multi-generator support (backend + frontend in one run, disjoint scopes)
-- Session forking for evaluator isolation (`/fork` + branch-per-role)
-- Architect evaluator skill
-- Security evaluator skill
-- Release readiness skill
-
-### Phase 4 (Memory & Learning)
-- Integrate with QMD Subconscious for durable retrieval
-- Failure-learning extraction: detect repeated failures → propose harness learnings
-- Auto-skill-gotcha injection
-
-### Phase 5 (Optimization)
-- A/B harness controls
-- Remove noisy checks that don't improve outcomes
-- Optional cheaper models for planner / deterministic substeps
-
-### Packaging Evolution
-- Publish `@local/pi-harness-poc` → `@pi-harness/starter` on npm
-- Split into focused packages: `pi-harness-policy`, `pi-harness-loop`, `pi-harness-audit`
-- Starter template repo: `pi-harness-starter-template`
+1. **Create the `harness-playbook` skill** (copy section 7 into `~/.pi/agent/skills/harness-playbook/SKILL.md`).
+2. **Update `AGENTS.md`** with section 9.
+3. **Run Test 1** on a real feature this week.
+4. **Iterate** the playbook based on what breaks.
+5. **Decide** after 3 successful runs: is prompt-based discipline enough, or do you need the real extension?
 
 ---
 
@@ -472,4 +532,3 @@ If POC succeeds, the program proceeds through remaining PRD phases:
 - Consolidated Study: `.cursor/plans/ai-harness/lernings/herness-study-consolidated.md`
 - Pi Extension Notes: `.cursor/plans/ai-harness/lernings/pi-extension.md`
 - QMD Subconscious ADR: `.cursor/plans/ai-harness/qmd-subconscious-ADR.md`
-- QMD Subconscious PRD: `.cursor/plans/ai-harness/qmd-subconscious-PRD.md`
