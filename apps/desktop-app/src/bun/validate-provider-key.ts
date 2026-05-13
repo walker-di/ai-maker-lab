@@ -1,4 +1,4 @@
-export type ProviderId = 'openai' | 'anthropic' | 'gemini';
+export type ProviderId = 'openai' | 'anthropic' | 'gemini' | 'replicate';
 
 export type ProviderValidationStatus = 'ok' | 'invalid' | 'network_error' | 'skipped';
 
@@ -69,6 +69,8 @@ function buildUrl(provider: ProviderId, value: string): string {
 			return 'https://api.anthropic.com/v1/models';
 		case 'gemini':
 			return `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(value)}`;
+		case 'replicate':
+			return 'https://api.replicate.com/v1/models';
 	}
 }
 
@@ -80,6 +82,8 @@ function buildHeaders(provider: ProviderId, value: string): Record<string, strin
 			return { 'x-api-key': value, 'anthropic-version': '2023-06-01' };
 		case 'gemini':
 			return {};
+		case 'replicate':
+			return { Authorization: `Bearer ${value}` };
 	}
 }
 

@@ -29,6 +29,11 @@
 			label: m.settings_provider_gemini_label(),
 			description: m.settings_provider_gemini_description(),
 		},
+		{
+			provider: 'replicate',
+			label: m.settings_provider_replicate_label(),
+			description: m.settings_provider_replicate_description(),
+		},
 	];
 
 	const copy = $derived<SettingsCopy>({

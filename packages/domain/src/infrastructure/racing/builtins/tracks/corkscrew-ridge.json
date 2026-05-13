@@ -1,0 +1,47 @@
+{
+  "id": "corkscrew-ridge",
+  "label": "Corkscrew Ridge",
+  "groundColor": 3103802,
+  "halfWidth": 5.4,
+  "curbWidth": 0.55,
+  "rubberWidth": 2.4,
+  "marblesWidth": 1.2,
+  "samples": 280,
+  "ctrl": [
+    [0, 68],
+    [38, 60],
+    [62, 32],
+    [72, -5],
+    [58, -42],
+    [22, -65],
+    [-18, -65],
+    [-52, -48],
+    [-38, -22],
+    [-58, 5],
+    [-38, 28],
+    [-55, 48]
+  ],
+  "gravelZones": [
+    { "x": 72, "z": -22, "w": 16, "h": 18, "rot": 0 },
+    { "x": 22, "z": -65, "w": 18, "h": 14, "rot": 0 }
+  ],
+  "dampZones": [
+    { "x": -38, "z": -22, "w": 12, "h": 8, "rot": 0.5235987755982988 },
+    { "x": -38, "z": 28, "w": 12, "h": 8, "rot": -0.5235987755982988 }
+  ],
+  "apexes": [70, 160, 220],
+  "propCadence": {
+  "cones": 10,
+  "barriers": 14,
+  "lights": 36,
+  "billboards": 16,
+  "flags": 2,
+  "fences": 70,
+  "grandStands": 1,
+  "pitBuildings": 2,
+  "pylons": 5,
+  "banners": 3,
+  "radars": 1,
+  "overheads": 1
+}
+}

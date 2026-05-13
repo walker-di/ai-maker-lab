@@ -25,9 +25,10 @@ describe('buildSettingsRequestHandlers', () => {
 		delete process.env.OPENAI_API_KEY;
 		delete process.env.ANTHROPIC_API_KEY;
 		delete process.env.GEMINI_API_KEY;
+		delete process.env.REPLICATE_API_KEY;
 		store = new SecretsStore({
 			secretsPath: join(dir, 'secrets.env'),
-			shellSnapshot: snapshotShellEnvKeys(['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY']),
+			shellSnapshot: snapshotShellEnvKeys(['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'REPLICATE_API_KEY']),
 		});
 		registryRef = { current: makeRegistry() };
 	});
@@ -37,6 +38,7 @@ describe('buildSettingsRequestHandlers', () => {
 		delete process.env.OPENAI_API_KEY;
 		delete process.env.ANTHROPIC_API_KEY;
 		delete process.env.GEMINI_API_KEY;
+		delete process.env.REPLICATE_API_KEY;
 	});
 
 	it('getProviderKeyStatus returns one row per known provider', async () => {
@@ -48,7 +50,7 @@ describe('buildSettingsRequestHandlers', () => {
 		});
 
 		const statuses = await handlers.getProviderKeyStatus();
-		expect(statuses.map((s) => s.provider)).toEqual(['openai', 'anthropic', 'gemini']);
+		expect(statuses.map((s) => s.provider)).toEqual(['openai', 'anthropic', 'gemini', 'replicate']);
 		for (const s of statuses) expect(s.isSet).toBe(false);
 	});
 
@@ -83,6 +85,7 @@ describe('buildSettingsRequestHandlers', () => {
 		expect(result.validations.openai).toEqual({ status: 'ok' });
 		expect(result.validations.anthropic).toEqual({ status: 'invalid', message: 'bad' });
 		expect(result.validations.gemini).toEqual({ status: 'skipped' });
+		expect(result.validations.replicate).toEqual({ status: 'skipped' });
 		const openai = result.statuses.find((s) => s.provider === 'openai');
 		expect(openai?.isSet).toBe(true);
 		expect(openai?.source).toBe('file');

@@ -1,31 +1,14 @@
-import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { TodoService } from 'domain/application';
 import { getDb, SurrealDbAdapter, SurrealTodoRepository } from 'domain/infrastructure';
 import { json } from '@sveltejs/kit';
+import { getAppDbConfig } from './db-config.js';
 
 let todoServicePromise: Promise<TodoService> | undefined;
-
-function getDefaultEmbeddedHost(): string {
-	const dbPath = fileURLToPath(
-		new URL('../../../../../data/surrealdb/desktop-web.db', import.meta.url)
-	);
-	mkdirSync(dirname(dbPath), { recursive: true });
-	return `surrealkv://${dbPath}`;
-}
 
 export function getTodoService(): Promise<TodoService> {
 	if (!todoServicePromise) {
 		todoServicePromise = (async () => {
-			const surreal = await getDb({
-				host: process.env.SURREAL_HOST ?? getDefaultEmbeddedHost(),
-				namespace: process.env.SURREAL_NS ?? 'app',
-				database: process.env.SURREAL_DB ?? 'desktop',
-				username: process.env.SURREAL_USER,
-				password: process.env.SURREAL_PASS,
-				token: process.env.SURREAL_TOKEN
-			});
+			const surreal = await getDb(getAppDbConfig());
 
 			return new TodoService(new SurrealTodoRepository(new SurrealDbAdapter(surreal)));
 		})();

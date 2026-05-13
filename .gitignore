@@ -1,10 +1,14 @@
 node_modules
 node_modules/
 # Output
+.pi
+.kb
 .output
 .vercel
 .netlify
 .wrangler
+/models/*
+!models/.gitkeep
 /.svelte-kit
 /build
 

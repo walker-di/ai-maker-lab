@@ -1,4 +1,5 @@
 export { getDb, closeDb, createDbConnection, type IDbConfig } from './client.js';
+export { isMissingTableError } from './error-helpers.js';
 export { INIT_DB_QUERY } from './init-db.query.js';
 export { createRecordId, RecordId, type IRecordId } from './record-id.js';
 export { SurrealDbAdapter } from './SurrealDbAdapter.js';
@@ -14,3 +15,13 @@ export {
   SurrealUserMapRepository,
   SurrealPlayerProgressRepository,
 } from './platformer/index.js';
+export {
+  SurrealRtsUserMapRepository,
+  SurrealRtsMatchResultRepository,
+} from './rts/index.js';
+export {
+  SurrealRacingSessionRepository,
+  SurrealLapResultRepository,
+  SurrealRacingSetupRepository,
+} from './racing/index.js';
+export * from './marketing/index.js';

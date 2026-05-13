@@ -1,4 +1,4 @@
-import { Chat } from '@ai-sdk/svelte';
+import { Chat } from '../../../../node_modules/@ai-sdk/svelte/dist/index.js';
 import type {
 	ChatThread,
 	ChatMessage,

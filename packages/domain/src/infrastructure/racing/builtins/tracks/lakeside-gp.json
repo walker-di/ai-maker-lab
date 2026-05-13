@@ -1,0 +1,49 @@
+{
+  "id": "lakeside-gp",
+  "label": "Lakeside GP",
+  "groundColor": 3697741,
+  "halfWidth": 7.0,
+  "curbWidth": 0.7,
+  "rubberWidth": 3.2,
+  "marblesWidth": 1.6,
+  "samples": 280,
+  "ctrl": [
+    [0, 90],
+    [55, 85],
+    [105, 55],
+    [120, 5],
+    [100, -45],
+    [55, -75],
+    [0, -82],
+    [-55, -70],
+    [-100, -40],
+    [-115, 5],
+    [-95, 55],
+    [-50, 85]
+  ],
+  "gravelZones": [
+    { "x": 120, "z": -20, "w": 26, "h": 26, "rot": 0 },
+    { "x": -120, "z": 20, "w": 26, "h": 26, "rot": 0 }
+  ],
+  "dampZones": [
+    { "x": 0, "z": -82, "w": 30, "h": 8, "rot": 0 }
+  ],
+  "surfaceZones": [
+    { "x": 98, "z": 54, "w": 10, "h": 22, "rot": 0.52, "surface": "MARBLES" }
+  ],
+  "apexes": [70, 200],
+  "propCadence": {
+  "cones": 8,
+  "barriers": 12,
+  "lights": 48,
+  "billboards": 20,
+  "flags": 2,
+  "fences": 80,
+  "grandStands": 2,
+  "pitBuildings": 3,
+  "pylons": 4,
+  "banners": 4,
+  "radars": 1,
+  "overheads": 1
+}
+}

@@ -2,12 +2,16 @@
   import { m } from '$lib/paraglide/messages.js';
   import { Button, CategoryCard } from 'ui/source';
   import SettingsIcon from '@lucide/svelte/icons/settings';
+  import MegaphoneIcon from '@lucide/svelte/icons/megaphone';
 
   const todoHref = '/experiments/todo';
   const chatHref = '/experiments/chat';
   const platformerHref = '/experiments/platformer';
   const platformerEditorHref = '/experiments/platformer/editor';
+  const rtsHref = '/experiments/rts';
+  const racingHref = '/experiments/racing';
   const agentRegistryHref = '/agents';
+  const marketingHref = '/marketing';
   const settingsHref = '/settings';
 </script>
 
@@ -41,12 +45,34 @@
   <SettingsIcon class="h-6 w-6" aria-hidden="true" />
 {/snippet}
 
+{#snippet marketingIcon()}
+  <MegaphoneIcon class="h-6 w-6" aria-hidden="true" />
+{/snippet}
+
 {#snippet platformerIcon()}
   <svg aria-hidden="true" viewBox="0 0 24 24" class="h-6 w-6 fill-none stroke-current stroke-[1.75]">
     <path stroke-linecap="round" stroke-linejoin="round" d="M3 18h18" />
     <path stroke-linecap="round" stroke-linejoin="round" d="M5 18v-3h3v3" />
     <path stroke-linecap="round" stroke-linejoin="round" d="M14 18v-6h4v6" />
     <circle cx="9" cy="10" r="1.5" />
+  </svg>
+{/snippet}
+
+{#snippet rtsIcon()}
+  <svg aria-hidden="true" viewBox="0 0 24 24" class="h-6 w-6 fill-none stroke-current stroke-[1.75]">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M14.5 17.5 3 6V3h3l11.5 11.5" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="M13 19l6-6" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="M16 16l5 5" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="M5 14L3 18l4-2" />
+  </svg>
+{/snippet}
+
+{#snippet racingIcon()}
+  <svg aria-hidden="true" viewBox="0 0 24 24" class="h-6 w-6 fill-none stroke-current stroke-[1.75]">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.5h2l1.5-3.75A2 2 0 0 1 8.36 8.5h7.28a2 2 0 0 1 1.86 1.25L19 13.5h2v3h-2v1.5h-2.5v-1.5h-9V18H5v-1.5H3v-3Z" />
+    <circle cx="7.75" cy="16" r="1.25" />
+    <circle cx="16.25" cy="16" r="1.25" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="M7 13.5h10" />
   </svg>
 {/snippet}
 
@@ -98,6 +124,20 @@
         ctaLabel="Open editor"
         icon={platformerIcon}
       />
+      <CategoryCard
+        href={rtsHref}
+        label={m.lab_experiment_rts_label()}
+        description={m.lab_experiment_rts_description()}
+        ctaLabel={m.lab_open_experiment()}
+        icon={rtsIcon}
+      />
+      <CategoryCard
+        href={racingHref}
+        label={m.lab_experiment_racing_label()}
+        description={m.lab_experiment_racing_description()}
+        ctaLabel={m.lab_open_experiment()}
+        icon={racingIcon}
+      />
     </div>
   </section>
 
@@ -142,6 +182,13 @@
         description={m.lab_experiment_chat_description()}
         ctaLabel={m.lab_open_experiment()}
         icon={chatIcon}
+      />
+      <CategoryCard
+        href={marketingHref}
+        label="Marketing Manager"
+        description="Manage products, personas, campaigns, creatives, and stories."
+        ctaLabel={m.lab_open_experiment()}
+        icon={marketingIcon}
       />
     </div>
   </section>

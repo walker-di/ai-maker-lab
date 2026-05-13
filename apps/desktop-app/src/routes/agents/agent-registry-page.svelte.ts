@@ -137,30 +137,35 @@ export function createAgentRegistryPageModel({
 	transport,
 	modelCatalog,
 }: CreateAgentRegistryPageModelInput) {
-	let agents = $state<ResolvedAgentProfile[]>([]);
-	let selectedAgentId = $state<string | null>(null);
-	let searchQuery = $state('');
-	let sourceFilter = $state<AgentRegistrySourceFilter>('all');
-	let statusFilter = $state<AgentRegistryStatusFilter>('all');
-	let providerFilter = $state('all');
-	let mode = $state<'browse' | 'create'>('browse');
-	let draft = $state<AgentDraft>(buildDraft(null, modelCatalog));
-	let isLoading = $state(false);
-	let isSaving = $state(false);
-	let hasLoaded = $state(false);
-	let errorMessage = $state<string | null>(null);
+	let agents: ResolvedAgentProfile[] = [];
+	let selectedAgentId: string | null = null;
+	let searchQuery = '';
+	let sourceFilter: AgentRegistrySourceFilter = 'all';
+	let statusFilter: AgentRegistryStatusFilter = 'all';
+	let providerFilter = 'all';
+	let mode: 'browse' | 'create' = 'browse';
+	let draft: AgentDraft = buildDraft(null, modelCatalog);
+	let isLoading = false;
+	let isSaving = false;
+	let hasLoaded = false;
+	let errorMessage: string | null = null;
 
-	const selectedAgent = $derived(agents.find((agent) => agent.id === selectedAgentId) ?? null);
-	const selectedModelCard = $derived(
-		modelCatalog.find((card) => card.registryId === draft.modelCardId) ?? modelCatalog[0],
-	);
-	const providers = $derived(
-		[...new Set(agents.map((agent) => agent.modelCard.provider).filter(Boolean) as string[])]
+	function getSelectedAgent() {
+		return agents.find((agent) => agent.id === selectedAgentId) ?? null;
+	}
+
+	function getSelectedModelCard() {
+		return modelCatalog.find((card) => card.registryId === draft.modelCardId) ?? modelCatalog[0];
+	}
+
+	function getProviders() {
+		return [...new Set(agents.map((agent) => agent.modelCard.provider).filter(Boolean) as string[])]
 			.sort((left, right) => left.localeCompare(right))
-			.map(formatProvider),
-	);
-	const filteredAgents = $derived(
-		agents.filter((agent) => {
+			.map(formatProvider);
+	}
+
+	function getFilteredAgents() {
+		return agents.filter((agent) => {
 			const query = searchQuery.trim().toLowerCase();
 			const matchesSearch =
 				query.length === 0 ||
@@ -169,40 +174,54 @@ export function createAgentRegistryPageModel({
 			const matchesSource = sourceFilter === 'all' || agent.source === sourceFilter;
 			const matchesStatus = statusFilter === 'all' || getAgentStatus(agent) === statusFilter;
 			const formattedProvider = formatProvider(agent.modelCard.provider);
-			const matchesProvider =
-				providerFilter === 'all' || formattedProvider === providerFilter;
+			const matchesProvider = providerFilter === 'all' || formattedProvider === providerFilter;
 
 			return matchesSearch && matchesSource && matchesStatus && matchesProvider;
-		}),
-	);
-	const toolOptions = $derived(toToolOptions(draft, selectedModelCard));
-	const modelOptions = $derived(
-		modelCatalog.map((card) => ({
+		});
+	}
+
+	function getToolOptions() {
+		return toToolOptions(draft, getSelectedModelCard());
+	}
+
+	function getModelOptions() {
+		return modelCatalog.map((card) => ({
 			registryId: card.registryId,
 			label: card.label,
 			provider: formatProvider(card.provider),
 			description: card.description,
-		})),
-	);
-	const isEditing = $derived(mode === 'create' || selectedAgent?.isEditable === true);
-	const canSave = $derived(
-		isEditing &&
+		}));
+	}
+
+	function getIsEditing() {
+		return mode === 'create' || getSelectedAgent()?.isEditable === true;
+	}
+
+	function getCanSave() {
+		return (
+			getIsEditing() &&
 			!isSaving &&
 			draft.name.trim().length > 0 &&
 			draft.systemPrompt.trim().length > 0 &&
-			draft.modelCardId.length > 0,
-	);
-	const useInChatHref = $derived(
-		mode === 'browse' && selectedAgent
+			draft.modelCardId.length > 0
+		);
+	}
+
+	function getUseInChatHref() {
+		const selectedAgent = getSelectedAgent();
+		return mode === 'browse' && selectedAgent
 			? `/experiments/chat?agent=${encodeURIComponent(selectedAgent.id)}`
-			: undefined,
-	);
-	const hasActiveFilters = $derived(
-		searchQuery.trim().length > 0 ||
+			: undefined;
+	}
+
+	function getHasActiveFilters() {
+		return (
+			searchQuery.trim().length > 0 ||
 			sourceFilter !== 'all' ||
 			statusFilter !== 'all' ||
-			providerFilter !== 'all',
-	);
+			providerFilter !== 'all'
+		);
+	}
 
 	function setDraftFromAgent(agent: ResolvedAgentProfile | null) {
 		draft = buildDraft(agent, modelCatalog);
@@ -213,6 +232,7 @@ export function createAgentRegistryPageModel({
 			return;
 		}
 
+		const filteredAgents = getFilteredAgents();
 		const visibleIds = new Set(filteredAgents.map((agent) => agent.id));
 		if (preferredId && visibleIds.has(preferredId)) {
 			selectedAgentId = preferredId;
@@ -253,19 +273,19 @@ export function createAgentRegistryPageModel({
 			return agents;
 		},
 		get selectedAgent() {
-			return selectedAgent;
+			return getSelectedAgent();
 		},
 		get selectedAgentId() {
 			return selectedAgentId;
 		},
 		get filteredAgents() {
-			return filteredAgents;
+			return getFilteredAgents();
 		},
 		get draft() {
 			return draft;
 		},
 		get providers() {
-			return providers;
+			return getProviders();
 		},
 		get sourceFilter() {
 			return sourceFilter;
@@ -280,13 +300,13 @@ export function createAgentRegistryPageModel({
 			return searchQuery;
 		},
 		get modelOptions() {
-			return modelOptions;
+			return getModelOptions();
 		},
 		get toolOptions() {
-			return toolOptions;
+			return getToolOptions();
 		},
 		get activeModelCard() {
-			return selectedModelCard;
+			return getSelectedModelCard();
 		},
 		get isLoading() {
 			return isLoading;
@@ -304,16 +324,16 @@ export function createAgentRegistryPageModel({
 			return mode === 'create';
 		},
 		get isEditing() {
-			return isEditing;
+			return getIsEditing();
 		},
 		get canSave() {
-			return canSave;
+			return getCanSave();
 		},
 		get useInChatHref() {
-			return useInChatHref;
+			return getUseInChatHref();
 		},
 		get hasActiveFilters() {
-			return hasActiveFilters;
+			return getHasActiveFilters();
 		},
 
 		async loadInitial() {
@@ -403,6 +423,7 @@ export function createAgentRegistryPageModel({
 		},
 
 		async duplicateSelectedAgent() {
+			const selectedAgent = getSelectedAgent();
 			if (!selectedAgent || selectedAgent.source !== 'system') {
 				return;
 			}
@@ -415,6 +436,7 @@ export function createAgentRegistryPageModel({
 		},
 
 		async inheritSelectedAgent() {
+			const selectedAgent = getSelectedAgent();
 			if (!selectedAgent || selectedAgent.source !== 'system') {
 				return;
 			}
@@ -427,7 +449,7 @@ export function createAgentRegistryPageModel({
 		},
 
 		async saveAgent() {
-			if (!canSave) {
+			if (!getCanSave()) {
 				return;
 			}
 
@@ -442,6 +464,7 @@ export function createAgentRegistryPageModel({
 					return;
 				}
 
+				const selectedAgent = getSelectedAgent();
 				if (!selectedAgent) {
 					return;
 				}

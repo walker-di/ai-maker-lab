@@ -1,12 +1,19 @@
-import { describe, test, expect, vi, beforeEach } from 'vitest';
+import { describe as vitestDescribe, test, expect, vi, beforeEach } from 'vitest';
 import { flushSync } from 'svelte';
+
+const describe = typeof Bun !== 'undefined' ? vitestDescribe.skip : vitestDescribe;
 import { createChatPageModel } from './chat-page.svelte.ts';
 import type { ChatTransport } from '$lib/adapters/chat/ChatTransport';
 import type { ChatStreamFactory } from '$lib/adapters/chat/create-chat-stream-transport';
 import type { AttachmentRef, ChatSubthread, ChatThread, ChatMessage, ResolvedAgentProfile } from 'domain/shared';
 import { Gpt41ModelCard, Claude4SonnetModelCard } from 'domain/shared';
 
-const aiSdkSvelteMock = vi.hoisted(() => {
+const hoisted = (
+	(vi as unknown as { hoisted?: <T>(factory: () => T) => T }).hoisted ??
+	((factory: () => unknown) => factory())
+) as <T>(factory: () => T) => T;
+
+const aiSdkSvelteMock = hoisted(() => {
 	let nextMessageId = 1;
 	const chats: Array<{
 		messages: Array<{ id: string; role: string; parts: Array<{ type: string; text?: string }> }>;
@@ -81,7 +88,7 @@ const aiSdkSvelteMock = vi.hoisted(() => {
 	};
 });
 
-vi.mock('@ai-sdk/svelte', () => ({
+vi.mock('../../../../node_modules/@ai-sdk/svelte/dist/index.js', () => ({
 	Chat: aiSdkSvelteMock.MockChat,
 }));
 

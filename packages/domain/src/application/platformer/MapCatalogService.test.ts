@@ -63,6 +63,16 @@ describe('MapCatalogService', () => {
 
   afterEach(async () => { await db.close(); });
 
+  test('listBuiltInWorlds returns the built-in repository list', async () => {
+    const world: WorldDefinition = {
+      id: 'world-1',
+      label: 'Demo',
+      levels: [{ id: 'l1', label: '1-1', map: makeMap('world-1/l1') }],
+    };
+    const svc = new MapCatalogService(new FakeBuiltIns([world]), userRepo, progressRepo);
+    expect(await svc.listBuiltInWorlds()).toEqual([world]);
+  });
+
   test('listMaps returns built-in levels and user maps in a single resolved view', async () => {
     const world: WorldDefinition = {
       id: 'world-1', label: 'Demo', levels: [{ id: 'l1', label: '1-1', map: makeMap('world-1/l1') }],

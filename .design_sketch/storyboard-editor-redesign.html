@@ -1,0 +1,1019 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Storyboard Editor — UI Redesign Proposal</title>
+  <style>
+    :root {
+      --bg: #0a0a0b;
+      --surface: #141416;
+      --surface-2: #1c1c20;
+      --surface-3: #242428;
+      --border: #2a2a30;
+      --border-focus: #5b5bf0;
+      --text: #e8e8ec;
+      --text-muted: #8a8a9a;
+      --text-dim: #5a5a6a;
+      --accent: #6366f1;
+      --accent-hover: #7c7ff7;
+      --accent-dim: rgba(99,102,241,0.15);
+      --green: #22c55e;
+      --green-dim: rgba(34,197,94,0.15);
+      --yellow: #eab308;
+      --yellow-dim: rgba(234,179,8,0.15);
+      --red: #ef4444;
+      --red-dim: rgba(239,68,68,0.15);
+      --radius: 8px;
+      --radius-lg: 12px;
+      --shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      overflow-x: hidden;
+    }
+
+    /* Design Notes Banner */
+    .design-notes {
+      background: var(--accent-dim);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .design-notes strong { color: var(--accent); }
+
+    /* View Switcher */
+    .view-tabs {
+      display: flex;
+      gap: 2px;
+      background: var(--surface);
+      border-radius: 6px;
+      padding: 2px;
+    }
+    .view-tab {
+      padding: 6px 14px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      transition: all 0.15s;
+    }
+    .view-tab.active { background: var(--surface-3); color: var(--text); }
+    .view-tab:hover:not(.active) { color: var(--text); }
+
+    /* Top Bar */
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .back-btn {
+      background: none; border: none; color: var(--text-muted); cursor: pointer;
+      font-size: 14px; padding: 6px 8px; border-radius: 4px;
+    }
+    .back-btn:hover { background: var(--surface-3); color: var(--text); }
+    .topbar-title { font-size: 16px; font-weight: 600; flex: 1; }
+    .topbar-meta { font-size: 12px; color: var(--text-muted); }
+    .topbar-actions { display: flex; gap: 8px; align-items: center; }
+    .btn {
+      padding: 7px 14px; border-radius: 6px; font-size: 13px; font-weight: 500;
+      cursor: pointer; border: 1px solid var(--border); background: var(--surface-2);
+      color: var(--text); transition: all 0.15s;
+    }
+    .btn:hover { border-color: var(--text-dim); background: var(--surface-3); }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: white; }
+    .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+    .btn-icon {
+      width: 32px; height: 32px; padding: 0; display: grid; place-items: center;
+      border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2);
+      color: var(--text-muted); cursor: pointer;
+    }
+    .btn-icon:hover { border-color: var(--text-dim); color: var(--text); }
+
+    /* Main Layout */
+    .editor-layout {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      grid-template-rows: 1fr auto;
+      height: calc(100vh - 97px);
+    }
+
+    /* Preview Area */
+    .preview-area {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow-y: auto;
+    }
+    .frame-preview {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      position: relative;
+      min-height: 300px;
+      overflow: hidden;
+    }
+    .frame-preview img {
+      width: 100%; height: 100%; object-fit: cover; border-radius: var(--radius-lg);
+    }
+    .frame-preview-placeholder {
+      display: flex; flex-direction: column; align-items: center; gap: 12px;
+      color: var(--text-dim);
+    }
+    .frame-preview-placeholder svg { opacity: 0.4; }
+    .frame-preview-overlay {
+      position: absolute; bottom: 12px; left: 12px; right: 12px;
+      display: flex; gap: 8px; justify-content: space-between; align-items: flex-end;
+    }
+    .frame-nav-btn {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.1); color: white;
+      display: grid; place-items: center; cursor: pointer; font-size: 14px;
+    }
+    .frame-nav-btn:hover { background: rgba(0,0,0,0.8); border-color: rgba(255,255,255,0.2); }
+
+    /* Audio row */
+    .audio-row {
+      display: flex; gap: 12px; align-items: center;
+    }
+    .audio-chip {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px; border-radius: 8px;
+      background: var(--surface); border: 1px solid var(--border);
+      font-size: 12px; color: var(--text-muted);
+    }
+    .audio-chip .play-btn {
+      width: 24px; height: 24px; border-radius: 50%;
+      background: var(--accent-dim); border: none; color: var(--accent);
+      display: grid; place-items: center; cursor: pointer; font-size: 10px;
+    }
+    .audio-waveform {
+      display: flex; align-items: center; gap: 1px; height: 20px;
+    }
+    .audio-waveform span {
+      width: 3px; border-radius: 2px; background: var(--accent);
+      opacity: 0.6;
+    }
+
+    /* Detail Panel */
+    .detail-panel {
+      border-left: 1px solid var(--border);
+      background: var(--surface);
+      display: flex; flex-direction: column;
+      overflow-y: auto;
+    }
+    .detail-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .detail-header h3 { font-size: 14px; font-weight: 600; }
+    .detail-nav { display: flex; gap: 4px; }
+    .detail-nav button {
+      width: 28px; height: 28px; border-radius: 4px;
+      background: var(--surface-2); border: 1px solid var(--border);
+      color: var(--text-muted); cursor: pointer; font-size: 12px;
+    }
+    .detail-nav button:hover { color: var(--text); border-color: var(--text-dim); }
+    .detail-body { padding: 16px 20px; display: flex; flex-direction: column; gap: 16px; flex: 1; }
+    .field-group { display: flex; flex-direction: column; gap: 4px; }
+    .field-label {
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.5px; color: var(--text-muted);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .field-label .regen-btn {
+      font-size: 11px; color: var(--accent); background: none; border: none;
+      cursor: pointer; display: flex; align-items: center; gap: 3px;
+    }
+    .field-label .regen-btn:hover { color: var(--accent-hover); }
+    .field-input {
+      width: 100%; padding: 8px 10px; border-radius: 6px;
+      background: var(--surface-2); border: 1px solid var(--border);
+      color: var(--text); font-size: 13px; font-family: inherit; resize: vertical;
+    }
+    .field-input:focus { outline: none; border-color: var(--border-focus); }
+    .field-input::placeholder { color: var(--text-dim); }
+
+    /* Transition Selector */
+    .transition-section {
+      padding: 16px 20px;
+      border-top: 1px solid var(--border);
+      background: var(--surface-2);
+    }
+    .transition-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 10px; }
+    .transition-options {
+      display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 12px;
+    }
+    .transition-opt {
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      padding: 8px 4px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--surface); cursor: pointer; transition: all 0.15s;
+    }
+    .transition-opt:hover { border-color: var(--text-dim); }
+    .transition-opt.selected { border-color: var(--accent); background: var(--accent-dim); }
+    .transition-opt .icon { font-size: 16px; height: 20px; display: grid; place-items: center; }
+    .transition-opt .label { font-size: 10px; color: var(--text-muted); }
+    .transition-opt.selected .label { color: var(--accent); }
+    .duration-row {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .duration-slider {
+      flex: 1; -webkit-appearance: none; height: 4px; border-radius: 2px;
+      background: var(--surface-3); outline: none;
+    }
+    .duration-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
+      background: var(--accent); cursor: pointer;
+    }
+    .duration-value { font-size: 12px; color: var(--text-muted); min-width: 48px; text-align: right; }
+
+    /* Timeline */
+    .timeline {
+      grid-column: 1 / -1;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      padding: 12px 24px;
+    }
+    .timeline-strip {
+      display: flex; align-items: center; gap: 0; overflow-x: auto;
+      padding-bottom: 4px;
+    }
+    .timeline-frame {
+      flex-shrink: 0; width: 72px; height: 48px;
+      border-radius: 6px; border: 2px solid transparent;
+      overflow: hidden; cursor: pointer; position: relative;
+      transition: all 0.15s;
+    }
+    .timeline-frame:hover { border-color: var(--text-dim); }
+    .timeline-frame.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+    .timeline-frame img { width: 100%; height: 100%; object-fit: cover; }
+    .timeline-frame .placeholder {
+      width: 100%; height: 100%; background: var(--surface-3);
+      display: grid; place-items: center; font-size: 10px; color: var(--text-dim);
+    }
+    .timeline-frame .frame-num {
+      position: absolute; top: 2px; left: 4px;
+      font-size: 9px; font-weight: 700; color: white;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+    }
+    .timeline-frame .status-dot {
+      position: absolute; bottom: 3px; right: 4px;
+      width: 6px; height: 6px; border-radius: 50%;
+    }
+    .status-complete { background: var(--green); }
+    .status-partial { background: var(--yellow); }
+    .status-empty { background: var(--red); opacity: 0.7; }
+    .timeline-transition {
+      flex-shrink: 0; display: flex; flex-direction: column; align-items: center;
+      padding: 0 4px; gap: 2px;
+    }
+    .timeline-transition .t-line { width: 16px; height: 1px; background: var(--border); }
+    .timeline-transition .t-label { font-size: 8px; color: var(--text-dim); text-transform: uppercase; }
+    .timeline-add {
+      flex-shrink: 0; width: 72px; height: 48px;
+      border-radius: 6px; border: 1px dashed var(--border);
+      display: grid; place-items: center; cursor: pointer;
+      color: var(--text-dim); font-size: 18px; margin-left: 8px;
+    }
+    .timeline-add:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Section Divider */
+    .section-divider {
+      padding: 40px 24px 16px;
+      border-top: 4px solid var(--accent);
+      margin-top: 60px;
+    }
+    .section-divider h2 {
+      font-size: 20px; font-weight: 700; margin-bottom: 4px;
+    }
+    .section-divider p { color: var(--text-muted); font-size: 14px; }
+
+    /* Grid View */
+    .grid-view {
+      padding: 24px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .frame-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 16px;
+    }
+    .grid-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .grid-card:hover { border-color: var(--text-dim); transform: translateY(-2px); box-shadow: var(--shadow); }
+    .grid-card.active { border-color: var(--accent); }
+    .grid-card-thumb {
+      aspect-ratio: 16/9; background: var(--surface-3);
+      display: flex; align-items: center; justify-content: center;
+      position: relative; overflow: hidden;
+    }
+    .grid-card-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .grid-card-thumb .drag-handle {
+      position: absolute; top: 6px; left: 6px;
+      background: rgba(0,0,0,0.6); border-radius: 4px;
+      padding: 2px 6px; font-size: 10px; color: white;
+      cursor: grab; opacity: 0; transition: opacity 0.15s;
+    }
+    .grid-card:hover .drag-handle { opacity: 1; }
+    .grid-card-body { padding: 12px; }
+    .grid-card-title {
+      font-size: 13px; font-weight: 600; margin-bottom: 4px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .grid-card-narration {
+      font-size: 11px; color: var(--text-muted);
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+      margin-bottom: 8px;
+    }
+    .grid-card-footer {
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .asset-dots { display: flex; gap: 4px; }
+    .asset-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+    }
+    .grid-card-transition {
+      font-size: 10px; color: var(--text-dim);
+      padding: 2px 6px; background: var(--surface-2); border-radius: 4px;
+    }
+    .grid-add-card {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius-lg);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 8px; padding: 40px; cursor: pointer;
+      color: var(--text-dim); min-height: 180px;
+    }
+    .grid-add-card:hover { border-color: var(--accent); color: var(--accent); }
+    .grid-add-card .plus { font-size: 28px; }
+
+    /* Batch Actions */
+    .batch-bar {
+      display: flex; gap: 8px; padding: 12px 24px;
+      background: var(--surface); border-top: 1px solid var(--border);
+    }
+
+    /* Preview Mode */
+    .preview-mode {
+      background: #000;
+      height: 100vh;
+      display: flex; flex-direction: column;
+      position: relative;
+    }
+    .preview-exit {
+      position: absolute; top: 16px; right: 16px; z-index: 10;
+      background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 6px; padding: 6px 14px; color: white; cursor: pointer;
+      font-size: 12px; backdrop-filter: blur(8px);
+    }
+    .preview-exit:hover { background: rgba(255,255,255,0.2); }
+    .preview-image-area {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      padding: 40px; position: relative;
+    }
+    .preview-image {
+      max-width: 100%; max-height: 100%;
+      border-radius: var(--radius-lg);
+      box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+    }
+    .preview-subtitle {
+      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.75); backdrop-filter: blur(8px);
+      padding: 10px 20px; border-radius: 8px; max-width: 600px;
+      text-align: center; font-size: 14px; color: white;
+      line-height: 1.5;
+    }
+    .preview-controls {
+      padding: 16px 24px;
+      background: rgba(20,20,22,0.95);
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+    .preview-progress {
+      display: flex; align-items: center; gap: 2px;
+      margin-bottom: 12px;
+    }
+    .preview-segment {
+      flex: 1; height: 4px; border-radius: 2px; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .preview-segment.played { background: var(--accent); }
+    .preview-segment.current { background: var(--accent); opacity: 0.7; }
+    .preview-segment.upcoming { background: var(--surface-3); }
+    .preview-segment:hover { height: 6px; }
+    .preview-segment-gap { width: 2px; }
+    .preview-transport {
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .transport-left, .transport-right { display: flex; align-items: center; gap: 12px; }
+    .transport-btn {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: none; border: 1px solid rgba(255,255,255,0.15);
+      color: white; display: grid; place-items: center; cursor: pointer;
+      font-size: 14px;
+    }
+    .transport-btn:hover { background: rgba(255,255,255,0.1); }
+    .transport-btn.play {
+      width: 44px; height: 44px; background: var(--accent);
+      border-color: var(--accent); font-size: 16px;
+    }
+    .transport-btn.play:hover { background: var(--accent-hover); }
+    .transport-info { font-size: 13px; color: var(--text-muted); }
+    .speed-select {
+      background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
+      color: white; padding: 4px 10px; border-radius: 4px; font-size: 12px; cursor: pointer;
+    }
+
+    /* Storyboard List Improved */
+    .list-view { padding: 24px; max-width: 1000px; margin: 0 auto; }
+    .list-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+    .list-header h1 { font-size: 24px; font-weight: 700; }
+    .list-header p { color: var(--text-muted); font-size: 14px; margin-top: 2px; }
+    .storyboard-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+    .sb-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); overflow: hidden;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .sb-card:hover { border-color: var(--text-dim); transform: translateY(-2px); box-shadow: var(--shadow); }
+    .sb-card-strip {
+      display: flex; gap: 2px; padding: 12px 12px 0; overflow: hidden;
+    }
+    .sb-card-strip .mini-thumb {
+      width: 40px; height: 28px; border-radius: 4px;
+      background: var(--surface-3); flex-shrink: 0; overflow: hidden;
+    }
+    .sb-card-strip .mini-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .sb-card-body { padding: 12px 16px 16px; }
+    .sb-card-title { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+    .sb-card-desc { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .sb-card-meta { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--text-dim); }
+    .sb-card-progress {
+      flex: 1; height: 4px; border-radius: 2px; background: var(--surface-3); overflow: hidden;
+    }
+    .sb-card-progress-fill { height: 100%; border-radius: 2px; background: var(--green); }
+    .sb-card-actions { display: flex; align-items: center; justify-content: space-between; padding: 0 16px 12px; }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .editor-layout { grid-template-columns: 1fr; }
+      .detail-panel { border-left: none; border-top: 1px solid var(--border); max-height: 50vh; }
+      .frame-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- DESIGN NOTES -->
+<div class="design-notes">
+  <strong>Design Proposal:</strong> Storyboard Editor UI Redesign — 5 views shown below. Scroll to see Timeline Editor, Grid/Board View, Preview/Playback Mode, and Improved List View. Click view tabs to switch between concepts in Section 1.
+</div>
+
+<!-- ========================================================= -->
+<!-- SECTION 1: TIMELINE + DETAIL VIEW (PRIMARY EDITOR) -->
+<!-- ========================================================= -->
+<div class="section-divider" style="margin-top:0; border-top:none; padding-top: 16px;">
+  <h2>1. Timeline + Detail Editor</h2>
+  <p>The main editor view: filmstrip timeline, large preview, and detail sidebar</p>
+</div>
+
+<div style="border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin: 16px 24px;">
+  <!-- Top Bar -->
+  <div class="topbar">
+    <button class="back-btn">← Back</button>
+    <div class="topbar-title">Product Launch Video</div>
+    <span class="topbar-meta">8 frames</span>
+    <div class="topbar-actions">
+      <div class="view-tabs">
+        <button class="view-tab active" onclick="switchView('timeline')">Timeline</button>
+        <button class="view-tab" onclick="switchView('grid')">Grid</button>
+        <button class="view-tab" onclick="switchView('preview')">Preview</button>
+      </div>
+      <button class="btn-icon" title="AI Config">⚙</button>
+      <button class="btn">Generate frames</button>
+      <button class="btn-primary">Export</button>
+    </div>
+  </div>
+
+  <!-- Editor Layout -->
+  <div class="editor-layout" style="height: 600px;">
+    <!-- Preview Area -->
+    <div class="preview-area">
+      <div class="frame-preview">
+        <div style="width:100%;height:100%;background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); border-radius: var(--radius-lg); display:flex; align-items:center; justify-content:center;">
+          <div style="text-align:center; color: var(--text-muted);">
+            <div style="font-size:48px; margin-bottom:8px;">🎬</div>
+            <div style="font-size: 14px; font-weight: 500;">Frame 3: The Solution</div>
+            <div style="font-size: 12px; opacity: 0.6; margin-top:4px;">A bright modern office with holographic displays showing productivity dashboards</div>
+          </div>
+        </div>
+        <div class="frame-preview-overlay">
+          <button class="frame-nav-btn">◄</button>
+          <button class="frame-nav-btn">►</button>
+        </div>
+      </div>
+      <!-- Audio Row -->
+      <div class="audio-row">
+        <div class="audio-chip">
+          <button class="play-btn">▶</button>
+          <span>Narration</span>
+          <div class="audio-waveform">
+            <span style="height:8px"></span><span style="height:14px"></span><span style="height:10px"></span>
+            <span style="height:18px"></span><span style="height:12px"></span><span style="height:6px"></span>
+            <span style="height:14px"></span><span style="height:20px"></span><span style="height:8px"></span>
+            <span style="height:16px"></span><span style="height:10px"></span><span style="height:6px"></span>
+            <span style="height:12px"></span><span style="height:18px"></span><span style="height:8px"></span>
+          </div>
+          <span style="font-size:10px; color:var(--text-dim)">0:04</span>
+        </div>
+        <div class="audio-chip">
+          <button class="play-btn">▶</button>
+          <span>BGM</span>
+          <div class="audio-waveform">
+            <span style="height:4px"></span><span style="height:6px"></span><span style="height:8px"></span>
+            <span style="height:6px"></span><span style="height:10px"></span><span style="height:8px"></span>
+            <span style="height:6px"></span><span style="height:4px"></span><span style="height:8px"></span>
+          </div>
+          <span style="font-size:10px; color:var(--text-dim)">loop</span>
+        </div>
+        <div class="audio-chip" style="border-color: var(--border); opacity: 0.5;">
+          <span style="font-size:10px;">BG image ✓</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Detail Panel -->
+    <div class="detail-panel">
+      <div class="detail-header">
+        <h3>Frame 3 of 8</h3>
+        <div class="detail-nav">
+          <button>◄</button>
+          <button>►</button>
+        </div>
+      </div>
+      <div class="detail-body">
+        <div class="field-group">
+          <label class="field-label">Title</label>
+          <input class="field-input" value="The Solution" />
+        </div>
+        <div class="field-group">
+          <label class="field-label">
+            Narration
+            <button class="regen-btn">✦ Regen</button>
+          </label>
+          <textarea class="field-input" rows="3">Introducing our revolutionary workspace that brings all your tools into one seamless experience.</textarea>
+        </div>
+        <div class="field-group">
+          <label class="field-label">
+            Main Image Prompt
+            <button class="regen-btn">✦ Regen</button>
+          </label>
+          <textarea class="field-input" rows="2">A bright modern office with holographic displays showing productivity dashboards, cinematic lighting, 4K</textarea>
+        </div>
+        <div class="field-group">
+          <label class="field-label">Background Prompt</label>
+          <textarea class="field-input" rows="2">Soft gradient blue-purple ambient background with bokeh light particles</textarea>
+        </div>
+        <div class="field-group">
+          <label class="field-label">BGM Prompt</label>
+          <textarea class="field-input" rows="1">Upbeat corporate tech music, inspiring, moderate tempo</textarea>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn" style="font-size:12px;">Generate image</button>
+          <button class="btn" style="font-size:12px;">Generate narration</button>
+          <button class="btn" style="font-size:12px;">Generate BGM</button>
+        </div>
+      </div>
+      <!-- Transition Selector -->
+      <div class="transition-section">
+        <div class="transition-label">Transition after this frame</div>
+        <div class="transition-options">
+          <div class="transition-opt" onclick="selectTransition(this)">
+            <div class="icon">—</div><div class="label">None</div>
+          </div>
+          <div class="transition-opt selected" onclick="selectTransition(this)">
+            <div class="icon">◐</div><div class="label">Fade</div>
+          </div>
+          <div class="transition-opt" onclick="selectTransition(this)">
+            <div class="icon">◄</div><div class="label">Slide</div>
+          </div>
+          <div class="transition-opt" onclick="selectTransition(this)">
+            <div class="icon">▌</div><div class="label">Wipe</div>
+          </div>
+          <div class="transition-opt" onclick="selectTransition(this)">
+            <div class="icon">⊙</div><div class="label">Zoom</div>
+          </div>
+        </div>
+        <div class="duration-row">
+          <input type="range" class="duration-slider" min="100" max="1500" value="500" oninput="this.nextElementSibling.textContent = this.value + 'ms'" />
+          <span class="duration-value">500ms</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Timeline -->
+    <div class="timeline">
+      <div class="timeline-strip">
+        <div class="timeline-frame" onclick="selectFrame(this)">
+          <div class="placeholder" style="background:linear-gradient(135deg,#2d1b69,#11998e)"></div>
+          <span class="frame-num">1</span>
+          <span class="status-dot status-complete"></span>
+        </div>
+        <div class="timeline-transition"><span class="t-line"></span><span class="t-label">fade</span></div>
+        <div class="timeline-frame" onclick="selectFrame(this)">
+          <div class="placeholder" style="background:linear-gradient(135deg,#c94b4b,#4b134f)"></div>
+          <span class="frame-num">2</span>
+          <span class="status-dot status-complete"></span>
+        </div>
+        <div class="timeline-transition"><span class="t-line"></span><span class="t-label">slide</span></div>
+        <div class="timeline-frame active" onclick="selectFrame(this)">
+          <div class="placeholder" style="background:linear-gradient(135deg,#1a1a2e,#0f3460)"></div>
+          <span class="frame-num">3</span>
+          <span class="status-dot status-partial"></span>
+        </div>
+        <div class="timeline-transition"><span class="t-line"></span><span class="t-label">fade</span></div>
+        <div class="timeline-frame" onclick="selectFrame(this)">
+          <div class="placeholder" style="background:linear-gradient(135deg,#0f0c29,#302b63)"></div>
+          <span class="frame-num">4</span>
+          <span class="status-dot status-empty"></span>
+        </div>
+        <div class="timeline-transition"><span class="t-line"></span><span class="t-label">none</span></div>
+        <div class="timeline-frame" onclick="selectFrame(this)">
+          <div class="placeholder" style="background:linear-gradient(135deg,#134e5e,#71b280)"></div>
+          <span class="frame-num">5</span>
+          <span class="status-dot status-complete"></span>
+        </div>
+        <div class="timeline-transition"><span class="t-line"></span><span class="t-label">wipe</span></div>
+        <div class="timeline-frame" onclick="selectFrame(this)">
+          <div class="placeholder" style="background:linear-gradient(135deg,#3a1c71,#d76d77)"></div>
+          <span class="frame-num">6</span>
+          <span class="status-dot status-complete"></span>
+        </div>
+        <div class="timeline-transition"><span class="t-line"></span><span class="t-label">fade</span></div>
+        <div class="timeline-frame" onclick="selectFrame(this)">
+          <div class="placeholder" style="background:linear-gradient(135deg,#232526,#414345)"></div>
+          <span class="frame-num">7</span>
+          <span class="status-dot status-empty"></span>
+        </div>
+        <div class="timeline-transition"><span class="t-line"></span><span class="t-label">fade</span></div>
+        <div class="timeline-frame" onclick="selectFrame(this)">
+          <div class="placeholder" style="background:linear-gradient(135deg,#1d4350,#a43931)"></div>
+          <span class="frame-num">8</span>
+          <span class="status-dot status-complete"></span>
+        </div>
+        <div class="timeline-add">+</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================= -->
+<!-- SECTION 2: GRID / BOARD VIEW -->
+<!-- ========================================================= -->
+<div class="section-divider">
+  <h2>2. Grid / Board View</h2>
+  <p>Drag-and-drop cards with compact thumbnails, asset indicators, and batch actions</p>
+</div>
+
+<div style="border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin: 16px 24px;">
+  <div class="grid-view">
+    <div class="frame-grid">
+      <!-- Card 1 -->
+      <div class="grid-card">
+        <div class="grid-card-thumb" style="background:linear-gradient(135deg,#2d1b69,#11998e)">
+          <span class="drag-handle">⠿</span>
+        </div>
+        <div class="grid-card-body">
+          <div class="grid-card-title">1. Opening Scene</div>
+          <div class="grid-card-narration">Every great product starts with a problem worth solving.</div>
+          <div class="grid-card-footer">
+            <div class="asset-dots">
+              <span class="asset-dot status-complete" title="Main image"></span>
+              <span class="asset-dot status-complete" title="Narration"></span>
+              <span class="asset-dot status-complete" title="BGM"></span>
+            </div>
+            <span class="grid-card-transition">fade 500ms</span>
+          </div>
+        </div>
+      </div>
+      <!-- Card 2 -->
+      <div class="grid-card">
+        <div class="grid-card-thumb" style="background:linear-gradient(135deg,#c94b4b,#4b134f)">
+          <span class="drag-handle">⠿</span>
+        </div>
+        <div class="grid-card-body">
+          <div class="grid-card-title">2. The Problem</div>
+          <div class="grid-card-narration">Teams are overwhelmed with too many disconnected tools.</div>
+          <div class="grid-card-footer">
+            <div class="asset-dots">
+              <span class="asset-dot status-complete" title="Main image"></span>
+              <span class="asset-dot status-complete" title="Narration"></span>
+              <span class="asset-dot status-empty" title="BGM missing"></span>
+            </div>
+            <span class="grid-card-transition">slide 300ms</span>
+          </div>
+        </div>
+      </div>
+      <!-- Card 3 (active) -->
+      <div class="grid-card active">
+        <div class="grid-card-thumb" style="background:linear-gradient(135deg,#1a1a2e,#0f3460)">
+          <span class="drag-handle" style="opacity:1">⠿</span>
+        </div>
+        <div class="grid-card-body">
+          <div class="grid-card-title">3. The Solution</div>
+          <div class="grid-card-narration">Introducing our revolutionary workspace that brings all your tools together.</div>
+          <div class="grid-card-footer">
+            <div class="asset-dots">
+              <span class="asset-dot status-partial" title="Main image"></span>
+              <span class="asset-dot status-empty" title="Narration missing"></span>
+              <span class="asset-dot status-empty" title="BGM missing"></span>
+            </div>
+            <span class="grid-card-transition">fade 500ms</span>
+          </div>
+        </div>
+      </div>
+      <!-- Card 4 -->
+      <div class="grid-card">
+        <div class="grid-card-thumb" style="background:var(--surface-3); display:flex; align-items:center; justify-content:center;">
+          <span class="drag-handle">⠿</span>
+          <span style="font-size:11px; color:var(--text-dim)">No image</span>
+        </div>
+        <div class="grid-card-body">
+          <div class="grid-card-title">4. Key Features</div>
+          <div class="grid-card-narration">Real-time collaboration, smart automation, and unified dashboards.</div>
+          <div class="grid-card-footer">
+            <div class="asset-dots">
+              <span class="asset-dot status-empty"></span>
+              <span class="asset-dot status-empty"></span>
+              <span class="asset-dot status-empty"></span>
+            </div>
+            <span class="grid-card-transition">none</span>
+          </div>
+        </div>
+      </div>
+      <!-- Card 5 -->
+      <div class="grid-card">
+        <div class="grid-card-thumb" style="background:linear-gradient(135deg,#134e5e,#71b280)">
+          <span class="drag-handle">⠿</span>
+        </div>
+        <div class="grid-card-body">
+          <div class="grid-card-title">5. Social Proof</div>
+          <div class="grid-card-narration">Trusted by over 10,000 teams worldwide.</div>
+          <div class="grid-card-footer">
+            <div class="asset-dots">
+              <span class="asset-dot status-complete"></span>
+              <span class="asset-dot status-complete"></span>
+              <span class="asset-dot status-complete"></span>
+            </div>
+            <span class="grid-card-transition">wipe 400ms</span>
+          </div>
+        </div>
+      </div>
+      <!-- Add card -->
+      <div class="grid-add-card">
+        <span class="plus">+</span>
+        <span style="font-size:12px;">Add frame</span>
+      </div>
+    </div>
+  </div>
+  <!-- Batch Bar -->
+  <div class="batch-bar">
+    <button class="btn" style="font-size:12px;">Generate all missing assets</button>
+    <button class="btn" style="font-size:12px;">Batch regenerate prompts</button>
+    <button class="btn" style="font-size:12px;">Auto-assign transitions</button>
+  </div>
+</div>
+
+<!-- ========================================================= -->
+<!-- SECTION 3: PREVIEW / PLAYBACK MODE -->
+<!-- ========================================================= -->
+<div class="section-divider">
+  <h2>3. Preview / Playback Mode</h2>
+  <p>Full-screen cinema view for reviewing the storyboard as a slideshow</p>
+</div>
+
+<div style="border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin: 16px 24px; height: 520px;">
+  <div class="preview-mode" style="height: 520px;">
+    <button class="preview-exit">✕ Exit preview</button>
+    <div class="preview-image-area">
+      <div style="width:600px; height:340px; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); border-radius: var(--radius-lg); box-shadow: 0 8px 40px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;">
+        <div style="text-align:center; color: rgba(255,255,255,0.6);">
+          <div style="font-size:40px; margin-bottom: 8px;">🏢</div>
+          <div style="font-size: 13px;">Frame 3 — The Solution</div>
+        </div>
+      </div>
+      <div class="preview-subtitle">
+        Introducing our revolutionary workspace that brings all your tools into one seamless experience.
+      </div>
+    </div>
+    <div class="preview-controls">
+      <div class="preview-progress">
+        <div class="preview-segment played" style="flex:1"></div>
+        <div class="preview-segment-gap"></div>
+        <div class="preview-segment played" style="flex:1"></div>
+        <div class="preview-segment-gap"></div>
+        <div class="preview-segment current" style="flex:1"></div>
+        <div class="preview-segment-gap"></div>
+        <div class="preview-segment upcoming" style="flex:1"></div>
+        <div class="preview-segment-gap"></div>
+        <div class="preview-segment upcoming" style="flex:1"></div>
+        <div class="preview-segment-gap"></div>
+        <div class="preview-segment upcoming" style="flex:1"></div>
+        <div class="preview-segment-gap"></div>
+        <div class="preview-segment upcoming" style="flex:1"></div>
+        <div class="preview-segment-gap"></div>
+        <div class="preview-segment upcoming" style="flex:1"></div>
+      </div>
+      <div class="preview-transport">
+        <div class="transport-left">
+          <button class="transport-btn">⏮</button>
+          <button class="transport-btn play">▶</button>
+          <button class="transport-btn">⏭</button>
+          <span class="transport-info">Frame 3 / 8</span>
+        </div>
+        <div class="transport-right">
+          <span class="transport-info">fade → next</span>
+          <select class="speed-select">
+            <option>0.5x</option>
+            <option selected>1x</option>
+            <option>1.5x</option>
+            <option>2x</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================= -->
+<!-- SECTION 4: IMPROVED STORYBOARD LIST -->
+<!-- ========================================================= -->
+<div class="section-divider">
+  <h2>4. Improved Storyboard List</h2>
+  <p>Cards with thumbnail strips, asset progress, and richer context</p>
+</div>
+
+<div style="border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin: 16px 24px;">
+  <div class="list-view">
+    <div class="list-header">
+      <div>
+        <h1>Storyboards</h1>
+        <p>Create prompt-first storyboards and export as video</p>
+      </div>
+      <button class="btn-primary">+ New storyboard</button>
+    </div>
+    <div class="storyboard-cards">
+      <!-- Card 1 -->
+      <div class="sb-card">
+        <div class="sb-card-strip">
+          <div class="mini-thumb" style="background:linear-gradient(135deg,#2d1b69,#11998e)"></div>
+          <div class="mini-thumb" style="background:linear-gradient(135deg,#c94b4b,#4b134f)"></div>
+          <div class="mini-thumb" style="background:linear-gradient(135deg,#1a1a2e,#0f3460)"></div>
+          <div class="mini-thumb" style="background:linear-gradient(135deg,#0f0c29,#302b63)"></div>
+          <div class="mini-thumb" style="background:linear-gradient(135deg,#134e5e,#71b280)"></div>
+          <div class="mini-thumb" style="background:linear-gradient(135deg,#3a1c71,#d76d77)"></div>
+          <div class="mini-thumb" style="background:linear-gradient(135deg,#232526,#414345)"></div>
+          <div class="mini-thumb" style="background:linear-gradient(135deg,#1d4350,#a43931)"></div>
+        </div>
+        <div class="sb-card-body">
+          <div class="sb-card-title">🎬 Product Launch Video</div>
+          <div class="sb-card-desc">Marketing video for the Q3 product launch campaign targeting enterprise customers</div>
+          <div class="sb-card-meta">
+            <span>8 frames</span>
+            <span>·</span>
+            <span>Updated 2d ago</span>
+            <div class="sb-card-progress"><div class="sb-card-progress-fill" style="width:75%"></div></div>
+            <span>75%</span>
+          </div>
+        </div>
+        <div class="sb-card-actions">
+          <button class="btn" style="font-size:12px;">Open</button>
+          <button class="btn-icon" style="width:28px;height:28px;font-size:14px;">⋮</button>
+        </div>
+      </div>
+      <!-- Card 2 -->
+      <div class="sb-card">
+        <div class="sb-card-strip">
+          <div class="mini-thumb" style="background:linear-gradient(135deg,#1d976c,#93f9b9)"></div>
+          <div class="mini-thumb" style="background:linear-gradient(135deg,#4776e6,#8e54e9)"></div>
+          <div class="mini-thumb" style="background:linear-gradient(135deg,#f7971e,#ffd200)"></div>
+        </div>
+        <div class="sb-card-body">
+          <div class="sb-card-title">🎬 Tutorial Intro</div>
+          <div class="sb-card-desc">How-to guide for new users getting started with the platform</div>
+          <div class="sb-card-meta">
+            <span>3 frames</span>
+            <span>·</span>
+            <span>Updated 5h ago</span>
+            <div class="sb-card-progress"><div class="sb-card-progress-fill" style="width:100%"></div></div>
+            <span>100%</span>
+          </div>
+        </div>
+        <div class="sb-card-actions">
+          <button class="btn" style="font-size:12px;">Open</button>
+          <button class="btn-icon" style="width:28px;height:28px;font-size:14px;">⋮</button>
+        </div>
+      </div>
+      <!-- Empty card -->
+      <div class="sb-card" style="border-style:dashed; display:flex; align-items:center; justify-content:center; min-height:200px;">
+        <div style="text-align:center; color: var(--text-dim);">
+          <div style="font-size:28px; margin-bottom:8px;">+</div>
+          <div style="font-size:13px;">Create new storyboard</div>
+          <div style="font-size:11px; margin-top:4px;">Name it, then generate frames with AI</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================= -->
+<!-- SECTION 5: TRANSITION SELECTOR DETAIL -->
+<!-- ========================================================= -->
+<div class="section-divider">
+  <h2>5. Transition Visual Selector (Detail)</h2>
+  <p>Replace text input with visual button group + slider + mini preview</p>
+</div>
+
+<div style="border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin: 16px 24px; max-width: 500px;">
+  <div class="transition-section" style="padding: 24px;">
+    <div class="transition-label">Transition after this frame</div>
+    <div class="transition-options" style="grid-template-columns: repeat(5, 1fr);">
+      <div class="transition-opt" onclick="selectTransition(this)">
+        <div class="icon">—</div><div class="label">None</div>
+      </div>
+      <div class="transition-opt selected" onclick="selectTransition(this)">
+        <div class="icon">◐</div><div class="label">Fade</div>
+      </div>
+      <div class="transition-opt" onclick="selectTransition(this)">
+        <div class="icon">◄</div><div class="label">Slide</div>
+      </div>
+      <div class="transition-opt" onclick="selectTransition(this)">
+        <div class="icon">▌</div><div class="label">Wipe</div>
+      </div>
+      <div class="transition-opt" onclick="selectTransition(this)">
+        <div class="icon">⊙</div><div class="label">Zoom</div>
+      </div>
+    </div>
+    <div class="duration-row" style="margin-bottom: 16px;">
+      <span style="font-size:11px; color:var(--text-dim);">100ms</span>
+      <input type="range" class="duration-slider" min="100" max="1500" value="500" oninput="this.parentElement.querySelector('.duration-value').textContent = this.value + 'ms'" />
+      <span class="duration-value">500ms</span>
+      <span style="font-size:11px; color:var(--text-dim);">1500ms</span>
+    </div>
+    <!-- Mini preview -->
+    <div style="display:flex; align-items:center; gap:12px; padding: 12px; background: var(--surface); border-radius: 8px; border: 1px solid var(--border);">
+      <div style="width:60px; height:40px; border-radius:4px; background: linear-gradient(135deg,#1a1a2e,#0f3460); flex-shrink:0;"></div>
+      <div style="flex:1; text-align:center;">
+        <div style="font-size:11px; color:var(--accent); font-weight:500;">fade · 500ms</div>
+        <div style="font-size:18px; color:var(--text-dim); letter-spacing:2px;">→ → →</div>
+      </div>
+      <div style="width:60px; height:40px; border-radius:4px; background: linear-gradient(135deg,#0f0c29,#302b63); flex-shrink:0;"></div>
+    </div>
+  </div>
+</div>
+
+<div style="padding: 40px 24px; text-align:center; color:var(--text-dim); font-size:13px;">
+  End of design proposal. Open in browser to see all interactive elements.
+</div>
+
+<script>
+  function selectTransition(el) {
+    el.closest('.transition-options').querySelectorAll('.transition-opt').forEach(o => o.classList.remove('selected'));
+    el.classList.add('selected');
+  }
+  function selectFrame(el) {
+    el.closest('.timeline-strip').querySelectorAll('.timeline-frame').forEach(f => f.classList.remove('active'));
+    el.classList.add('active');
+  }
+  function switchView(view) {
+    document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+  }
+</script>
+
+</body>
+</html>

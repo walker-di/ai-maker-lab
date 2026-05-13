@@ -28,6 +28,7 @@ const PROVIDER_TO_ENV_KEY: Record<ProviderId, string> = {
 	openai: 'OPENAI_API_KEY',
 	anthropic: 'ANTHROPIC_API_KEY',
 	gemini: 'GEMINI_API_KEY',
+	replicate: 'REPLICATE_API_KEY',
 };
 
 const ENV_KEYS: readonly string[] = PROVIDER_IDS.map((p) => PROVIDER_TO_ENV_KEY[p]);
