@@ -11,11 +11,11 @@ Primary brand promise:
 
 Practical content promise:
 
-> Building practical AI products and agent workflows in public.
+> Sharing AI development ideas, concept products, and real product build lessons in public.
 
 Longer version:
 
-> Walker AI Maker Lab is a cozy space for building with AI: tools, creator workflows, automation ideas, agent systems, product experiments, and the messy process of turning fast AI development into useful things.
+> Walker AI Maker Lab is a cozy space for building with AI: development ideas, concept products, creator workflows, automation experiments, agent systems, and occasional lessons from real products such as ia-walker, Picflow, Fortalece.ai, and IDentifQ.
 
 ## Core problem
 
@@ -121,7 +121,7 @@ Important rule:
 
 Primary audience:
 
-- AI builders and indie hackers trying to ship real products with AI agents.
+- AI builders and indie hackers exploring AI product ideas, prototypes, and real shipping lessons.
 - Developers using coding agents but struggling with orchestration and verification.
 - Technical founders building AI-assisted product workflows.
 - Svelte/SvelteKit/Bun developers interested in AI product architecture.
@@ -131,17 +131,17 @@ Audience pains:
 - They can generate code faster than they can verify it.
 - They do not know how to structure multi-agent development work.
 - They want practical examples, not only AI hype.
-- They want to see product workflows, QA, architecture, and tradeoffs.
+- They want to see product concepts, real-product lessons, QA, architecture, and tradeoffs.
 
 ## Content pillars
 
 ### 1. Lab Builds
 
-Demo-first builds that produce useful software, templates, or experiments.
+Demo-first builds that produce concept products, useful prototypes, templates, or experiments. Some episodes may reference real products, but the default assumption is that AI Maker Lab itself is in development.
 
 Examples:
 
-- `I Built an AI Playground That Actually Ships Features`
+- `Designing an AI Playground That Could Become a Product`
 - `Minecraft Clone in 30 Minutes: Voxel Engine MVP`
 - `Racing Game MVP: Physics, Lap Timer, and Drift Feel`
 
@@ -157,12 +157,13 @@ Examples:
 
 ### 3. Building AI Products
 
-AI Maker Lab product evolution, feature demos, MVP decisions, product experiments, and what shipped or failed.
+AI Maker Lab concept evolution, feature prototypes, MVP decisions, product experiments, and lessons from real products when relevant.
 
 Examples:
 
-- `Building AI Maker Lab: Week 1`
+- `Building the AI Maker Lab Concept: Week 1`
 - `What Actually Changed After Adding AI Agents to My Development Process`
+- `What Picflow/Fortalece/ia-walker Taught Me About AI Product Work`
 
 ### 4. Agent Company / Paperclip Workflow
 
@@ -301,7 +302,9 @@ Create one short dev content note using [scripts-and-templates.md](./scripts-and
 Use safe claims:
 
 - “I’m experimenting with…”
-- “I’m building…”
+- “I’m developing the AI Maker Lab concept…”
+- “This is a prototype / concept product…”
+- “This lesson came from a real product such as ia-walker, Picflow, Fortalece.ai, or IDentifQ…” when true.
 - “The current bottleneck is…”
 - “This is what worked in this build…”
 - “The goal is to reduce recording friction…”
@@ -312,3 +315,4 @@ Avoid unsafe claims:
 - “This is the best AI development workflow.”
 - “AI agents replace a software team.”
 - “The metrics prove…” unless analytics are provided.
+- “AI Maker Lab is a finished product.”

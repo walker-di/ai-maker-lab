@@ -16,7 +16,7 @@ The plan is safe as a strategy document, but public-facing drafts should avoid i
 
 - the workflow is proven to grow the channel,
 - YouTube metrics already exist,
-- AI Maker Lab is a finished product,
+- AI Maker Lab is an in-development concept/workspace instead of a finished product, while still allowing real-product case studies from ia-walker, Picflow, Fortalece.ai, and IDentifQ,
 - AI agents universally replace humans or full software teams,
 - autonomous publishing is enabled.
 
@@ -30,6 +30,8 @@ Use:
 - “The repo docs already contain video material…”
 - “The goal is to reduce recording friction…”
 - “This is a draft workflow I’m testing…”
+- “AI Maker Lab is in development / concept stage…”
+- “This episode uses ia-walker, Picflow, Fortalece.ai, or IDentifQ as a real-product example…” when true.
 
 Avoid:
 
@@ -38,6 +40,7 @@ Avoid:
 - “AI agents replace a software team.”
 - “The metrics prove…” unless analytics are provided.
 - “This is fully automated.”
+- “AI Maker Lab is a finished product.”
 
 ## Approval queue
 
@@ -57,7 +60,7 @@ Avoid:
 [ ] Confirm brand voice
 [ ] Confirm approved claims
 [ ] Confirm forbidden claims
-[ ] Confirm primary 2026 revenue focus: AI Playground, Fortalece, Picflow, ia.walker, membership, or other
+[ ] Confirm primary 2026 revenue focus: concept products, ia-walker, Picflow, Fortalece.ai, IDentifQ, AI Playground, membership, or other
 [ ] Confirm whether to create Fortalece manual campaign/content items from this packet
 ```
 
@@ -70,7 +73,7 @@ fortalece_sync:
   mode: manual_review
   campaigns:
     - title: "AI Maker Lab YouTube Channel Operating System"
-      description: "Approval-first content workflow for turning fast AI development work into a YouTube calendar, repeatable video formats, scripts, and metrics review. Channel: https://www.youtube.com/channel/UCpHzeNKAq7bFGE9ToFiXFaA"
+      description: "Approval-first content workflow for turning fast AI development ideas, concept products, and occasional real-product case studies into a YouTube calendar, repeatable video formats, scripts, and metrics review. Channel: https://www.youtube.com/channel/UCpHzeNKAq7bFGE9ToFiXFaA"
       personas:
         - "AI builders"
         - "Technical founders"

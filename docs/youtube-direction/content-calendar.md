@@ -85,7 +85,7 @@ docs/youtube-direction/ folder and the new content workflow
 
 ```text
 1. Here is the problem: AI development now moves faster than recording.
-2. I’m building AI Maker Lab, and the workflow produces more changes than I can explain live.
+2. I’m developing the AI Maker Lab concept, and the workflow produces more changes than I can explain live.
 3. The old process forced me to choose a perfect topic every week.
 4. The new process records one week behind development.
 5. During development I only capture proof: screenshots, clips, QA artifacts, notes.
@@ -252,7 +252,7 @@ Approval checklist:
 | 3 | The Missing Piece in AI Coding: Real QA Evidence | Artifact-first lesson recap | AI Development Workflows | High trust and practical value. |
 | 4 | I Tried Turning My Development Process Into a Content Calendar | Artifact-first process recap | Content / Marketing Automation | Explains the new channel system. |
 | 5 | Building AI Maker Lab: Week 1 | Weekly artifact recap | Building AI Products | Starts recurring series after the reset. |
-| 6 | I Built an AI Playground That Actually Ships Features | Build recap | Lab Builds | Strong direct monetization path from `docs/concept.md`. |
+| 6 | Designing an AI Playground That Could Become a Product | Build recap | Lab Builds | Strong concept-product path from `docs/concept.md`. |
 | 7 | Minecraft Clone in 30 Minutes: Voxel Engine MVP | Build recap | Lab Builds | High visual payoff and Shorts potential. |
 | 8 | Racing Game MVP: Physics, Lap Timer, and Drift Feel | Build recap | Lab Builds | High visual payoff and measurable success criteria. |
 

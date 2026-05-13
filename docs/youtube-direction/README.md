@@ -11,6 +11,8 @@ This folder contains the working YouTube direction for AI Maker Lab. It follows 
 
 AI Maker Lab development moves faster than recording. The main bottleneck is not a lack of ideas; it is choosing what to record, creating a script quickly, and keeping the video plan synchronized with development without slowing development down.
 
+Important positioning: **AI Maker Lab is in development / concept stage, not a finished product.** The channel is mainly for sharing development ideas, concept products, workflow experiments, and lessons. Sometimes videos can show real products such as ia-walker, Picflow, Fortalece.ai, and IDentifQ, but those should be framed as concrete examples or case studies rather than implying AI Maker Lab itself is already finished.
+
 The revised system solves this by making the YouTube channel intentionally **lag one development cycle behind**.
 
 > Do not record everything while it happens. Capture proof while developing, then record the clearest recap after the work has settled.
@@ -21,6 +23,12 @@ Use one default format until the channel feels easy to produce:
 
 ```text
 Artifact-first development recap
+```
+
+Default framing:
+
+```text
+I’m developing this concept / workflow / prototype, and here is the artifact or lesson from the latest cycle.
 ```
 
 Each main video starts with the visible artifact first, then explains what changed, why it mattered, what broke, and what comes next. This avoids needing a perfect tutorial, polished narrative, or live build every week.

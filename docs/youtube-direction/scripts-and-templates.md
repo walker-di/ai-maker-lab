@@ -273,7 +273,7 @@ Goal:
 My AI development workflow has become faster than my ability to record it.
 
 Context:
-I’m building AI Maker Lab, and the work now moves through agents, sprint docs, architecture decisions, QA evidence, and product experiments.
+I’m developing the AI Maker Lab concept, and the work now moves through agents, sprint docs, architecture decisions, QA evidence, and product experiments.
 
 Problem:
 The old content process does not work anymore. By the time I choose a topic and prepare a tutorial, the system has already changed.
@@ -286,7 +286,7 @@ I’m switching to a one-week-lag format:
 4. only make deep dives after a topic proves useful.
 
 Lesson:
-The content system has to follow development without trying to keep up with every single change live.
+The content system has to follow development without pretending the concept is a finished product or trying to keep up with every single change live.
 
 Close:
 The goal is simple: make the channel follow the development instead of competing with it.
@@ -322,6 +322,8 @@ During development I’ll only capture proof:
 
 Then each week I’ll choose the clearest artifact from the previous week and turn it into one simple recap video plus a few shorts.
 
+AI Maker Lab is still in development, so the focus is on ideas, prototypes, workflows, and lessons. Sometimes I’ll use real products like ia-walker, Picflow, Fortalece.ai, or IDentifQ as concrete examples.
+
 The goal is to make content follow the actual product development rhythm — not slow it down.
 ```
 
@@ -344,7 +346,7 @@ Tutorials require stable topics, polished demos, and context rebuilding. Fast AI
 
 ## The new rule: record one week behind
 
-Instead of recording everything live, the channel records from the previous week’s clearest artifact.
+Instead of recording everything live, the channel records from the previous week’s clearest artifact. AI Maker Lab should be framed as an in-development concept/workspace, while real products such as ia-walker, Picflow, Fortalece.ai, and IDentifQ can appear as case studies when relevant.
 
 ## The artifact-first recap
 

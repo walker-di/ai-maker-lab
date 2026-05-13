@@ -90,7 +90,7 @@ BUILD → TEST → BREAK → FIX → MEASURE → SHIP
 Main video:
 
 ```text
-Title: I Built an AI Playground That Actually Ships Features
+Title: Designing an AI Playground That Could Become a Product
 Thumbnail text: AI PLAYGROUND ✅
 Format: Build Series
 Status: draft

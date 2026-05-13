@@ -17,9 +17,9 @@ ai_cmo_intake:
   product:
     name: "AI Maker Lab"
     website_url: "https://www.youtube.com/channel/UCpHzeNKAq7bFGE9ToFiXFaA"
-    one_sentence_description: "A Bun/SvelteKit monorepo and lab for building AI-assisted product workflows, agent orchestration, marketing/storyboard tools, and experiments."
-    longer_description: "AI Maker Lab is a development workspace for building AI product experiments with clean architecture, shared UI/domain packages, SvelteKit, SurrealDB, AI agent workflows, QA evidence, and product-oriented development loops."
-    current_positioning: "Cozy build-in-public AI maker lab focused on practical tools, creator workflows, AI experiments, agent workflows, games/prototypes, and useful software creation."
+    one_sentence_description: "A Bun/SvelteKit monorepo and concept lab for exploring AI-assisted product workflows, agent orchestration, marketing/storyboard tools, and experiments."
+    longer_description: "AI Maker Lab is in development: a concept/workspace for building AI product experiments with clean architecture, shared UI/domain packages, SvelteKit, SurrealDB, AI agent workflows, QA evidence, and product-oriented development loops."
+    current_positioning: "Cozy build-in-public AI maker lab focused on development ideas, concept products, creator workflows, AI experiments, agent workflows, games/prototypes, and occasional case studies from real products like ia-walker, Picflow, Fortalece.ai, and IDentifQ."
     key_features:
       - "Bun workspace monorepo"
       - "SvelteKit desktop/web app shell"
@@ -41,7 +41,7 @@ ai_cmo_intake:
 
   audience:
     icp_personas:
-      - "AI builders and indie hackers trying to ship real products with AI agents"
+      - "AI builders and indie hackers exploring AI product concepts, prototypes, and real product lessons"
       - "Developers using coding agents but struggling with orchestration and verification"
       - "Technical founders building AI-assisted product workflows"
       - "Svelte/SvelteKit/Bun developers interested in AI product architecture"
@@ -100,7 +100,7 @@ ai_cmo_intake:
   brand_safety:
     brand_voice: "Technical, candid, practical, experimental, build-in-public, evidence-first, cozy, creative, calm, and slightly playful."
     approved_claims:
-      - "AI Maker Lab is a Bun workspace monorepo."
+      - "AI Maker Lab is a Bun workspace monorepo in development / concept stage."
       - "The repo uses SvelteKit, shared UI, and shared domain packages."
       - "Sprint 003 documents a Paperclip company workflow with CEO, Orchestrator, Coder, QA, and Designer roles."
       - "The docs include a suggested recording order and video material checklist."
@@ -119,7 +119,7 @@ ai_cmo_intake:
     sensitive_topics:
       - "Overclaiming AI productivity"
       - "Unverified revenue/growth claims"
-      - "Misrepresenting development experiments as finished products"
+      - "Misrepresenting AI Maker Lab or development experiments as finished products"
       - "Over-commercializing product mentions before trust is built"
 
   channels:
@@ -181,7 +181,7 @@ ai_cmo_intake:
 
 | Evidence | Source |
 |---|---|
-| `ai-maker-lab` is a Bun workspace monorepo with desktop app, shared UI, and shared domain packages. | `README.md` |
+| `ai-maker-lab` is a Bun workspace monorepo with desktop app, shared UI, and shared domain packages; it should be framed as in development / concept stage, not a finished product. | `README.md`, user clarification |
 | The project uses SvelteKit, shared UI, browser-safe domain imports, application and infrastructure boundaries. | `README.md`, `AGENTS.md` |
 | Sprint 003 is explicitly a video pack. | `docs/sprint/003/README.md` |
 | Sprint 003 defines a five-role Paperclip company: CEO → Orchestrator → Coder / QA / Designer. | `docs/sprint/003/README.md` |
@@ -214,4 +214,4 @@ The content problem is a throughput mismatch:
 AI development speed > recording speed > editing speed > publishing speed
 ```
 
-Therefore, a normal tutorial-only strategy is likely too slow. The channel needs a development-to-video pipeline where every meaningful development session creates potential video material, and weekly videos are assembled from recent evidence instead of invented from scratch.
+Therefore, a normal tutorial-only strategy is likely too slow. The channel needs a development-to-video pipeline where every meaningful development session creates potential video material, and weekly videos are assembled from recent evidence instead of invented from scratch. The default story is development ideas and concept products; real products such as ia-walker, Picflow, Fortalece.ai, and IDentifQ can appear as examples or case studies when relevant.

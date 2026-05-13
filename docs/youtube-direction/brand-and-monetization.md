@@ -16,9 +16,9 @@ Recommended channel description:
 
 ```text
 Walker AI Maker Lab is a cozy space for building with AI.
-I explore AI tools, creator workflows, automation ideas, and practical experiments through a maker mindset. From content systems and editing workflows to prototype tools and creative processes, this channel is about testing ideas, building useful things, and sharing what actually works.
+I explore development ideas, concept products, AI tools, creator workflows, automation ideas, and practical experiments through a maker mindset. Sometimes I show lessons from real products like ia-walker, Picflow, Fortalece.ai, and IDentifQ, but the main channel is about testing ideas, building prototypes, and sharing what is being learned.
 
-AI experiments, creative systems, and chill builder energy.
+AI experiments, concept products, real-product lessons, creative systems, and chill builder energy.
 ```
 
 Short channel bio options:
@@ -35,12 +35,12 @@ Use **Walker AI Maker Lab** as the public channel name and **AI Builder Lab** as
 | Layer | Role |
 |---|---|
 | Walker AI Maker Lab | Channel / public creator brand |
-| AI Builder Lab | Repeatable content system and possible membership/lab product umbrella |
+| AI Builder Lab | Repeatable content system and possible future membership/lab product umbrella |
 | Lab Builds | Hands-on build videos |
 | Lab Notes | Weekly news/actions, lessons, and what to test |
 | Lab Benchmarks | Tool/model/product reviews with a rubric |
 | Lab Kits | Templates, starter repos, eval harnesses, downloadable assets |
-| Lab Deployments | Building-in-public episodes for AI Playground, Fortalece, Picflow, ia.walker, games, or other products |
+| Lab Deployments | Building-in-public episodes for concept products, AI Playground, Fortalece.ai, Picflow, ia-walker, IDentifQ, games, or other products |
 
 ## Visual identity
 
@@ -125,7 +125,7 @@ Think in layers, not ads first.
 
 ### Layer 1 — SaaS subscriptions
 
-Primary monetization should come from relevant tools/products when ready.
+Primary monetization should come from relevant tools/products when ready. Until then, frame product mentions as concepts, prototypes, or case studies unless the featured product is actually live.
 
 Potential CTA patterns:
 
@@ -201,6 +201,18 @@ When discussing your own products:
 
 ```text
 I build this, so here is the biased part. Now here is the neutral test/rubric.
+```
+
+When discussing AI Maker Lab specifically:
+
+```text
+AI Maker Lab is still in development / concept stage. I’m using it to explore the workflow, prototype, or lesson in this episode.
+```
+
+When discussing real products:
+
+```text
+This example comes from [ia-walker / Picflow / Fortalece.ai / IDentifQ]. I’m using it as a concrete case study, not claiming every concept in AI Maker Lab is already finished.
 ```
 
 This preserves credibility while still making the channel commercially useful.
