@@ -307,5 +307,19 @@
 	"storyboard_error_server_retry": "Try again",
 	"storyboard_error_network_title": "Connection problem",
 	"storyboard_error_network_description": "Could not reach the storyboard service. Please check your network connection.",
-	"storyboard_error_network_retry": "Retry"
+	"storyboard_error_network_retry": "Retry",
+	"marketing_nav_customer_journey_maps": "Customer Journey Maps",
+	"marketing_card_customer_journey_maps_description": "Map customer journeys across stages, touchpoints, and emotions.",
+	"marketing_customer_journey_maps_page_title": "Customer Journey Maps",
+	"marketing_customer_journey_maps_heading": "Customer Journey Maps",
+	"marketing_customer_journey_maps_intro": "Create and manage customer journey maps to visualize experiences across stages, touchpoints, emotions, and opportunities.",
+	"marketing_customer_journey_map_new": "New journey map",
+	"marketing_customer_journey_map_create_heading": "Create journey map",
+	"marketing_customer_journey_map_edit_heading": "Edit journey map",
+	"marketing_customer_journey_map_create_action": "Create journey map",
+	"marketing_customer_journey_maps_link_note": "Journey maps must be linked to a marketing product.",
+	"marketing_customer_journey_maps_empty_title": "No journey maps yet",
+	"marketing_customer_journey_maps_empty_description_global": "Create a journey map to start mapping customer experiences.",
+	"marketing_customer_journey_maps_loading": "Loading journey maps…",
+	"marketing_customer_journey_maps_create_product_first": "Create a product before creating journey maps."
 }

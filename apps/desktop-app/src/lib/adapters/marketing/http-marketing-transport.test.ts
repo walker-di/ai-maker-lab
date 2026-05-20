@@ -177,6 +177,71 @@ describe('HttpMarketingCatalogTransport — Personas', () => {
 	});
 });
 
+describe('HttpMarketingCatalogTransport — Customer Journey Maps', () => {
+	const transport = new HttpMarketingCatalogTransport();
+
+	test('listCustomerJourneyMaps without productId sends GET to /api/marketing/customer-journey-maps', async () => {
+		fetchMock.mockResolvedValueOnce(ok([]));
+
+		await transport.listCustomerJourneyMaps();
+
+		expect(fetchMock).toHaveBeenCalledWith(`${BASE}/customer-journey-maps`);
+	});
+
+	test('listCustomerJourneyMaps with productId includes query param', async () => {
+		fetchMock.mockResolvedValueOnce(ok([]));
+
+		await transport.listCustomerJourneyMaps('p-1');
+
+		expect(fetchMock).toHaveBeenCalledWith(`${BASE}/customer-journey-maps?productId=p-1`);
+	});
+
+	test('getCustomerJourneyMap sends GET to /api/marketing/customer-journey-maps/:id', async () => {
+		const journeyMap = { id: 'cjm-1', name: 'Journey' };
+		fetchMock.mockResolvedValueOnce(ok(journeyMap));
+
+		const result = await transport.getCustomerJourneyMap('cjm-1');
+
+		expect(fetchMock).toHaveBeenCalledWith(`${BASE}/customer-journey-maps/cjm-1`);
+		expect(result).toEqual(journeyMap);
+	});
+
+	test('createCustomerJourneyMap sends POST with JSON body', async () => {
+		const created = { id: 'cjm-2', name: 'New Journey', productId: 'p-1' };
+		fetchMock.mockResolvedValueOnce(ok(created, 201));
+
+		const result = await transport.createCustomerJourneyMap({ name: 'New Journey', productId: 'p-1' });
+
+		expect(fetchMock).toHaveBeenCalledWith(`${BASE}/customer-journey-maps`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ name: 'New Journey', productId: 'p-1' }),
+		});
+		expect(result).toEqual(created);
+	});
+
+	test('updateCustomerJourneyMap sends PUT', async () => {
+		const updated = { id: 'cjm-1', name: 'Updated Journey' };
+		fetchMock.mockResolvedValueOnce(ok(updated));
+
+		await transport.updateCustomerJourneyMap('cjm-1', { name: 'Updated Journey' });
+
+		expect(fetchMock).toHaveBeenCalledWith(`${BASE}/customer-journey-maps/cjm-1`, {
+			method: 'PUT',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ name: 'Updated Journey' }),
+		});
+	});
+
+	test('deleteCustomerJourneyMap sends DELETE', async () => {
+		fetchMock.mockResolvedValueOnce(ok({}));
+
+		await transport.deleteCustomerJourneyMap('cjm-1');
+
+		expect(fetchMock).toHaveBeenCalledWith(`${BASE}/customer-journey-maps/cjm-1`, { method: 'DELETE' });
+	});
+});
+
 describe('HttpMarketingCatalogTransport — error handling', () => {
 	const transport = new HttpMarketingCatalogTransport();
 

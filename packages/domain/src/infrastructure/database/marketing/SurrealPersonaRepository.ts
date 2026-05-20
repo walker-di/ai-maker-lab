@@ -3,6 +3,7 @@ import type { IPersonaRepository } from '../../../application/marketing/ports.js
 import type { Persona, CreatePersonaDto, UpdatePersonaDto, AgeRange, Gender } from '../../../shared/marketing/index.js';
 import { isMissingTableError } from '../error-helpers.js';
 import { createRecordId, normalizeRecordIdValue } from '../record-id.js';
+import { ensureMarketingSchema } from './schema.js';
 
 const TABLE = 'marketing_persona';
 
@@ -47,7 +48,12 @@ function toPersona(record: PersonaRecord): Persona {
 export class SurrealPersonaRepository implements IPersonaRepository {
   constructor(private readonly db: IDbClient) {}
 
+  private async ensureSchema(): Promise<void> {
+    await ensureMarketingSchema(this.db);
+  }
+
   async findAll(): Promise<Persona[]> {
+    await this.ensureSchema();
     try {
       const [records = []] = await this.db.query<PersonaRecord[]>(
         `SELECT * FROM ${TABLE} ORDER BY createdAt;`,
@@ -60,6 +66,7 @@ export class SurrealPersonaRepository implements IPersonaRepository {
   }
 
   async findById(id: string): Promise<Persona | null> {
+    await this.ensureSchema();
     try {
       const records = await this.db.select<PersonaRecord>(createRecordId(TABLE, id));
       const record = records[0];
@@ -71,6 +78,7 @@ export class SurrealPersonaRepository implements IPersonaRepository {
   }
 
   async findByProductId(productId: string): Promise<Persona[]> {
+    await this.ensureSchema();
     try {
       const [records = []] = await this.db.query<PersonaRecord[]>(
         `SELECT * FROM ${TABLE} WHERE productId = $productId ORDER BY createdAt;`,
@@ -84,10 +92,26 @@ export class SurrealPersonaRepository implements IPersonaRepository {
   }
 
   async create(data: CreatePersonaDto): Promise<Persona> {
+    await this.ensureSchema();
     const now = new Date().toISOString();
+    const {
+      interests = [],
+      painPoints = [],
+      motivations = [],
+      ...rest
+    } = data;
     const [records = []] = await this.db.query<PersonaRecord[]>(
       `CREATE ${TABLE} CONTENT $data;`,
-      { data: { ...data, createdAt: now, updatedAt: now } },
+      {
+        data: {
+          ...rest,
+          interests,
+          painPoints,
+          motivations,
+          createdAt: now,
+          updatedAt: now,
+        },
+      },
     );
     const created = records[0];
     if (!created) throw new Error('Persona create failed.');
@@ -95,11 +119,12 @@ export class SurrealPersonaRepository implements IPersonaRepository {
   }
 
   async update(id: string, data: UpdatePersonaDto): Promise<Persona> {
+    await this.ensureSchema();
     const existing = await this.findById(id);
     if (!existing) throw new Error(`Persona not found: ${id}`);
 
     const now = new Date().toISOString();
-    const records = await this.db.update<PersonaRecord, Record<string, unknown>>(
+    const records = await this.db.merge<PersonaRecord, Record<string, unknown>>(
       createRecordId(TABLE, id),
       { ...data, updatedAt: now },
     );
@@ -109,6 +134,7 @@ export class SurrealPersonaRepository implements IPersonaRepository {
   }
 
   async delete(id: string): Promise<void> {
+    await this.ensureSchema();
     await this.db.delete<PersonaRecord>(createRecordId(TABLE, id));
   }
 }

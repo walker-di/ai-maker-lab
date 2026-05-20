@@ -20,5 +20,6 @@ export const marketingNav = {
 		),
 	toCampaigns: () => goto('/marketing/campaigns'),
 	toStrategies: () => goto('/marketing/strategies'),
+	toCustomerJourneyMaps: () => goto('/marketing/customer-journey-maps'),
 	toSettings: () => goto('/marketing/settings'),
 };

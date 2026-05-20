@@ -2,6 +2,7 @@ import type {
   Product,
   Campaign,
   Persona,
+  CustomerJourneyMap,
   Strategy,
   Creative,
   Story,
@@ -17,6 +18,8 @@ import type {
   UpdateCampaignDto,
   CreatePersonaDto,
   UpdatePersonaDto,
+  CreateCustomerJourneyMapDto,
+  UpdateCustomerJourneyMapDto,
   CreateStrategyDto,
   UpdateStrategyDto,
   CreateCreativeDto,
@@ -61,6 +64,15 @@ export interface IPersonaRepository {
   findByProductId(productId: string): Promise<Persona[]>;
   create(data: CreatePersonaDto): Promise<Persona>;
   update(id: string, data: UpdatePersonaDto): Promise<Persona>;
+  delete(id: string): Promise<void>;
+}
+
+export interface ICustomerJourneyMapRepository {
+  findAll(): Promise<CustomerJourneyMap[]>;
+  findById(id: string): Promise<CustomerJourneyMap | null>;
+  findByProductId(productId: string): Promise<CustomerJourneyMap[]>;
+  create(data: CreateCustomerJourneyMapDto): Promise<CustomerJourneyMap>;
+  update(id: string, data: UpdateCustomerJourneyMapDto): Promise<CustomerJourneyMap>;
   delete(id: string): Promise<void>;
 }
 

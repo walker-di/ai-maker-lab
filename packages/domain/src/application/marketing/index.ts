@@ -1,6 +1,7 @@
 export * from './ports.js';
 export * from './product-service.js';
 export * from './persona-service.js';
+export * from './customer-journey-map-service.js';
 export * from './campaign-service.js';
 export * from './creative-service.js';
 export * from './story-service.js';

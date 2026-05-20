@@ -108,8 +108,8 @@ describe('SurrealProductRepository', () => {
     expect(found).toBeNull();
   });
 
-  test('delete unknown id throws a graceful missing-table error on fresh db', async () => {
-    await expect(productRepo.delete('marketing_product:unknown')).rejects.toThrow(/does not exist/i);
+  test('delete unknown id is idempotent after schema initialization', async () => {
+    await expect(productRepo.delete('marketing_product:unknown')).resolves.toBeUndefined();
   });
 
   test('findAll returns empty array on fresh db', async () => {
@@ -237,8 +237,8 @@ describe('SurrealPersonaRepository', () => {
     expect(found).toBeNull();
   });
 
-  test('delete unknown id throws a graceful missing-table error on fresh db', async () => {
-    await expect(personaRepo.delete('marketing_persona:unknown')).rejects.toThrow(/does not exist/i);
+  test('delete unknown id is idempotent after schema initialization', async () => {
+    await expect(personaRepo.delete('marketing_persona:unknown')).resolves.toBeUndefined();
   });
 
   test('update changes persona fields', async () => {

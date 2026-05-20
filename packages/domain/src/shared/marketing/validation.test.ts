@@ -5,6 +5,8 @@ import {
   CreatePersonaDtoSchema,
   UpdatePersonaDtoSchema,
   GeneratePersonasForProductDtoSchema,
+  CreateCustomerJourneyMapDtoSchema,
+  UpdateCustomerJourneyMapDtoSchema,
 } from './validation.js';
 
 describe('CreateProductDtoSchema', () => {
@@ -105,6 +107,55 @@ describe('CreatePersonaDtoSchema', () => {
 describe('UpdatePersonaDtoSchema', () => {
   test('accepts empty object (all fields optional)', () => {
     expect(UpdatePersonaDtoSchema.safeParse({}).success).toBe(true);
+  });
+});
+
+describe('CreateCustomerJourneyMapDtoSchema', () => {
+  const valid = {
+    productId: 'product-1',
+    name: 'Activation journey',
+    scenario: 'A growth lead evaluates an AI research workspace.',
+    goals: ['Reduce trial setup friction'],
+    stages: [{ id: 'awareness', title: 'Awareness', order: 0 }],
+    lanes: [{ id: 'actions', title: 'Actions', kind: 'actions' as const, order: 0 }],
+    cells: [{ id: 'cell-1', stageId: 'awareness', laneId: 'actions', content: 'Finds examples' }],
+    touchpoints: [{ id: 'touch-1', stageId: 'awareness', label: 'LinkedIn', order: 0 }],
+    emotionPoints: [{ id: 'emotion-1', stageId: 'awareness', label: 'Curious', score: 58, order: 0 }],
+    opportunities: [{ id: 'opp-1', stageId: 'awareness', title: 'Show before/after examples' }],
+  };
+
+  test('accepts a structured journey map', () => {
+    const result = CreateCustomerJourneyMapDtoSchema.safeParse(valid);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.status).toBe('draft');
+      expect(result.data.tags).toEqual([]);
+      expect(result.data.cells[0]?.evidenceIds).toEqual([]);
+    }
+  });
+
+  test('rejects missing productId', () => {
+    const { productId: _, ...rest } = valid;
+    expect(CreateCustomerJourneyMapDtoSchema.safeParse(rest).success).toBe(false);
+  });
+
+  test('rejects empty name', () => {
+    expect(CreateCustomerJourneyMapDtoSchema.safeParse({ ...valid, name: '' }).success).toBe(false);
+  });
+
+  test('rejects emotion scores outside 0-100', () => {
+    expect(
+      CreateCustomerJourneyMapDtoSchema.safeParse({
+        ...valid,
+        emotionPoints: [{ id: 'emotion-1', stageId: 'awareness', label: 'Too high', score: 101, order: 0 }],
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('UpdateCustomerJourneyMapDtoSchema', () => {
+  test('accepts partial update', () => {
+    expect(UpdateCustomerJourneyMapDtoSchema.safeParse({ scenario: 'Updated scenario' }).success).toBe(true);
   });
 });
 

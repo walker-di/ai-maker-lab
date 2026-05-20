@@ -87,6 +87,97 @@ export const GeneratePersonasForProductDtoSchema = z.object({
 });
 export type GeneratePersonasForProductDto = z.infer<typeof GeneratePersonasForProductDtoSchema>;
 
+// Customer Journey Map DTOs
+const CustomerJourneyMapStatusSchema = z.enum(['draft', 'active', 'archived']);
+const JourneyMapLaneKindSchema = z.enum([
+  'actions',
+  'thoughts',
+  'emotions',
+  'touchpoints',
+  'pain_points',
+  'opportunities',
+  'custom',
+]);
+const JourneyMapPrioritySchema = z.enum(['low', 'medium', 'high']);
+const JourneyMapSentimentSchema = z.enum(['negative', 'neutral', 'positive']);
+
+export const JourneyMapStageDtoSchema = z.object({
+  id: z.string().trim().min(1),
+  title: z.string().trim().min(1),
+  description: z.string().optional(),
+  icon: z.string().optional(),
+  order: z.number().int().nonnegative(),
+});
+
+export const JourneyMapLaneDtoSchema = z.object({
+  id: z.string().trim().min(1),
+  title: z.string().trim().min(1),
+  kind: JourneyMapLaneKindSchema,
+  order: z.number().int().nonnegative(),
+  color: z.string().optional(),
+});
+
+export const JourneyMapCellDtoSchema = z.object({
+  id: z.string().trim().min(1),
+  stageId: z.string().trim().min(1),
+  laneId: z.string().trim().min(1),
+  content: z.string().trim().min(1),
+  quote: z.string().optional(),
+  source: z.string().optional(),
+  sentiment: JourneyMapSentimentSchema.optional(),
+  evidenceIds: z.array(z.string().trim().min(1)).default([]),
+});
+
+export const JourneyMapTouchpointDtoSchema = z.object({
+  id: z.string().trim().min(1),
+  stageId: z.string().trim().min(1),
+  label: z.string().trim().min(1),
+  icon: z.string().optional(),
+  channel: z.string().optional(),
+  order: z.number().int().nonnegative(),
+});
+
+export const JourneyMapEmotionPointDtoSchema = z.object({
+  id: z.string().trim().min(1),
+  stageId: z.string().trim().min(1),
+  label: z.string().trim().min(1),
+  score: z.number().min(0).max(100),
+  emoji: z.string().optional(),
+  order: z.number().int().nonnegative(),
+});
+
+export const JourneyMapOpportunityDtoSchema = z.object({
+  id: z.string().trim().min(1),
+  stageId: z.string().trim().min(1).optional(),
+  title: z.string().trim().min(1),
+  description: z.string().optional(),
+  priority: JourneyMapPrioritySchema.optional(),
+  owner: z.string().optional(),
+});
+
+export const CreateCustomerJourneyMapDtoSchema = z.object({
+  productId: z.string().trim().min(1),
+  personaId: z.string().trim().min(1).optional(),
+  campaignId: z.string().trim().min(1).optional(),
+  creativeId: z.string().trim().min(1).optional(),
+  name: z.string().trim().min(1),
+  description: z.string().optional(),
+  scenario: z.string().optional(),
+  goals: z.array(z.string().trim().min(1)).default([]),
+  status: CustomerJourneyMapStatusSchema.default('draft'),
+  tags: z.array(z.string().trim().min(1)).default([]),
+  stages: z.array(JourneyMapStageDtoSchema).default([]),
+  lanes: z.array(JourneyMapLaneDtoSchema).default([]),
+  cells: z.array(JourneyMapCellDtoSchema).default([]),
+  touchpoints: z.array(JourneyMapTouchpointDtoSchema).default([]),
+  emotionPoints: z.array(JourneyMapEmotionPointDtoSchema).default([]),
+  opportunities: z.array(JourneyMapOpportunityDtoSchema).default([]),
+});
+export type CreateCustomerJourneyMapDto = z.input<typeof CreateCustomerJourneyMapDtoSchema>;
+
+export const UpdateCustomerJourneyMapDtoSchema = CreateCustomerJourneyMapDtoSchema.partial();
+export type UpdateCustomerJourneyMapDto = z.input<typeof UpdateCustomerJourneyMapDtoSchema>;
+
 // Creative DTOs
 export const CreateCreativeDtoSchema = z.object({
   productId: z.string().trim().min(1),

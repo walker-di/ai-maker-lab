@@ -2,6 +2,7 @@ export * from './constants.js';
 export * from './product-types.js';
 export * from './campaign-types.js';
 export * from './persona-types.js';
+export * from './customer-journey-map-types.js';
 export * from './creative-types.js';
 export * from './story-types.js';
 export * from './storyboard-types.js';

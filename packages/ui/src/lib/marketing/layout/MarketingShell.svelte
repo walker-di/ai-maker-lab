@@ -9,6 +9,7 @@
 	import LayoutTemplateIcon from '@lucide/svelte/icons/layout-template';
 	import MusicIcon from '@lucide/svelte/icons/music';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
+	import MapIcon from '@lucide/svelte/icons/map';
 	import MenuIcon from '@lucide/svelte/icons/menu';
 	import { cn } from '$ui/utils.js';
 	import type { Component } from 'svelte';
@@ -36,6 +37,7 @@
 		{ label: 'Personas', path: '/personas', icon: UsersIcon },
 		{ label: 'Creatives', path: '/creatives', icon: PaletteIcon },
 		{ label: 'Canvas Templates', path: '/canvas-templates', icon: LayoutTemplateIcon },
+		{ label: 'Customer Journey Maps', path: '/customer-journey-maps', icon: MapIcon },
 		{ label: 'BGM', path: '/bgm', icon: MusicIcon },
 		{ label: 'Settings', path: '/settings', icon: SettingsIcon },
 	];

@@ -3,6 +3,7 @@ import type { IProductRepository } from '../../../application/marketing/ports.js
 import type { Product, CreateProductDto, UpdateProductDto } from '../../../shared/marketing/index.js';
 import { isMissingTableError } from '../error-helpers.js';
 import { createRecordId, normalizeRecordIdValue } from '../record-id.js';
+import { ensureMarketingSchema } from './schema.js';
 
 const TABLE = 'marketing_product';
 
@@ -35,7 +36,12 @@ function toProduct(record: ProductRecord): Product {
 export class SurrealProductRepository implements IProductRepository {
   constructor(private readonly db: IDbClient) {}
 
+  private async ensureSchema(): Promise<void> {
+    await ensureMarketingSchema(this.db);
+  }
+
   async findAll(): Promise<Product[]> {
+    await this.ensureSchema();
     try {
       const [records = []] = await this.db.query<ProductRecord[]>(
         `SELECT * FROM ${TABLE} ORDER BY createdAt;`,
@@ -48,6 +54,7 @@ export class SurrealProductRepository implements IProductRepository {
   }
 
   async findById(id: string): Promise<Product | null> {
+    await this.ensureSchema();
     try {
       const records = await this.db.select<ProductRecord>(createRecordId(TABLE, id));
       const record = records[0];
@@ -59,6 +66,7 @@ export class SurrealProductRepository implements IProductRepository {
   }
 
   async create(data: CreateProductDto): Promise<Product> {
+    await this.ensureSchema();
     const now = new Date().toISOString();
     const [records = []] = await this.db.query<ProductRecord[]>(
       `CREATE ${TABLE} CONTENT $data;`,
@@ -70,6 +78,7 @@ export class SurrealProductRepository implements IProductRepository {
   }
 
   async update(id: string, data: UpdateProductDto): Promise<Product> {
+    await this.ensureSchema();
     const existing = await this.findById(id);
     if (!existing) throw new Error(`Product not found: ${id}`);
 
@@ -84,6 +93,7 @@ export class SurrealProductRepository implements IProductRepository {
   }
 
   async delete(id: string): Promise<void> {
+    await this.ensureSchema();
     await this.db.delete<ProductRecord>(createRecordId(TABLE, id));
   }
 }

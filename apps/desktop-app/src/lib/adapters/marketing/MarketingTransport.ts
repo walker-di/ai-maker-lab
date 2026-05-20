@@ -12,6 +12,7 @@ export type CanvasTemplate = Marketing.CanvasTemplate;
 export type Strategy = Marketing.Strategy;
 export type SceneTransition = Marketing.SceneTransition;
 export type AudioSettings = Marketing.AudioSettings;
+export type CustomerJourneyMap = Marketing.CustomerJourneyMap;
 
 export type CreateProductDto = Marketing.CreateProductDto;
 export type UpdateProductDto = Marketing.UpdateProductDto;
@@ -33,6 +34,8 @@ export type CreateBgmFileDto = Marketing.CreateBgmFileDto;
 export type UpdateBgmFileDto = Marketing.UpdateBgmFileDto;
 export type CreateCanvasTemplateDto = Marketing.CreateCanvasTemplateDto;
 export type UpdateCanvasTemplateDto = Marketing.UpdateCanvasTemplateDto;
+export type CreateCustomerJourneyMapDto = Marketing.CreateCustomerJourneyMapDto;
+export type UpdateCustomerJourneyMapDto = Marketing.UpdateCustomerJourneyMapDto;
 
 export interface MarketingCatalogTransport {
 	// products
@@ -111,6 +114,13 @@ export interface MarketingCatalogTransport {
 		data: Partial<Omit<SceneTransition, 'id' | 'createdAt' | 'updatedAt'>>,
 	): Promise<SceneTransition>;
 	deleteTransition(id: string): Promise<void>;
+
+	// customer journey maps
+	listCustomerJourneyMaps(productId?: string): Promise<CustomerJourneyMap[]>;
+	getCustomerJourneyMap(id: string): Promise<CustomerJourneyMap>;
+	createCustomerJourneyMap(data: CreateCustomerJourneyMapDto): Promise<CustomerJourneyMap>;
+	updateCustomerJourneyMap(id: string, data: UpdateCustomerJourneyMapDto): Promise<CustomerJourneyMap>;
+	deleteCustomerJourneyMap(id: string): Promise<void>;
 }
 
 export interface MarketingAiTransport {

@@ -134,6 +134,18 @@ export class HttpMarketingCatalogTransport implements MarketingCatalogTransport 
 		return handleResponse(await fetch(`${BASE}/transitions/${id}`, { ...json(data), method: 'PUT' }));
 	}
 	async deleteTransition(id: string) { await handleResponse(await fetch(`${BASE}/transitions/${id}`, { method: 'DELETE' })); }
+
+	// customer journey maps
+	async listCustomerJourneyMaps(productId?: string) {
+		const url = productId ? `${BASE}/customer-journey-maps?productId=${encodeURIComponent(productId)}` : `${BASE}/customer-journey-maps`;
+		return handleResponse(await fetch(url));
+	}
+	async getCustomerJourneyMap(id: string) { return handleResponse(await fetch(`${BASE}/customer-journey-maps/${id}`)); }
+	async createCustomerJourneyMap(data: object) { return handleResponse(await fetch(`${BASE}/customer-journey-maps`, json(data))); }
+	async updateCustomerJourneyMap(id: string, data: object) {
+		return handleResponse(await fetch(`${BASE}/customer-journey-maps/${id}`, { ...json(data), method: 'PUT' }));
+	}
+	async deleteCustomerJourneyMap(id: string) { await handleResponse(await fetch(`${BASE}/customer-journey-maps/${id}`, { method: 'DELETE' })); }
 }
 
 export class HttpMarketingAiTransport implements MarketingAiTransport {

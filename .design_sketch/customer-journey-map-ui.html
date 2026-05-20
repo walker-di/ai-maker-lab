@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Customer Journey Map UI — Visual Proposal</title>
+  <style>
+    :root {
+      --bg: #eef2ff;
+      --page: #ffffff;
+      --ink: #111827;
+      --muted: #5f6675;
+      --blue: #2f66e8;
+      --blue-dark: #1746b8;
+      --stage: #ffb800;
+      --stage-dark: #f59e0b;
+      --aqua: #eaf6f7;
+      --aqua-2: #d7ecef;
+      --peach: #ffe5d6;
+      --lilac: #f0e2ff;
+      --mint: #e8f8ed;
+      --line: #e5e7eb;
+      --shadow: 0 28px 80px rgba(31, 41, 55, 0.13);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 0%, rgba(47, 102, 232, 0.16), transparent 28%),
+        radial-gradient(circle at 90% 8%, rgba(255, 184, 0, 0.16), transparent 30%),
+        var(--bg);
+    }
+
+    .wrap {
+      width: min(1510px, calc(100% - 42px));
+      margin: 0 auto;
+      padding: 30px 0 46px;
+    }
+
+    .sheet {
+      background: var(--page);
+      border-radius: 34px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.78);
+    }
+
+    .intro {
+      display: grid;
+      grid-template-columns: 300px minmax(320px, 1fr) minmax(360px, 0.95fr);
+      gap: 34px;
+      padding: 34px 42px 28px;
+      align-items: center;
+      background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
+    }
+
+    .persona-card {
+      display: grid;
+      grid-template-columns: 92px 1fr;
+      gap: 18px;
+      align-items: center;
+    }
+
+    .avatar {
+      width: 92px;
+      height: 92px;
+      border-radius: 28px;
+      background: linear-gradient(145deg, #7aa7ff, #ffd56a);
+      display: grid;
+      place-items: center;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 14px 26px rgba(47, 102, 232, 0.22);
+    }
+    .avatar::before {
+      content: "";
+      width: 54px;
+      height: 54px;
+      border-radius: 50% 50% 46% 46%;
+      background: #18243f;
+      position: absolute;
+      top: 17px;
+      left: 19px;
+      box-shadow: 21px 7px 0 #18243f;
+    }
+    .avatar::after {
+      content: "";
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: #ff7b73;
+      position: absolute;
+      top: 28px;
+      left: 24px;
+      box-shadow: 20px 55px 0 28px #ffc43d;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+    .persona-card h2 { font-size: 1.35rem; letter-spacing: -0.04em; margin-bottom: 4px; }
+    .persona-card p { color: var(--muted); font-size: 0.92rem; line-height: 1.35; }
+
+    .title-block { text-align: center; }
+    .eyebrow {
+      display: inline-block;
+      color: var(--blue);
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-size: 0.76rem;
+      margin-bottom: 8px;
+    }
+    h1 {
+      font-size: clamp(2rem, 4.5vw, 4.8rem);
+      line-height: 0.94;
+      letter-spacing: -0.07em;
+    }
+    .title-block p { color: var(--muted); margin-top: 12px; font-size: 1rem; }
+
+    .goals {
+      border-left: 1px solid var(--line);
+      padding-left: 28px;
+    }
+    .goals h3 {
+      color: var(--blue);
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 12px;
+    }
+    .goals ul { margin: 0; padding-left: 18px; display: grid; gap: 9px; color: #2b3343; line-height: 1.35; }
+    .goals li::marker { color: var(--blue); }
+
+    .map {
+      padding: 0 42px 42px;
+      overflow-x: auto;
+      scroll-snap-type: x proximity;
+    }
+
+    .map-hint {
+      display: none;
+      margin: 0 42px 10px;
+      font-size: 0.82rem;
+      color: var(--muted);
+      align-items: center;
+      gap: 8px;
+    }
+    .map-hint kbd {
+      font: inherit;
+      font-size: 0.78em;
+      padding: 2px 7px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      background: #f8fafc;
+    }
+
+    .journey {
+      min-width: 1240px;
+      display: grid;
+      grid-template-columns: 170px repeat(5, 1fr);
+      gap: 0 14px;
+      position: relative;
+      padding-bottom: 6px;
+    }
+
+    .journey::after {
+      content: "";
+      position: absolute;
+      left: 170px;
+      right: 0;
+      top: 52px;
+      height: 2px;
+      background: linear-gradient(90deg, rgba(47, 102, 232, 0.12), rgba(245, 158, 11, 0.35), rgba(47, 102, 232, 0.12));
+      pointer-events: none;
+      border-radius: 999px;
+      opacity: 0.85;
+    }
+
+    .stage-label,
+    .stage {
+      min-height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 16px;
+    }
+    .stage-label {
+      color: var(--blue);
+      justify-content: flex-start;
+      font-size: 0.92rem;
+      position: sticky;
+      left: 0;
+      z-index: 5;
+      background: linear-gradient(90deg, var(--page) 88%, transparent);
+      padding-right: 10px;
+      align-self: start;
+    }
+    .stage {
+      position: relative;
+      color: #1f2937;
+      background: linear-gradient(180deg, #ffe08a, var(--stage));
+      clip-path: polygon(0 0, calc(100% - 34px) 0, 100% 50%, calc(100% - 34px) 100%, 0 100%, 28px 50%);
+      padding: 0 34px 0 42px;
+      text-align: center;
+      text-shadow: 0 1px 0 rgba(255,255,255,0.35);
+      box-shadow: inset 0 -4px 0 rgba(185, 113, 0, 0.08);
+      scroll-snap-align: start;
+    }
+    .stage.first { clip-path: polygon(0 0, calc(100% - 34px) 0, 100% 50%, calc(100% - 34px) 100%, 0 100%); padding-left: 28px; }
+    .stage::before {
+      content: attr(data-icon);
+      position: absolute;
+      top: -21px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: #fff8e1;
+      box-shadow: 0 8px 20px rgba(245, 158, 11, 0.25);
+      font-size: 1.25rem;
+    }
+
+    .row-title {
+      background: var(--blue);
+      color: white;
+      min-height: 118px;
+      padding: 18px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-weight: 950;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border-radius: 16px 0 0 16px;
+      margin-bottom: 10px;
+      box-shadow: inset -6px 0 0 rgba(0,0,0,0.08);
+      position: sticky;
+      left: 0;
+      z-index: 4;
+      border-right: 1px solid rgba(255,255,255,0.12);
+    }
+    .row-title.compact { min-height: 96px; }
+    .row-title.tall { min-height: 188px; }
+    .row-title.emotion-title { min-height: 220px; background: #0f766e; }
+    .row-title.opportunity-title { background: #ff8f63; }
+
+    .cell {
+      min-height: 118px;
+      padding: 18px 18px;
+      border-radius: 16px;
+      background: var(--aqua);
+      margin-bottom: 10px;
+      color: #1f2937;
+      line-height: 1.32;
+      font-size: 0.96rem;
+      box-shadow: inset 0 0 0 1px rgba(31,41,55,0.035);
+      border-top: 3px solid transparent;
+      scroll-snap-align: start;
+    }
+    .cell.compact { min-height: 96px; }
+    .cell.thought { background: #fff3ca; border-top-color: rgba(245, 158, 11, 0.45); }
+    .cell.pain { background: #ffe4df; border-top-color: rgba(248, 113, 113, 0.5); }
+    .cell.opportunity { background: var(--lilac); font-weight: 720; border-top-color: rgba(124, 45, 18, 0.35); }
+    .cell.opportunity strong { color: #7c2d12; }
+    .cell.empty { background: transparent; box-shadow: none; }
+
+    @media (hover: hover) {
+      .cell:hover,
+      .action-cell:hover {
+        transform: translateY(-1px);
+        box-shadow: inset 0 0 0 1px rgba(31,41,55,0.06), 0 10px 26px rgba(15, 23, 42, 0.08);
+      }
+    }
+
+    .action-cell {
+      position: relative;
+      padding-top: 52px;
+      text-align: center;
+      font-weight: 680;
+    }
+    .action-cell::before {
+      content: attr(data-symbol);
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: white;
+      box-shadow: 0 5px 14px rgba(0,0,0,0.12);
+      color: var(--blue);
+    }
+
+    .quote {
+      font-size: 0.98rem;
+      font-weight: 700;
+      color: #26324a;
+    }
+    .quote::before { content: "“"; color: var(--blue); font-size: 1.4em; line-height: 0; }
+    .quote::after { content: "”"; color: var(--blue); font-size: 1.4em; line-height: 0; }
+
+    .touch-icons {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      height: 100%;
+    }
+    .touch {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: #ff725e;
+      color: white;
+      font-size: 1.35rem;
+      box-shadow: 0 8px 18px rgba(255, 114, 94, 0.22);
+    }
+
+    .emotion-row {
+      grid-column: 2 / -1;
+      min-height: 220px;
+      margin-bottom: 10px;
+      border-radius: 16px;
+      background: linear-gradient(180deg, #f8fcff 0%, #edf8ff 100%);
+      position: relative;
+      overflow: hidden;
+      box-shadow: inset 0 0 0 1px rgba(31,41,55,0.04);
+    }
+    .emotion-row svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .emotion-grid {
+      stroke: rgba(15, 118, 110, 0.12);
+      stroke-width: 1;
+      stroke-dasharray: 4 6;
+    }
+    .emotion-fill { fill: rgba(72, 181, 242, 0.14); }
+    .emotion-line { fill: none; stroke: #38bdf8; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
+    .emotion-dot { fill: white; stroke: #38bdf8; stroke-width: 3.5; }
+    .emotion-mot {
+      fill: rgba(245, 158, 11, 0.18);
+      stroke: rgba(245, 158, 11, 0.88);
+      stroke-width: 1.5;
+      stroke-dasharray: 5 5;
+    }
+    .emo {
+      position: absolute;
+      display: grid;
+      justify-items: center;
+      gap: 5px;
+      transform: translate(-50%, -50%);
+      font-size: 0.8rem;
+      color: #334155;
+      text-align: center;
+      min-width: 110px;
+    }
+    .emo .face {
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: #ffc947;
+      border: 5px solid white;
+      box-shadow: 0 8px 18px rgba(0,0,0,0.13);
+      font-size: 1.65rem;
+    }
+    .emo b { display: block; font-size: 0.9rem; }
+
+    .emotion-legend {
+      position: absolute;
+      right: 14px;
+      bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #0f766e;
+      background: rgba(255,255,255,0.82);
+      border: 1px solid rgba(15, 118, 110, 0.18);
+      border-radius: 999px;
+      padding: 6px 12px;
+      backdrop-filter: blur(6px);
+    }
+    .emotion-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .emotion-legend i {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #38bdf8;
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+    }
+
+    .note-strip {
+      margin-top: 22px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+    .note {
+      background: #f8fafc;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 15px;
+      color: var(--muted);
+      line-height: 1.42;
+    }
+    .note b { display: block; color: var(--ink); margin-bottom: 5px; }
+
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @media (max-width: 1080px) {
+      .intro { grid-template-columns: 1fr; text-align: left; }
+      .title-block { text-align: left; }
+      .goals { border-left: 0; padding-left: 0; }
+      .note-strip { grid-template-columns: 1fr 1fr; }
+      .map-hint { display: flex; }
+    }
+    @media (max-width: 680px) {
+      .wrap { width: min(100% - 18px, 1510px); padding-top: 12px; }
+      .intro, .map { padding-left: 18px; padding-right: 18px; }
+      .map-hint { margin-left: 18px; margin-right: 18px; }
+      .sheet { border-radius: 24px; }
+      .note-strip { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .cell, .action-cell { transition: none; }
+    }
+    @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+      .cell, .action-cell {
+        transition: transform 160ms ease, box-shadow 160ms ease;
+      }
+    }
+
+    @media print {
+      body { background: #fff; }
+      .wrap { width: 100%; padding: 0; }
+      .sheet { box-shadow: none; border-radius: 0; border: 0; }
+      .map { overflow: visible; }
+      .journey { min-width: 0; }
+      .map-hint { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="sheet" aria-labelledby="journey-title">
+      <header class="intro">
+        <div class="persona-card">
+          <div class="avatar" aria-hidden="true"></div>
+          <div>
+            <h2 id="persona-name">Maya Silva</h2>
+            <p>Growth lead evaluating an AI workspace for turning customer research into product decisions.</p>
+          </div>
+        </div>
+
+        <div class="title-block">
+          <span class="eyebrow">Visual customer journey map</span>
+          <h1 id="journey-title">Customer Journey Map</h1>
+          <p id="journey-summary">A workshop-ready layout with stage arrows, swim lanes, citations to evidence, and an emotion curve aligned to each stage.</p>
+        </div>
+
+        <aside class="goals" aria-labelledby="goals-heading">
+          <h3 id="goals-heading">Goals & expectations</h3>
+          <ul>
+            <li><strong>See value quickly:</strong> create a credible map before connecting every tool.</li>
+            <li><strong>Trust the output:</strong> understand where insights came from.</li>
+            <li><strong>Drive alignment:</strong> turn pains into clear product opportunities.</li>
+          </ul>
+        </aside>
+      </header>
+
+      <p class="map-hint"><span>Tip: scroll horizontally</span> — <kbd>Shift</kbd> + wheel or trackpad to see all stages.</p>
+
+      <div class="map">
+        <section class="journey" aria-label="Customer journey map for Maya Silva" aria-describedby="journey-summary">
+          <div class="stage-label" id="lane-stages">Stages</div>
+          <div class="stage first" data-icon="👀" title="Awareness"><span class="visually-hidden">Stage: </span>Awareness</div>
+          <div class="stage" data-icon="🔎" title="Evaluation"><span class="visually-hidden">Stage: </span>Evaluation</div>
+          <div class="stage" data-icon="⚙️" title="Trial setup"><span class="visually-hidden">Stage: </span>Trial setup</div>
+          <div class="stage" data-icon="✨" title="First value"><span class="visually-hidden">Stage: </span>First value</div>
+          <div class="stage" data-icon="🚀" title="Expansion"><span class="visually-hidden">Stage: </span>Expansion</div>
+
+          <div class="row-title compact" id="lane-actions">Actions</div>
+          <div class="cell compact action-cell" data-symbol="📣" aria-label="Actions, Awareness: Finds posts, referrals, and examples of research-driven teams.">Finds posts, referrals, and examples of research-driven teams.</div>
+          <div class="cell compact action-cell" data-symbol="🧭" aria-label="Actions, Evaluation: Compares templates, AI tools, and consultant-led alternatives.">Compares templates, AI tools, and consultant-led alternatives.</div>
+          <div class="cell compact action-cell" data-symbol="📥" aria-label="Actions, Trial setup: Imports notes and invites teammates to test the workspace.">Imports notes and invites teammates to test the workspace.</div>
+          <div class="cell compact action-cell" data-symbol="🗺️" aria-label="Actions, First value: Generates a first map and shares it in a roadmap meeting.">Generates a first map and shares it in a roadmap meeting.</div>
+          <div class="cell compact action-cell" data-symbol="🔁" aria-label="Actions, Expansion: Turns the map into a recurring planning ritual.">Turns the map into a recurring planning ritual.</div>
+
+          <div class="row-title" id="lane-thoughts">Thoughts</div>
+          <div class="cell thought" aria-label="Thoughts, Awareness: We have feedback everywhere, but no shared picture."><span class="quote">We have feedback everywhere, but no shared picture.</span></div>
+          <div class="cell thought" aria-label="Thoughts, Evaluation: Will this be more useful than another research board?"><span class="quote">Will this be more useful than another research board?</span></div>
+          <div class="cell thought" aria-label="Thoughts, Trial setup: Can I see value before connecting five tools?"><span class="quote">Can I see value before connecting five tools?</span></div>
+          <div class="cell thought" aria-label="Thoughts, First value: The citations make this much easier to defend."><span class="quote">The citations make this much easier to defend.</span></div>
+          <div class="cell thought" aria-label="Thoughts, Expansion: Who owns keeping this map alive?"><span class="quote">Who owns keeping this map alive?</span></div>
+
+          <div class="row-title emotion-title" id="lane-emotions">Emotions</div>
+          <div class="emotion-row" role="img" aria-label="Emotional trajectory from curious and skeptical to confident, with a dip during trial setup. Moment of truth highlighted around First value.">
+            <svg viewBox="0 0 1000 220" preserveAspectRatio="none" aria-hidden="true">
+              <g class="emotion-grid">
+                <line x1="100" y1="12" x2="100" y2="208" />
+                <line x1="300" y1="12" x2="300" y2="208" />
+                <line x1="500" y1="12" x2="500" y2="208" />
+                <line x1="700" y1="12" x2="700" y2="208" />
+                <line x1="900" y1="12" x2="900" y2="208" />
+              </g>
+              <rect class="emotion-mot" x="598" y="16" width="204" height="190" rx="14" />
+              <path class="emotion-fill" d="M0,154 C60,150 80,138 100,148 C200,168 260,124 300,118 C380,108 460,142 500,128 C560,108 640,100 700,108 C760,102 820,72 900,78 C940,82 970,62 1000,54 L1000,220 L0,220 Z" />
+              <path class="emotion-line" d="M0,154 C60,150 80,138 100,148 C200,168 260,124 300,118 C380,108 460,142 500,128 C560,108 640,100 700,108 C760,102 820,72 900,78 C940,82 970,62 1000,54" />
+              <circle class="emotion-dot" cx="100" cy="148" r="7" />
+              <circle class="emotion-dot" cx="300" cy="118" r="7" />
+              <circle class="emotion-dot" cx="500" cy="128" r="7" />
+              <circle class="emotion-dot" cx="700" cy="108" r="7" />
+              <circle class="emotion-dot" cx="900" cy="78" r="7" />
+            </svg>
+            <div class="emo" style="left: 10%; top: 68%"><span class="face" aria-hidden="true">🤔</span><b>Curious</b><span>Skeptical</span></div>
+            <div class="emo" style="left: 30%; top: 52%"><span class="face" aria-hidden="true">🙂</span><b>Interested</b><span>Needs proof</span></div>
+            <div class="emo" style="left: 50%; top: 62%"><span class="face" aria-hidden="true">😟</span><b>Anxious</b><span>Setup friction</span></div>
+            <div class="emo" style="left: 70%; top: 46%"><span class="face" aria-hidden="true">😄</span><b>Relieved</b><span>Map is useful</span></div>
+            <div class="emo" style="left: 90%; top: 34%"><span class="face" aria-hidden="true">😍</span><b>Confident</b><span>Ready to scale</span></div>
+            <div class="emotion-legend"><span><i aria-hidden="true"></i> Emotion curve</span> · <span style="font-weight:800;color:#b45309">MOT</span> moment of truth</div>
+          </div>
+
+          <div class="row-title compact" id="lane-touchpoints">Touchpoints</div>
+          <div class="cell compact" aria-label="Touchpoints, Awareness: web and community."><div class="touch-icons"><span class="touch" aria-hidden="true">🌐</span><span class="touch" aria-hidden="true">💬</span><span class="visually-hidden">Web and community</span></div></div>
+          <div class="cell compact" aria-label="Touchpoints, Evaluation: product UI and docs."><div class="touch-icons"><span class="touch" aria-hidden="true">🖥️</span><span class="touch" aria-hidden="true">📄</span><span class="visually-hidden">Product UI and docs</span></div></div>
+          <div class="cell compact" aria-label="Touchpoints, Trial setup: files and team invites."><div class="touch-icons"><span class="touch" aria-hidden="true">📁</span><span class="touch" aria-hidden="true">👥</span><span class="visually-hidden">Files and team invites</span></div></div>
+          <div class="cell compact" aria-label="Touchpoints, First value: AI synthesis and export."><div class="touch-icons"><span class="touch" aria-hidden="true">🧠</span><span class="touch" aria-hidden="true">📤</span><span class="visually-hidden">AI synthesis and export</span></div></div>
+          <div class="cell compact" aria-label="Touchpoints, Expansion: analytics and notifications."><div class="touch-icons"><span class="touch" aria-hidden="true">📈</span><span class="touch" aria-hidden="true">🔔</span><span class="visually-hidden">Analytics and notifications</span></div></div>
+
+          <div class="row-title" id="lane-pains">Pain points</div>
+          <div class="cell pain" aria-label="Pain, Awareness: Category feels similar to generic research repositories.">Category feels similar to generic research repositories.</div>
+          <div class="cell pain" aria-label="Pain, Evaluation: ROI is hard to judge without a relevant example.">ROI is hard to judge without a relevant example.</div>
+          <div class="cell pain" aria-label="Pain, Trial setup: Integrations create a cold-start wall before value appears.">Integrations create a cold-start wall before value appears.</div>
+          <div class="cell pain" aria-label="Pain, First value: Teams worry AI synthesis may hide nuance.">Teams worry AI synthesis may hide nuance.</div>
+          <div class="cell pain" aria-label="Pain, Expansion: Ownership is unclear when multiple teams edit the journey.">Ownership is unclear when multiple teams edit the journey.</div>
+
+          <div class="row-title opportunity-title" id="lane-opportunities">Opportunities</div>
+          <div class="cell opportunity" aria-label="Opportunity, Awareness: Lead with before/after journey examples."><strong>★</strong> Lead with before/after journey examples.</div>
+          <div class="cell opportunity" aria-label="Opportunity, Evaluation: Add a benchmark ROI calculator and sample gallery."><strong>★</strong> Add a benchmark ROI calculator and sample gallery.</div>
+          <div class="cell opportunity" aria-label="Opportunity, Trial setup: Offer paste notes first mode before integrations."><strong>★</strong> Offer “paste notes first” mode before integrations.</div>
+          <div class="cell opportunity" aria-label="Opportunity, First value: Show citation trails and confidence badges."><strong>★</strong> Show citation trails and confidence badges.</div>
+          <div class="cell opportunity" aria-label="Opportunity, Expansion: Create quarterly journey review templates."><strong>★</strong> Create quarterly journey review templates.</div>
+        </section>
+
+        <div class="note-strip" aria-label="Design notes">
+          <div class="note"><b>Lane clarity</b>Sticky row labels keep orientation when you scroll sideways; stage columns align with the emotion grid.</div>
+          <div class="note"><b>Moment of truth</b>Highlight the stage where the experience pivots (here: first credible map in a meeting).</div>
+          <div class="note"><b>Workshop-ready</b>Chevrons, swim lanes, and the curve read like facilitator canvases, not spreadsheet grids.</div>
+          <div class="note"><b>Accessible</b>Each cell has a concise aria-label (lane + stage + content); icon rows include visible screen-reader text.</div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

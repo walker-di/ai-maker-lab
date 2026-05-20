@@ -46,6 +46,7 @@ import {
 	SurrealCanvasTemplateRepository,
 	SurrealStrategyRepository,
 	SurrealSceneTransitionRepository,
+	SurrealCustomerJourneyMapRepository,
 	AiSdkMarketingTextGateway,
 	LocalMarketingAssetStorage,
 } from 'domain/infrastructure';
@@ -312,6 +313,7 @@ export interface MarketingServices {
 	strategyService: Marketing.StrategyService;
 	videoExportService: Marketing.VideoExportService;
 	storyboardService: Marketing.StoryboardService;
+	customerJourneyMapService: Marketing.CustomerJourneyMapService;
 	narrationGateway: Marketing.INarrationAudioGateway;
 	assetStorage: Marketing.IMarketingAssetStorage;
 	// Repos exposed for list-all queries not covered by service methods
@@ -321,6 +323,7 @@ export interface MarketingServices {
 	sceneRepo: Marketing.ISceneRepository;
 	clipRepo: Marketing.IClipRepository;
 	transitionRepo: Marketing.ISceneTransitionRepository;
+	customerJourneyMapRepo: Marketing.ICustomerJourneyMapRepository;
 }
 
 let marketingServicesPromise: Promise<MarketingServices> | undefined;
@@ -468,6 +471,7 @@ export function getMarketingServices(): Promise<MarketingServices> {
 				const templateRepo = new SurrealCanvasTemplateRepository(adapter);
 				const strategyRepo = new SurrealStrategyRepository(adapter);
 				const transitionRepo = new SurrealSceneTransitionRepository(adapter);
+				const customerJourneyMapRepo = new SurrealCustomerJourneyMapRepository(adapter);
 
 				const textModelConfig = parseTextModelConfig();
 				const aiGateway: Marketing.IMarketingTextGenerationGateway = textModelConfig.apiKey
@@ -553,6 +557,10 @@ export function getMarketingServices(): Promise<MarketingServices> {
 					imageGen,
 					videoExporter,
 				);
+				const customerJourneyMapService = new Marketing.CustomerJourneyMapService(
+					customerJourneyMapRepo,
+					productRepo,
+				);
 
 				return {
 					productService,
@@ -567,6 +575,7 @@ export function getMarketingServices(): Promise<MarketingServices> {
 					strategyService,
 					videoExportService,
 					storyboardService,
+					customerJourneyMapService,
 					narrationGateway,
 					assetStorage,
 					personaRepo,
@@ -575,6 +584,7 @@ export function getMarketingServices(): Promise<MarketingServices> {
 					sceneRepo,
 					clipRepo,
 					transitionRepo,
+					customerJourneyMapRepo,
 				};
 			} catch (error) {
 				marketingServicesPromise = undefined;
