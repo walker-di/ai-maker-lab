@@ -13,7 +13,16 @@
 	import { m } from '$lib/paraglide/messages.js';
 	import { createCustomerJourneyMapsPage } from './customer-journey-maps-page.composition.js';
 
-	const model = createCustomerJourneyMapsPage();
+	let renderVersion = $state(0);
+	const invalidate = () => {
+		renderVersion += 1;
+	};
+	const model = createCustomerJourneyMapsPage(invalidate);
+
+	async function runAndInvalidate(action: () => Promise<unknown>) {
+		await action();
+		invalidate();
+	}
 
 	function navigate(path: string) {
 		void goto(`/marketing${path}`);
@@ -25,6 +34,7 @@
 </svelte:head>
 
 <MarketingShell activePath="/customer-journey-maps" onNavigate={navigate}>
+	{#key renderVersion}
 	<div class="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6">
 		<header class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
 			<div class="space-y-2">
@@ -62,7 +72,7 @@
 					journeyMap={model.selectedJourneyMap}
 					products={model.products}
 					isLoading={model.isLoading}
-					onSubmit={(data) => void model.saveJourneyMap(data)}
+					onSubmit={(data) => void runAndInvalidate(() => model.saveJourneyMap(data))}
 					onCancel={() => model.closeForm()}
 				/>
 			</section>
@@ -76,7 +86,7 @@
 					<CustomerJourneyMapCard
 						{journeyMap}
 						onEdit={() => model.openEditForm(journeyMap)}
-						onDelete={() => void model.deleteJourneyMap(journeyMap.id)}
+						onDelete={() => void runAndInvalidate(() => model.deleteJourneyMap(journeyMap.id))}
 					/>
 				{/each}
 			</section>
@@ -95,4 +105,5 @@
 			<p class="text-muted-foreground rounded-xl border border-dashed p-8 text-center text-sm">{m.marketing_customer_journey_maps_loading()}</p>
 		{/if}
 	</div>
+	{/key}
 </MarketingShell>

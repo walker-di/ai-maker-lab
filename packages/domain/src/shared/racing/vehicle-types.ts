@@ -391,12 +391,6 @@ export interface VehiclePhysicsPreset {
     maxBrakeTorqueNm?: number;
   };
 
-  // ---- Chassis compliance (racing-chassis-compliance OpenSpec) ------
-  /**
-   * Suspension bushing and chassis torsional compliance parameters.
-   * When absent or zero the hub is rigidly fixed to the chassis (legacy).
-   */
-  compliance?: ComplianceConfig;
 }
 
 /**

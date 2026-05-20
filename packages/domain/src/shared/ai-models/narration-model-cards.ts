@@ -6,7 +6,7 @@ export type NarrationModelStatus = NarrationModelAvailability | 'experimental';
 
 export type NarrationOptionStability = 'stable' | 'experimental';
 
-export interface NarrationModelCapabilities {
+export interface NarrationModelCapabilities extends Readonly<Record<string, unknown>> {
   readonly longForm?: boolean;
   readonly streaming?: boolean;
   readonly maxSpeakers?: number;

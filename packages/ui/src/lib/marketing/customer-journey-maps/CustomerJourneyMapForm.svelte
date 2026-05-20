@@ -19,7 +19,9 @@
 
 	let { journeyMap, products, isLoading = false, onSubmit, onCancel }: Props = $props();
 
-	const model = createCustomerJourneyMapFormModel(products, journeyMap);
+	const getInitialProducts = () => products;
+	const getInitialJourneyMap = () => journeyMap;
+	const model = createCustomerJourneyMapFormModel(getInitialProducts(), getInitialJourneyMap());
 	const isEditMode = $derived(!!journeyMap);
 
 	const statusOptions: { value: CustomerJourneyMapStatus; label: string }[] = [

@@ -45,9 +45,9 @@ function createMockOrt(audioData = new Float32Array(2400)) {
 		InferenceSession: {
 			create: mock(async () => mockSession),
 		},
-		Tensor: mock(function Tensor(_type: string, _data: unknown, _dims: number[]) {
+		Tensor: function Tensor(_type: string, _data: unknown, _dims: number[]) {
 			return { type: _type, data: _data, dims: _dims };
-		} as unknown as { new (type: string, data: unknown, dims: number[]): unknown }),
+		} as unknown as { new (type: string, data: unknown, dims: number[]): unknown },
 		__mockSession: mockSession,
 	};
 }

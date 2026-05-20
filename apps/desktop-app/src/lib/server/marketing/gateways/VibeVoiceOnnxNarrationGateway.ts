@@ -3,7 +3,7 @@ import { AiModels } from 'domain/shared';
 import { encodePcm16Wav } from './HuggingFaceTransformersNarrationGateway.js';
 
 type OrtInferenceSession = {
-	run(feeds: Record<string, unknown>): Promise<Record<string, { data: Float32Array; dims: number[] }>>;
+	run(feeds: Record<string, unknown>): Promise<Record<string, { data: Float32Array; dims: readonly number[] }>>;
 	release(): Promise<void>;
 };
 
@@ -193,7 +193,7 @@ export class VibeVoiceOnnxNarrationGateway implements Marketing.INarrationAudioG
 		if (this.config.importOnnxRuntime) return this.config.importOnnxRuntime();
 		try {
 			const mod = await import('onnxruntime-node');
-			return (mod.default ?? mod) as OnnxRuntimeModule;
+			return (mod.default ?? mod) as unknown as OnnxRuntimeModule;
 		} catch (error) {
 			const msg = error instanceof Error ? error.message : String(error);
 			throw new Error(

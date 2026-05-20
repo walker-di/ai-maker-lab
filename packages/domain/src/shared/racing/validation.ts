@@ -57,7 +57,7 @@ export function validateVehiclePreset(input: unknown): ValidationResult {
         pushError(errors, `dimensions.${key}`, 'invalid', `${key} must be > 0 when provided`);
       }
     }
-    if (dims.overallWidthM !== undefined && dims.overallWidthM < v.trackWidth) {
+    if (dims.overallWidthM !== undefined && isFiniteNumber(v.trackWidth) && dims.overallWidthM < v.trackWidth) {
       pushError(errors, 'dimensions.overallWidthM', 'invalid', 'overallWidthM must be >= trackWidth');
     }
   }
