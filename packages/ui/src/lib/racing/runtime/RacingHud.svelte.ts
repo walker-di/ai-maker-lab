@@ -160,6 +160,20 @@ export interface RacingGgPoint {
   longG: number;
 }
 
+export interface RacingHudReplayState {
+  mode: 'live' | 'replay';
+  /** Which trace is playing while in replay mode. */
+  source: 'last' | 'best' | 'recent' | null;
+  time: number;
+  duration: number;
+  playing: boolean;
+  speed: number;
+  /** Lap time of the trace being replayed, if it is a lap. */
+  lapMs: number | null;
+  available: { last: boolean; best: boolean; recent: boolean };
+  ghostEnabled: boolean;
+}
+
 export interface RacingHudState {
   speedKmh: number;
   rpm: number;
@@ -209,6 +223,7 @@ export interface RacingHudState {
   ffb: RacingHudFfbState;
   // M4
   trackCondition: RacingHudTrackConditionState;
+  replay: RacingHudReplayState;
 }
 
 export class RacingHudModel {
@@ -253,6 +268,17 @@ export class RacingHudModel {
     tcCutPct: 0,
     input: { throttle: 0, brake: 0, steer: 0, handbrake: 0 },
     lap: { bestMs: null, lastMs: null, currentMs: null },
+    replay: {
+      mode: 'live',
+      source: null,
+      time: 0,
+      duration: 0,
+      playing: false,
+      speed: 1,
+      lapMs: null,
+      available: { last: false, best: false, recent: false },
+      ghostEnabled: true,
+    },
     wheels: [
       { index: 0, fz: 0, fx: 0, fy: 0, slipRatio: 0, slipAngle: 0, combinedSlip: 0, tireUtilization: 0, driveTorqueNm: 0, surface: null, tempC: 30, brakeTempC: 30, tireWear: 0, flatSpotSignal: 0, bumpStopPct: 0, airborne: false, brakeTorqueApplied: 0, absScale: 1, absActive: false, yawContribution: 0, tempInner: 30, tempMiddle: 30, tempOuter: 30, pressureKpa: 200, kappaPeak: 0, alphaPeakRad: 0, tireDeflection: 0, suspensionTravel: 0, damperVelocity: 0, rollCenterHeightM: DEFAULT_ROLL_CENTER_HEIGHT_M, jackingForceN: 0, toeDeg: 0, camberDeg: -1.5 },
       { index: 1, fz: 0, fx: 0, fy: 0, slipRatio: 0, slipAngle: 0, combinedSlip: 0, tireUtilization: 0, driveTorqueNm: 0, surface: null, tempC: 30, brakeTempC: 30, tireWear: 0, flatSpotSignal: 0, bumpStopPct: 0, airborne: false, brakeTorqueApplied: 0, absScale: 1, absActive: false, yawContribution: 0, tempInner: 30, tempMiddle: 30, tempOuter: 30, pressureKpa: 200, kappaPeak: 0, alphaPeakRad: 0, tireDeflection: 0, suspensionTravel: 0, damperVelocity: 0, rollCenterHeightM: DEFAULT_ROLL_CENTER_HEIGHT_M, jackingForceN: 0, toeDeg: 0, camberDeg: -1.5 },
@@ -370,6 +396,7 @@ export class RacingHudModel {
   }
   setInput(input: RacingHudInputState): void { this.state.input = { ...input }; }
   setLap(lap: RacingHudLapState): void { this.state.lap = { ...lap }; }
+  setReplay(replay: Partial<RacingHudReplayState>): void { this.state.replay = { ...this.state.replay, ...replay }; }
   setWheels(wheels: ReadonlyArray<RacingHudWheelState>): void {
     for (let i = 0; i < this.state.wheels.length; i++) {
       const incoming = wheels[i];

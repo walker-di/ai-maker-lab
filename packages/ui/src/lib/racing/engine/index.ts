@@ -49,3 +49,16 @@ export {
   type JoltHubBodies,
   type SoftwareHubState,
 } from './compliance.js';
+export {
+  ReplayRecorder,
+  ReplayPlayer,
+  sampleTrace,
+  stepReplayCamera,
+  traceDuration,
+  REPLAY_SPEEDS,
+  type ReplayFrame,
+  type ReplayTrace,
+  type ReplaySpeed,
+  type ReplayRecordable,
+  type ReplayRecorderOptions,
+} from './replay.js';

@@ -598,6 +598,47 @@ test.describe('Racing Sim experiment', () => {
 		await accelerateToSpeed(page, 0);
 	});
 
+	test('replay plays back the recent drive and returns to the frozen live sim', async ({ page }) => {
+		await page.goto('/experiments/racing');
+		await accelerateToSpeed(page, 20);
+
+		const replayBar = page.getByTestId('hud-replay');
+		await expect(replayBar.getByRole('button', { name: /last 60 s/i })).toBeEnabled();
+
+		await page.keyboard.press('v');
+		await expect(page.getByTestId('hud-bottom')).toContainText(/replay/i);
+		await expect(replayBar).toContainText(/last 60 s/i);
+
+		const readReplayTime = () =>
+			page.evaluate(() => (window as Window & { __racing?: { replayTime: number } }).__racing?.replayTime ?? 0);
+		const t0 = await readReplayTime();
+		await expect.poll(readReplayTime, { timeout: 5_000 }).toBeGreaterThan(t0);
+
+		// Space pauses playback; time holds.
+		await page.keyboard.press(' ');
+		const paused = await readReplayTime();
+		await page.waitForTimeout(400);
+		expect(await readReplayTime()).toBeCloseTo(paused, 5);
+
+		// Arrow keys scrub.
+		await page.keyboard.press('ArrowLeft');
+		expect(await readReplayTime()).toBeLessThanOrEqual(Math.max(0, paused - 0.99));
+
+		await page.keyboard.press('Escape');
+		await expect(page.getByTestId('hud-bottom')).not.toContainText(/replay/i);
+		await expect(replayBar.getByTestId('replay-ghost')).toBeVisible();
+		await accelerateToSpeed(page, 0);
+	});
+
+	test('ghost key toggles the ghost chip', async ({ page }) => {
+		await page.goto('/experiments/racing');
+		await page.getByTestId('racing-canvas').click();
+		const ghost = page.getByTestId('replay-ghost');
+		await expect(ghost).toHaveAttribute('aria-pressed', 'true');
+		await page.keyboard.press('g');
+		await expect(ghost).toHaveAttribute('aria-pressed', 'false');
+	});
+
 	test('mute toggles the HUD badge on and off', async ({ page }) => {
 		await page.goto('/experiments/racing');
 		await page.getByTestId('racing-canvas').click();
