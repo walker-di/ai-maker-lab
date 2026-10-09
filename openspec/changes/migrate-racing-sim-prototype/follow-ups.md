@@ -26,7 +26,7 @@ block the route shipping; they are deliberate next-step items.
    for toe / camber / motion-ratio / bump-stop tuning.
 6. **Controller / gamepad input.** Extend `RacingInput` with `gamepad-api`
    bindings (LT / RT analog throttle + brake, RS for camera).
-7. **Replays.** Subscribe to `engine.events.tick` and persist a downsampled
+7. **Replays.** _(Done in `add-racing-replay`: in-memory lap + recent replays and best-lap ghost; persistence still open.)_ Subscribe to `engine.events.tick` and persist a downsampled
    per-frame trace; render a ghost car using the same renderer.
 8. **More built-in catalogs.** Author additional vehicle and track JSON files
    in `packages/domain/src/infrastructure/racing/builtins/` (rally car, GT3,

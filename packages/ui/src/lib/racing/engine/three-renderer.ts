@@ -26,6 +26,7 @@ import {
   FogExp2,
   Group,
   HemisphereLight,
+  type Material,
   Mesh,
   MeshLambertMaterial,
   MeshStandardMaterial,
@@ -144,6 +145,9 @@ export class RacingRenderer {
 
   readonly chassis = new Group();
   readonly wheels: Mesh[] = [];
+  /** Translucent best-lap ghost: a material-swapped clone of the chassis. */
+  readonly ghost = new Group();
+  private ghostWheels: Object3D[] = [];
   private wheelBaseRotations: Array<{ x: number; y: number; z: number }> = [];
 
   private trackRoot: Group | null = null;
@@ -237,6 +241,8 @@ export class RacingRenderer {
     this.scene.add(sky);
 
     this.scene.add(this.chassis);
+    this.ghost.visible = false;
+    this.scene.add(this.ghost);
 
     this.gltfLoader
       .loadAsync('/racing/extracted/race-future.glb')
@@ -259,6 +265,11 @@ export class RacingRenderer {
   }
 
   setVehiclePreset(preset: VehiclePreset): void {
+    this.buildChassis(preset);
+    this.rebuildGhost();
+  }
+
+  private buildChassis(preset: VehiclePreset): void {
     this.lastVehiclePreset = preset;
     while (this.chassis.children.length) this.chassis.remove(this.chassis.children[0]);
     this.wheels.length = 0;
@@ -353,9 +364,52 @@ export class RacingRenderer {
     );
   }
 
+  /** Show the ghost at `pose`, or hide it when `pose` is null. */
+  setGhostPose(pose: ChassisPose | null, wheels?: ReadonlyArray<WheelPose>): void {
+    if (!pose) {
+      this.ghost.visible = false;
+      return;
+    }
+    this.ghost.visible = true;
+    this.ghost.position.set(pose.position.x, pose.position.y, pose.position.z);
+    this.ghost.quaternion.set(pose.quaternion.x, pose.quaternion.y, pose.quaternion.z, pose.quaternion.w);
+    if (wheels) this.applyWheelPoses(this.ghostWheels, wheels);
+  }
+
+  private rebuildGhost(): void {
+    for (const child of [...this.ghost.children]) {
+      this.ghost.remove(child);
+      disposeGhostMaterials(child);
+    }
+    this.ghostWheels = [];
+    for (const child of this.chassis.children) {
+      const copy = child.clone();
+      copy.traverse((node) => {
+        if (!(node instanceof Mesh)) return;
+        node.castShadow = false;
+        node.receiveShadow = false;
+        const toGhost = (m: Material): Material => {
+          const c = m.clone();
+          c.transparent = true;
+          c.opacity = 0.35;
+          c.depthWrite = false;
+          return c;
+        };
+        node.material = Array.isArray(node.material) ? node.material.map(toGhost) : toGhost(node.material);
+      });
+      this.ghost.add(copy);
+      const wheelIndex = this.wheels.indexOf(child as Mesh);
+      if (wheelIndex >= 0) this.ghostWheels[wheelIndex] = copy;
+    }
+  }
+
   setWheelPoses(poses: ReadonlyArray<WheelPose>): void {
+    this.applyWheelPoses(this.wheels, poses);
+  }
+
+  private applyWheelPoses(meshes: ReadonlyArray<Object3D>, poses: ReadonlyArray<WheelPose>): void {
     for (const w of poses) {
-      const mesh = this.wheels[w.index];
+      const mesh = meshes[w.index];
       if (!mesh) continue;
       mesh.position.set(w.position.x, w.position.y, w.position.z);
       // Match the engine convention: positive steer is a left turn.
@@ -536,8 +590,18 @@ export class RacingRenderer {
   }
 
   dispose(): void {
+    for (const child of this.ghost.children) disposeGhostMaterials(child);
     this.renderer.dispose();
   }
+}
+
+/** Ghost meshes share geometry with the chassis but own cloned materials. */
+function disposeGhostMaterials(root: Object3D): void {
+  root.traverse((node) => {
+    if (!(node instanceof Mesh)) return;
+    const mats = Array.isArray(node.material) ? node.material : [node.material];
+    for (const m of mats) m.dispose();
+  });
 }
 
 function findAssetWheelMeshes(root: Object3D): Mesh[] {

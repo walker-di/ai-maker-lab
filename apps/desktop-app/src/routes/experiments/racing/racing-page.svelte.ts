@@ -3,11 +3,15 @@ import { Racing } from 'ui/source';
 import type { RacingTransport } from '$lib/adapters/racing/RacingTransport';
 
 const {
-	Engine: { RacingEngine, RacingRenderer },
+	Engine: { RacingEngine, RacingRenderer, ReplayRecorder, ReplayPlayer, CameraRig, sampleTrace, stepReplayCamera },
 	Runtime: { createRacingHudModel },
 } = Racing;
 
 type CameraMode = Racing.CameraMode;
+type ReplayFrame = Racing.Engine.ReplayFrame;
+type ReplayTrace = Racing.Engine.ReplayTrace;
+type ReplaySpeed = Racing.Engine.ReplaySpeed;
+export type ReplaySource = 'last' | 'best' | 'recent';
 type VehiclePreset = DomainRacing.VehiclePreset;
 type TrackPreset = DomainRacing.TrackPreset;
 type SetupValues = DomainRacing.SetupValues;
@@ -74,6 +78,12 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 	let activeVehicleId: string | null = null;
 	let activeRunToken = 0;
 	let autoStartRequested = true;
+	let replayMode = $state<'live' | 'replay'>('live');
+	let ghostEnabled = $state(true);
+	const recorder = new ReplayRecorder();
+	let player: InstanceType<typeof ReplayPlayer> | null = null;
+	let replaySource: ReplaySource | null = null;
+	let replayCamera: InstanceType<typeof CameraRig> | null = null;
 
 	function setError(message: string | null) {
 		errorMessage = message;
@@ -270,6 +280,8 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 			unsubTick = engine.events.on('tick', (event) => {
 				lastSimTime = event.simTime;
 			});
+			recorder.reset();
+			recorder.attach(engine, { trackId: args.track.id, vehicleId: args.vehicle.id });
 			paused = false;
 			void recordSessionStart(runToken, args.vehicle.id, args.track.id);
 			void seedBestLap(runToken, args.vehicle.id, args.track.id);
@@ -350,12 +362,18 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 		if (lastFrameTime === 0) lastFrameTime = now;
 		const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
 		lastFrameTime = now;
+		hud.setFps(dt > 0 ? 1 / dt : 0);
+
+		if (replayMode === 'replay' && player) {
+			renderReplayFrame(player.advance(dt), dt);
+			scheduleFrame();
+			return;
+		}
 
 		if (!paused) {
 			engine.tick(dt);
 		}
 
-		hud.setFps(dt > 0 ? 1 / dt : 0);
 		engine.updateCamera(dt);
 		renderer.setChassisPose({
 			position: { x: engine.worldPos.x, y: engine.worldPos.y, z: engine.worldPos.z },
@@ -367,11 +385,138 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 			},
 		});
 		renderer.setWheelPoses(engine.wheelPoses());
+		updateGhost();
 		const pose = engine.cameraPose();
 		renderer.setCameraPose(pose.position, pose.target, pose.up);
 		renderer.render();
 		updateHud();
+		syncReplayHud();
 		scheduleFrame();
+	}
+
+	function updateGhost(): void {
+		if (!renderer) return;
+		const best = recorder.bestLap;
+		const elapsed = recorder.lapElapsed();
+		if (!ghostEnabled || !best || elapsed == null || elapsed > best.frames[best.frames.length - 1].t) {
+			renderer.setGhostPose(null);
+			return;
+		}
+		const frame = sampleTrace(best, elapsed);
+		renderer.setGhostPose(frame ? { position: frame.pos, quaternion: frame.quat } : null, frame?.wheels);
+	}
+
+	function renderReplayFrame(frame: ReplayFrame | null, dt: number): void {
+		if (!engine || !renderer || !frame || !player) return;
+		renderer.setChassisPose({ position: frame.pos, quaternion: frame.quat });
+		renderer.setWheelPoses(frame.wheels);
+		renderer.setGhostPose(null);
+		replayCamera ??= new CameraRig();
+		stepReplayCamera(replayCamera, frame, dt, cameraMode);
+		const cam = replayCamera.state;
+		renderer.setCameraPose(cam.position, cam.target, cam.up);
+		renderer.render();
+		hud.setSpeed(frame.speedKmh);
+		hud.setRpm(frame.rpm);
+		hud.setGear(frame.gearLabel);
+		hud.setInput({
+			throttle: frame.throttle,
+			brake: frame.brake,
+			steer: frame.steer,
+			handbrake: frame.handbrake,
+		});
+		hud.setReplay({ time: player.time, playing: player.playing, speed: player.speed });
+	}
+
+	function replayTrace(source: ReplaySource): ReplayTrace | null {
+		if (source === 'last') return recorder.lastLap;
+		if (source === 'best') return recorder.bestLap;
+		return recorder.recentTrace();
+	}
+
+	let lastAvailability = '';
+	function syncReplayHud(): void {
+		const available = {
+			last: recorder.lastLap != null,
+			best: recorder.bestLap != null,
+			recent: recorder.recentTrace() != null,
+		};
+		const key = `${available.last}${available.best}${available.recent}`;
+		if (key === lastAvailability) return;
+		lastAvailability = key;
+		hud.setReplay({ available });
+	}
+
+	function enterReplay(source?: ReplaySource): boolean {
+		if (!engine || !renderer) return false;
+		const resolved: ReplaySource =
+			source ?? (recorder.lastLap ? 'last' : 'recent');
+		const trace = replayTrace(resolved);
+		if (!trace) return false;
+		player = new ReplayPlayer(trace);
+		replaySource = resolved;
+		replayMode = 'replay';
+		replayCamera = new CameraRig();
+		// Seed the replay camera from the live one so the cut isn't jarring.
+		const live = engine.cameraPose();
+		replayCamera.state.position.set(live.position.x, live.position.y, live.position.z);
+		replayCamera.state.target.set(live.target.x, live.target.y, live.target.z);
+		hud.setReplay({
+			mode: 'replay',
+			source: resolved,
+			time: 0,
+			duration: player.duration,
+			playing: true,
+			speed: player.speed,
+			lapMs: trace.lapMs ?? null,
+		});
+		return true;
+	}
+
+	function exitReplay(): void {
+		if (replayMode !== 'replay') return;
+		replayMode = 'live';
+		player = null;
+		replaySource = null;
+		replayCamera = null;
+		// Skip the wall-clock gap so the live sim resumes exactly where it was.
+		lastFrameTime = 0;
+		hud.setReplay({ mode: 'live', source: null, time: 0, duration: 0, playing: false, lapMs: null });
+	}
+
+	function toggleReplay(): void {
+		if (replayMode === 'replay') exitReplay();
+		else enterReplay();
+	}
+
+	function toggleReplayPlay(): void {
+		if (!player) return;
+		player.togglePlay();
+		hud.setReplay({ playing: player.playing, time: player.time });
+	}
+
+	function seekReplay(time: number): void {
+		if (!player) return;
+		player.seek(time);
+		hud.setReplay({ time: player.time });
+	}
+
+	function stepReplay(deltaS: number): void {
+		if (!player) return;
+		seekReplay(player.time + deltaS);
+	}
+
+	function setReplaySpeed(speed: number): void {
+		if (!player) return;
+		if (speed !== 0.25 && speed !== 0.5 && speed !== 1 && speed !== 2) return;
+		player.setSpeed(speed as ReplaySpeed);
+		hud.setReplay({ speed });
+	}
+
+	function toggleGhost(): void {
+		ghostEnabled = !ghostEnabled;
+		hud.setReplay({ ghostEnabled });
+		if (!ghostEnabled) renderer?.setGhostPose(null);
 	}
 
 	function updateHud(): void {
@@ -409,7 +554,8 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 		hud.setLap({
 			bestMs: snap.lap.bestMs,
 			lastMs: snap.lap.lastMs,
-			currentMs: snap.lap.t0 != null ? Math.max(0, (lastSimTime - snap.lap.t0) * 1000) : null,
+			// `lap.t0` is sim time in ms.
+			currentMs: snap.lap.t0 != null ? Math.max(0, lastSimTime * 1000 - snap.lap.t0) : null,
 		});
 		hud.setInput({
 			throttle: engine.input.state.throttle,
@@ -543,6 +689,10 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 			unsubTick();
 			unsubTick = null;
 		}
+		exitReplay();
+		recorder.detach();
+		recorder.reset();
+		lastAvailability = '';
 		if (engine) {
 			engine.dispose();
 			engine = null;
@@ -577,6 +727,10 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 	}
 
 	function togglePause(): void {
+		if (replayMode === 'replay') {
+			toggleReplayPlay();
+			return;
+		}
 		paused = !paused;
 		hud.setPaused(paused);
 	}
@@ -634,7 +788,10 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 	}
 
 	function reset(): void {
+		exitReplay();
 		engine?.resetCar();
+		// resetCar clears the lap timer; the partial lap can't become a trace.
+		recorder.discardCurrentLap();
 	}
 
 	function shiftUp(): void {
@@ -702,6 +859,12 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 		get selectedTrackId() { return selectedTrackId; },
 		get selectedVehicleId() { return selectedVehicleId; },
 		get setup() { return setup; },
+		get replayMode() { return replayMode; },
+		get replaySource() { return replaySource; },
+		get replayTime() { return player?.time ?? 0; },
+		get ghostEnabled() { return ghostEnabled; },
+		/** Exposed for tests / e2e: the live recorder. */
+		get recorder() { return recorder; },
 		bootstrap,
 		setMountTarget,
 		dispose,
@@ -721,6 +884,14 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 		startMatch,
 		saveSetup,
 		updateSetupField,
+		enterReplay,
+		exitReplay,
+		toggleReplay,
+		toggleReplayPlay,
+		seekReplay,
+		stepReplay,
+		setReplaySpeed,
+		toggleGhost,
 	};
 }
 

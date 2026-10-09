@@ -180,4 +180,26 @@ describe('racing page model', () => {
 		expect(model.hud.state.tcEnabled).toBe(false);
 		expect(model.hud.state.escEnabled).toBe(true);
 	});
+
+	test('ghost toggle updates page and HUD state', async () => {
+		const model = createRacingPageModel({ transport: createTransportStub() });
+		await model.bootstrap();
+
+		expect(model.ghostEnabled).toBe(true);
+		expect(model.hud.state.replay.ghostEnabled).toBe(true);
+		model.toggleGhost();
+		expect(model.ghostEnabled).toBe(false);
+		expect(model.hud.state.replay.ghostEnabled).toBe(false);
+	});
+
+	test('replay cannot start before a run has recorded anything', async () => {
+		const model = createRacingPageModel({ transport: createTransportStub() });
+		await model.bootstrap();
+
+		expect(model.enterReplay()).toBe(false);
+		expect(model.replayMode).toBe('live');
+		expect(model.hud.state.replay.mode).toBe('live');
+		model.exitReplay();
+		expect(model.replayMode).toBe('live');
+	});
 });
