@@ -182,13 +182,53 @@
 		window.history.replaceState(window.history.state, '', next);
 	});
 
+	const replayActions = {
+		onEnter: (source: 'last' | 'best' | 'recent') => {
+			model.enterReplay(source);
+			focusCanvasHost();
+		},
+		onExit: () => {
+			model.exitReplay();
+			focusCanvasHost();
+		},
+		onTogglePlay: () => model.toggleReplayPlay(),
+		onSeek: (time: number) => model.seekReplay(time),
+		onSpeed: (speed: number) => model.setReplaySpeed(speed),
+		onToggleGhost: () => {
+			model.toggleGhost();
+			focusCanvasHost();
+		},
+	};
+
+	/** Replay-mode keys: playback controls only, the live sim is frozen. */
+	function handleReplayKey(key: string): boolean {
+		if (key === 'v' || key === 'escape') model.exitReplay();
+		else if (key === ' ' || key === 'p') model.toggleReplayPlay();
+		else if (key === 'arrowleft') model.stepReplay(-1);
+		else if (key === 'arrowright') model.stepReplay(1);
+		else if (key === 'c' || key === 'tab') model.cycleCamera();
+		else if (key === 'g') model.toggleGhost();
+		else return false;
+		return true;
+	}
+
 	function handleKeyDown(event: KeyboardEvent) {
 		const target = event.target;
 		if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) {
 			return;
 		}
 		const key = event.key.toLowerCase();
-		if (key === 'r') {
+		if (model.replayMode === 'replay') {
+			if (handleReplayKey(key)) event.preventDefault();
+			return;
+		}
+		if (key === 'v') {
+			event.preventDefault();
+			model.enterReplay();
+		} else if (key === 'g') {
+			event.preventDefault();
+			model.toggleGhost();
+		} else if (key === 'r') {
 			event.preventDefault();
 			model.reset();
 		} else if (key === 'm') {
@@ -247,7 +287,7 @@
 		onclick={handleCanvasClick}
 	>
 		<canvas bind:this={canvas} class="racing-canvas"></canvas>
-		<RacingHud model={model.hud} />
+		<RacingHud model={model.hud} {replayActions} />
 
 		{#if model.isLoading || (!model.firstRunReady && !model.errorMessage)}
 			<div class="loading-overlay" data-testid="racing-loading">
@@ -363,6 +403,8 @@
 			<span><kbd>,</kbd><kbd>.</kbd> course</span>
 			<span><kbd>Tab</kbd>/<kbd>C</kbd> camera</span>
 			<span><kbd>R</kbd> reset</span>
+			<span><kbd>V</kbd> replay</span>
+			<span><kbd>G</kbd> ghost</span>
 			<span><kbd>M</kbd> mute</span>
 			<span><kbd>T</kbd>/<kbd>L</kbd> debug</span>
 			<span><kbd>P</kbd> pause</span>

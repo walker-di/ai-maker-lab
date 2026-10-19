@@ -16,8 +16,9 @@
   import TrackSurfacePanel from './components/TrackSurfacePanel.svelte';
   import AeroPanel from './components/AeroPanel.svelte';
   import BoostBar from './components/BoostBar.svelte';
+  import ReplayBar, { type ReplayBarActions } from './components/ReplayBar.svelte';
 
-  let { model }: { model: RacingHudModel } = $props();
+  let { model, replayActions }: { model: RacingHudModel; replayActions?: ReplayBarActions } = $props();
 
   function trackTempColor(c: number): string {
     if (c < 15) return '#77cfff';
@@ -53,6 +54,10 @@
       lastLabel={formatLap(model.state.lap.lastMs)}
     />
   </div>
+
+  {#if replayActions}
+    <ReplayBar replay={model.state.replay} actions={replayActions} />
+  {/if}
 
   <InputCard input={model.state.input} ackermannDeltaDeg={model.state.ackermannDeltaDeg} />
 
@@ -143,6 +148,7 @@
     <span class="badge temp" style="--tc: {trackTempColor(model.state.trackCondition.trackTempC)}">{Math.round(model.state.trackCondition.trackTempC)} °C</span>
     {#if model.state.trackCondition.rubberLineGrip > 1.005}<span class="badge rubber">Rubber {model.state.trackCondition.rubberLineGrip.toFixed(2)}×</span>{/if}
     {#if model.state.trackCondition.terrainActive}<span class="badge terrain">Elevation</span>{/if}
+    {#if model.state.replay.mode === 'replay'}<span class="badge danger">Replay</span>{/if}
     {#if model.state.paused}<span class="badge danger">Paused</span>{/if}
     {#if model.state.muted}<span class="badge muted">Muted</span>{/if}
     {#if model.state.showDebug}<span class="badge info">Debug</span>{/if}
