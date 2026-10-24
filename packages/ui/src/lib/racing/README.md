@@ -6,7 +6,7 @@ and a Svelte 5 HUD reads engine snapshots.
 ## Layout
 
 - `engine/` — orchestrator + per-frame pipeline.
-  - `RacingEngine.ts` — chassis state, wheel pass, drivetrain, lap timer.
+  - `RacingEngine.ts` — chassis state, wheel pass, drivetrain, lap timer (a lap only counts after the ordered sector checkpoints in `LAP_CHECKPOINTS`).
   - `physics/` — pure helpers (`pacejka`, `engine-curve`, `arb`, `aero`,
     `mz`, `tire-thermal`, `drivetrain`, `driver-aids`, `brakes`, etc.).
   - `tracks/` — `catmull-rom`, `ribbon-geometry`, `surface-lookup`,

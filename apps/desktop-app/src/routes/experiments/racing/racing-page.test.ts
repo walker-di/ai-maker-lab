@@ -1,7 +1,43 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { Racing as UiRacing } from 'ui/source';
 import { createRacingPageModel } from './racing-page.svelte.ts';
 import type { RacingTransport } from '$lib/adapters/racing/RacingTransport';
 import type { Racing } from 'domain/shared';
+
+type GhostCall = { pose: { position: { x: number; y: number; z: number } } | null };
+
+/**
+ * WebGL is unavailable under vitest's node environment, so the renderer is the
+ * one boundary faked here: it records ghost updates so tests can assert the
+ * page model's real ghost sync. The engine and recorder stay real.
+ */
+const rendererState = vi.hoisted(() => ({ ghostCalls: [] as GhostCall[] }));
+
+vi.mock('ui/source', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('ui/source')>();
+	class FakeRacingRenderer {
+		buildTrack() {
+			return { points: [] };
+		}
+		dispose() {}
+		render() {}
+		setCameraPose() {}
+		setChassisPose() {}
+		setSize() {}
+		setVehiclePreset() {}
+		setWheelPoses() {}
+		setGhostPose(pose: GhostCall['pose']) {
+			rendererState.ghostCalls.push({ pose });
+		}
+	}
+	return {
+		...actual,
+		Racing: {
+			...actual.Racing,
+			Engine: { ...actual.Racing.Engine, RacingRenderer: FakeRacingRenderer },
+		},
+	};
+});
 
 function makeVehicle(id: string, label: string): Racing.VehiclePreset {
 	return {
@@ -97,8 +133,66 @@ function createTransportStub(): RacingTransport {
 	};
 }
 
+type RafCallback = (now: number) => void;
+let rafQueue: RafCallback[] = [];
+let rafNow = 0;
+
+/** Run the page model's next animation frame(s), `ms` apart. */
+function runFrames(count: number, ms = 1000 / 60): void {
+	for (let i = 0; i < count; i++) {
+		const cb = rafQueue.shift();
+		if (!cb) throw new Error('no animation frame scheduled');
+		rafNow += ms;
+		cb(rafNow);
+	}
+}
+
+function fakeElement(): HTMLElement {
+	return {
+		addEventListener: () => undefined,
+		removeEventListener: () => undefined,
+		focus: () => undefined,
+	} as unknown as HTMLElement;
+}
+
+async function mountRunningModel() {
+	const model = createRacingPageModel({ transport: createTransportStub() });
+	await model.bootstrap();
+	model.setMountTarget(fakeElement() as unknown as HTMLCanvasElement, fakeElement(), 800, 600);
+	await vi.waitFor(() => expect(model.runActive).toBe(true));
+	return model;
+}
+
+type Engine = InstanceType<typeof UiRacing.Engine.RacingEngine>;
+
+/** The recorder is attached to the live engine; reach it to drive the car. */
+function liveEngine(model: Awaited<ReturnType<typeof mountRunningModel>>): Engine {
+	const engine = (model.recorder as unknown as { engine: Engine | null }).engine;
+	if (!engine) throw new Error('recorder not attached');
+	return engine;
+}
+
+/** Teleport the car forward across the start line (centreline starts at x=0 heading +X). */
+function crossStartLine(engine: Engine): void {
+	const y = engine.worldPos.y;
+	engine.worldPos.set(-0.5, y, 0);
+	engine.velocityWS.set(0, 0, 0);
+	engine.step(1 / 240);
+	engine.worldPos.set(0.5, y, 0);
+	engine.velocityWS.set(12, 0, 0);
+	engine.step(1 / 240);
+}
+
 describe('racing page model', () => {
 	beforeEach(() => {
+		rendererState.ghostCalls = [];
+		rafQueue = [];
+		rafNow = 0;
+		vi.stubGlobal('requestAnimationFrame', (cb: RafCallback) => {
+			rafQueue.push(cb);
+			return rafQueue.length;
+		});
+		vi.stubGlobal('cancelAnimationFrame', () => undefined);
 		Object.defineProperty(globalThis, 'localStorage', {
 			value: new MemoryStorage(),
 			configurable: true,
@@ -164,6 +258,10 @@ describe('racing page model', () => {
 		});
 	});
 
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
 	test('aid toggles update the exposed page state and HUD state', async () => {
 		const transport = createTransportStub();
 		const model = createRacingPageModel({ transport });
@@ -181,25 +279,77 @@ describe('racing page model', () => {
 		expect(model.hud.state.escEnabled).toBe(true);
 	});
 
-	test('ghost toggle updates page and HUD state', async () => {
-		const model = createRacingPageModel({ transport: createTransportStub() });
-		await model.bootstrap();
-
+	test('ghost follows the best lap in sync, and the toggle really hides and restores it', async () => {
+		const model = await mountRunningModel();
+		const engine = liveEngine(model);
 		expect(model.ghostEnabled).toBe(true);
-		expect(model.hud.state.replay.ghostEnabled).toBe(true);
+
+		// No best lap yet: the ghost is hidden.
+		runFrames(1);
+		expect(rendererState.ghostCalls.at(-1)?.pose).toBeNull();
+
+		// Start a lap, and give the recorder a 10 s best lap to chase.
+		crossStartLine(engine);
+		expect(model.recorder.lapElapsed()).not.toBeNull();
+		const frames = Array.from({ length: 11 }, (_, i) => ({
+			t: i,
+			pos: { x: i * 10, y: 0, z: 0 },
+			quat: { x: 0, y: 0, z: 0, w: 1 },
+			wheels: [],
+			speedKmh: 0,
+			rpm: 0,
+			gearLabel: '1',
+			throttle: 0,
+			brake: 0,
+			steer: 0,
+			handbrake: 0,
+		}));
+		model.recorder.bestLap = { kind: 'lap', trackId: 'classic-twist', vehicleId: 'rwd-front-mid', lapMs: 10_000, frames };
+
+		runFrames(1);
+		const shown = rendererState.ghostCalls.at(-1)?.pose;
+		expect(shown).not.toBeNull();
+		// The ghost sits where the best lap was at the same lap time.
+		const elapsed = model.recorder.lapElapsed()!;
+		expect(shown!.position.x).toBeCloseTo(elapsed * 10, 6);
+
 		model.toggleGhost();
-		expect(model.ghostEnabled).toBe(false);
 		expect(model.hud.state.replay.ghostEnabled).toBe(false);
+		runFrames(1);
+		expect(rendererState.ghostCalls.at(-1)?.pose).toBeNull();
+
+		model.toggleGhost();
+		expect(model.hud.state.replay.ghostEnabled).toBe(true);
+		runFrames(1);
+		expect(rendererState.ghostCalls.at(-1)?.pose).not.toBeNull();
+
+		// Past the best lap's duration the ghost hides again.
+		model.recorder.bestLap = { ...model.recorder.bestLap!, frames: frames.slice(0, 1), lapMs: 0 };
+		runFrames(1);
+		expect(rendererState.ghostCalls.at(-1)?.pose).toBeNull();
+		model.dispose();
 	});
 
-	test('replay cannot start before a run has recorded anything', async () => {
-		const model = createRacingPageModel({ transport: createTransportStub() });
-		await model.bootstrap();
-
+	test('replay only starts once the running sim has recorded a trace', async () => {
+		const model = await mountRunningModel();
+		// Engine and renderer are live, but no frame has run: nothing recorded.
+		expect(model.recorder.hasRecent).toBe(false);
 		expect(model.enterReplay()).toBe(false);
 		expect(model.replayMode).toBe('live');
-		expect(model.hud.state.replay.mode).toBe('live');
+		expect(model.hud.state.replay.available.recent).toBe(false);
+
+		runFrames(10);
+		expect(model.recorder.hasRecent).toBe(true);
+		expect(model.hud.state.replay.available.recent).toBe(true);
+		expect(model.enterReplay('last')).toBe(false);
+		expect(model.enterReplay()).toBe(true);
+		expect(model.replayMode).toBe('replay');
+		expect(model.replaySource).toBe('recent');
+		expect(model.hud.state.replay.mode).toBe('replay');
+
 		model.exitReplay();
 		expect(model.replayMode).toBe('live');
+		expect(model.hud.state.replay.mode).toBe('live');
+		model.dispose();
 	});
 });

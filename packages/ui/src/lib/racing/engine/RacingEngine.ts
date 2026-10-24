@@ -756,6 +756,14 @@ export interface RacingTelemetryExport {
   channels: Record<string, number[]>;
 }
 
+/**
+ * Ordered sector checkpoints (fraction of centerline arc length from the
+ * start line) a car must reach before a start-line crossing counts as a lap.
+ */
+export const LAP_CHECKPOINTS: readonly number[] = [0.25, 0.5, 0.75];
+/** Fraction of the lap after each checkpoint within which it registers. */
+const LAP_CHECKPOINT_WINDOW = 0.2;
+
 export class RacingEngine {
   readonly events = new EngineEmitter();
   readonly cameras = new CameraRig();
@@ -1010,7 +1018,12 @@ export class RacingEngine {
     lastMs: null as number | null,
     t0: null as number | null,
     prevSign: 0,
+    /** Index into LAP_CHECKPOINTS of the next sector checkpoint to reach. */
+    nextCheckpoint: 0,
   };
+  /** Cumulative arc length (m) at each centerline sample, for lap progress. */
+  private centerlineCum: number[] = [];
+  private centerlineLength = 0;
 
   // Derived
   speedKmh = 0;
@@ -1054,7 +1067,7 @@ export class RacingEngine {
     this.trackPreset = preset;
     this.buildSurfaceLookup();
     this.resetCar();
-    this.lap = { bestMs: null, lastMs: null, t0: null, prevSign: 0 };
+    this.lap = { bestMs: null, lastMs: null, t0: null, prevSign: 0, nextCheckpoint: 0 };
   }
 
   setSetup(setup: SetupValues): void {
@@ -1338,6 +1351,7 @@ export class RacingEngine {
     }
     this.lap.t0 = null;
     this.lap.prevSign = 0;
+    this.lap.nextCheckpoint = 0;
   }
 
   /** Drive the simulation forward by `dt` seconds of wall-clock time. */
@@ -1580,7 +1594,8 @@ export class RacingEngine {
       lap: {
         lastMs: snap.lap.lastMs,
         bestMs: snap.lap.bestMs,
-        currentStartS: snap.lap.t0,
+        // `lap.t0` is stored in ms; the export field is seconds.
+        currentStartS: snap.lap.t0 == null ? null : snap.lap.t0 / 1000,
       },
       timeS: this.simTime,
       speedKmh: snap.speedKmh,
@@ -1970,6 +1985,15 @@ export class RacingEngine {
   private buildSurfaceLookup(): void {
     const points = sampleCentripetal(this.trackPreset.ctrl, this.trackPreset.samples);
     this.centerline = points;
+    const cum: number[] = [0];
+    for (let i = 1; i < points.length; i++) {
+      cum.push(cum[i - 1] + Math.hypot(points[i].x - points[i - 1].x, points[i].z - points[i - 1].z));
+    }
+    const closing = points.length > 1
+      ? Math.hypot(points[0].x - points[points.length - 1].x, points[0].z - points[points.length - 1].z)
+      : 0;
+    this.centerlineCum = cum;
+    this.centerlineLength = (cum[cum.length - 1] ?? 0) + closing;
     const zones: { x: number; z: number; w: number; h: number; rot: number; surface: SurfaceId }[] = [];
     for (const z of this.trackPreset.gravelZones ?? []) {
       zones.push({ x: z.x, z: z.z, w: z.w, h: z.h, rot: (z as { rot?: number }).rot ?? 0, surface: 'GRAVEL' });
@@ -3376,8 +3400,61 @@ export class RacingEngine {
     else this.driftState = 'GRIP';
   }
 
+  /**
+   * Centerline point at each sector checkpoint (the first sample inside its
+   * window), in order. Useful for rendering sector markers and for tests that
+   * need to drive a valid lap.
+   */
+  lapCheckpointPoints(): SampledPoint[] {
+    const out: SampledPoint[] = [];
+    if (this.centerlineLength <= 0) return out;
+    for (const target of LAP_CHECKPOINTS) {
+      const i = this.centerlineCum.findIndex((c) => c / this.centerlineLength >= target);
+      if (i >= 0) out.push({ x: this.centerline[i].x, z: this.centerline[i].z });
+    }
+    return out;
+  }
+
+  /**
+   * Lap progress as a fraction [0, 1) of centerline arc length, measured from
+   * the start line, or null when the car is too far from the centerline to
+   * count (e.g. cutting across the infield).
+   */
+  private lapProgressFraction(): number | null {
+    const pts = this.centerline;
+    if (pts.length < 2 || this.centerlineLength <= 0) return null;
+    let best = 0;
+    let bestD = Infinity;
+    for (let i = 0; i < pts.length; i++) {
+      const dx = this.worldPos.x - pts[i].x;
+      const dz = this.worldPos.z - pts[i].z;
+      const d = dx * dx + dz * dz;
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    const maxOff = this.trackPreset.halfWidth * 2 + 2;
+    if (bestD > maxOff * maxOff) return null;
+    return this.centerlineCum[best] / this.centerlineLength;
+  }
+
+  /**
+   * Advance the ordered sector checkpoints for the lap in progress. A lap only
+   * counts when every checkpoint was reached in order, so reversing over the
+   * start line and recrossing it ("line hop") cannot produce a lap.
+   */
+  private updateLapCheckpoints(): void {
+    if (this.lap.t0 == null || this.lap.nextCheckpoint >= LAP_CHECKPOINTS.length) return;
+    const f = this.lapProgressFraction();
+    if (f == null) return;
+    const target = LAP_CHECKPOINTS[this.lap.nextCheckpoint];
+    if (f >= target && f < target + LAP_CHECKPOINT_WINDOW) this.lap.nextCheckpoint += 1;
+  }
+
   private updateLapTimer(now: number): void {
     if (!this.centerline.length) return;
+    this.updateLapCheckpoints();
     const sp = this.centerline[0];
     const next = this.centerline[1];
     const tan = { x: next.x - sp.x, z: next.z - sp.z };
@@ -3395,23 +3472,30 @@ export class RacingEngine {
     const movingForward = this.velocityWS.dot(new Vector3(tx, 0, tz)) > 1;
     if (this.lap.prevSign !== 0 && sign !== this.lap.prevSign && closeEnough && movingForward) {
       const wallNow = now * 1000;
-      if (this.lap.t0 == null) {
-        this.lap.t0 = wallNow;
-        this.events.emit('lapStarted', {
-          trackId: this.trackPreset.id,
-          vehicleId: this.vehicle.id,
-          startedAt: wallNow,
-        });
-      } else {
+      const lapComplete = this.lap.t0 != null && this.lap.nextCheckpoint >= LAP_CHECKPOINTS.length;
+      if (this.lap.t0 != null && lapComplete) {
         const ms = wallNow - this.lap.t0;
         this.lap.lastMs = ms;
         if (this.lap.bestMs == null || ms < this.lap.bestMs) this.lap.bestMs = ms;
         this.lap.t0 = wallNow;
+        this.lap.nextCheckpoint = 0;
         this.events.emit('lapFinished', {
           trackId: this.trackPreset.id,
           vehicleId: this.vehicle.id,
           lapMs: ms,
           sectors: [],
+        });
+      } else {
+        // First crossing, or a crossing without every sector checkpoint (line
+        // hop, reversing over the line): (re)start the lap instead of timing
+        // one. Lap timing, replay recording and lap persistence all key off
+        // `lapFinished`, so none of them see an invalid lap.
+        this.lap.t0 = wallNow;
+        this.lap.nextCheckpoint = 0;
+        this.events.emit('lapStarted', {
+          trackId: this.trackPreset.id,
+          vehicleId: this.vehicle.id,
+          startedAt: wallNow,
         });
       }
     }

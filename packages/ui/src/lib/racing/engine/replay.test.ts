@@ -88,6 +88,25 @@ function trace(frames: ReplayFrame[]): ReplayTrace {
   return { kind: 'lap', trackId: 't', vehicleId: 'v', lapMs: traceDuration({ kind: 'lap', trackId: '', vehicleId: '', frames }) * 1000, frames };
 }
 
+/** Teleport the car (stationary) through every ordered sector checkpoint. */
+function visitCheckpoints(engine: RacingEngine): void {
+  const y = engine.worldPos.y;
+  for (const p of engine.lapCheckpointPoints()) {
+    engine.worldPos.set(p.x, y, p.z);
+    engine.velocityWS.set(0, 0, 0);
+    engine.step(STEP);
+  }
+}
+
+/**
+ * Complete a valid lap: visit every sector checkpoint, then cross the line.
+ * The first call (no lap running) just starts the lap.
+ */
+function completeLap(engine: RacingEngine): void {
+  visitCheckpoints(engine);
+  crossLine(engine);
+}
+
 /** Teleport the car forward across the start/finish line (centreline starts at x=0 heading +X). */
 function crossLine(engine: RacingEngine): void {
   const y = engine.worldPos.y;
@@ -137,11 +156,11 @@ describe('ReplayRecorder', () => {
     engine.events.on('lapFinished', (e) => finished.push(e.lapMs));
 
     expect(recorder.lapElapsed()).toBeNull();
-    crossLine(engine);
+    completeLap(engine);
     expect(recorder.lapElapsed()).toBe(0);
     for (let i = 0; i < 240; i++) engine.step(STEP);
     expect(recorder.lapElapsed()).toBeCloseTo(1, 6);
-    crossLine(engine);
+    completeLap(engine);
 
     expect(finished).toHaveLength(1);
     const first = recorder.lastLap!;
@@ -152,24 +171,69 @@ describe('ReplayRecorder', () => {
 
     // A slower lap updates `lastLap` but not `bestLap`.
     for (let i = 0; i < 480; i++) engine.step(STEP);
-    crossLine(engine);
+    completeLap(engine);
     expect(recorder.lastLap).not.toBe(first);
     expect(recorder.bestLap).toBe(first);
 
     // A faster lap replaces it.
     for (let i = 0; i < 60; i++) engine.step(STEP);
-    crossLine(engine);
+    completeLap(engine);
     expect(recorder.bestLap).toBe(recorder.lastLap);
     expect(recorder.bestLap!.lapMs).toBeLessThan(first.lapMs!);
+  });
+
+  it('ignores a line hop: crossing, reversing and recrossing does not create a lap', () => {
+    const engine = createEngine();
+    const recorder = new ReplayRecorder();
+    recorder.attach(engine, { trackId: 'test-loop', vehicleId: 'test-rwd' });
+    const finished: number[] = [];
+    const started: number[] = [];
+    engine.events.on('lapFinished', (e) => finished.push(e.lapMs));
+    engine.events.on('lapStarted', (e) => started.push(e.startedAt));
+
+    const y = engine.worldPos.y;
+    crossLine(engine);
+    expect(started).toHaveLength(1);
+    for (let i = 0; i < 60; i++) engine.step(STEP);
+    // Reverse back behind the line (no event: not moving forward)...
+    engine.worldPos.set(0.5, y, 0);
+    engine.velocityWS.set(-6, 0, 0);
+    engine.step(STEP);
+    engine.worldPos.set(-0.5, y, 0);
+    engine.velocityWS.set(-6, 0, 0);
+    engine.step(STEP);
+    // ...then drive forward over it again.
+    engine.worldPos.set(0.5, y, 0);
+    engine.velocityWS.set(12, 0, 0);
+    engine.step(STEP);
+
+    expect(finished).toHaveLength(0);
+    expect(engine.snapshot().lap.lastMs).toBeNull();
+    expect(engine.snapshot().lap.bestMs).toBeNull();
+    expect(recorder.lastLap).toBeNull();
+    expect(recorder.bestLap).toBeNull();
+    // The recrossing restarts the lap instead of timing one.
+    expect(started).toHaveLength(2);
+    expect(recorder.lapElapsed()).toBe(0);
+
+    // Skipping a checkpoint (out of order) still does not count.
+    const [, second, third] = engine.lapCheckpointPoints();
+    for (const p of [second, third]) {
+      engine.worldPos.set(p.x, y, p.z);
+      engine.velocityWS.set(0, 0, 0);
+      engine.step(STEP);
+    }
+    crossLine(engine);
+    expect(finished).toHaveLength(0);
   });
 
   it('discards the lap in progress and clears everything on reset', () => {
     const engine = createEngine();
     const recorder = new ReplayRecorder();
     recorder.attach(engine, { trackId: 'test-loop', vehicleId: 'test-rwd' });
-    crossLine(engine);
+    completeLap(engine);
     for (let i = 0; i < 60; i++) engine.step(STEP);
-    crossLine(engine);
+    completeLap(engine);
     expect(recorder.lastLap).not.toBeNull();
 
     recorder.discardCurrentLap();
@@ -180,6 +244,40 @@ describe('ReplayRecorder', () => {
     expect(recorder.lastLap).toBeNull();
     expect(recorder.bestLap).toBeNull();
     expect(recorder.recentTrace()).toBeNull();
+  });
+
+  it('caps the lap in progress and drops it past maxLapSeconds', () => {
+    const engine = createEngine();
+    const recorder = new ReplayRecorder({ maxLapSeconds: 1 });
+    recorder.attach(engine, { trackId: 'test-loop', vehicleId: 'test-rwd' });
+    const finished: number[] = [];
+    engine.events.on('lapFinished', (e) => finished.push(e.lapMs));
+    completeLap(engine);
+    for (let i = 0; i < 120; i++) engine.step(STEP);
+    expect(recorder.currentLapFrameCount).toBeGreaterThan(20);
+    // Run past the cap: the buffer is dropped and stops growing.
+    for (let i = 0; i < 240 * 2; i++) engine.step(STEP);
+    expect(recorder.currentLapFrameCount).toBe(0);
+    expect(recorder.lapElapsed()).toBeNull();
+    // The engine still times the lap, but the recorder keeps no trace for it.
+    completeLap(engine);
+    expect(finished).toHaveLength(1);
+    expect(recorder.lastLap).toBeNull();
+    // The crossing starts a fresh, recordable lap.
+    expect(recorder.lapElapsed()).toBe(0);
+  });
+
+  it('reports recent availability in O(1) without building a trace', () => {
+    const engine = createEngine();
+    const recorder = new ReplayRecorder();
+    recorder.attach(engine, { trackId: 'test-loop', vehicleId: 'test-rwd' });
+    expect(recorder.hasRecent).toBe(false);
+    engine.step(STEP);
+    expect(recorder.hasRecent).toBe(recorder.recentTrace() != null);
+    for (let i = 0; i < 20; i++) engine.step(STEP);
+    expect(recorder.hasRecent).toBe(true);
+    recorder.reset();
+    expect(recorder.hasRecent).toBe(false);
   });
 
   it('stops recording after detach', () => {

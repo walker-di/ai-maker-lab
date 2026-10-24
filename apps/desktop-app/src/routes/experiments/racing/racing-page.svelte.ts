@@ -439,7 +439,7 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 		const available = {
 			last: recorder.lastLap != null,
 			best: recorder.bestLap != null,
-			recent: recorder.recentTrace() != null,
+			recent: recorder.hasRecent,
 		};
 		const key = `${available.last}${available.best}${available.recent}`;
 		if (key === lastAvailability) return;
@@ -482,11 +482,6 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 		// Skip the wall-clock gap so the live sim resumes exactly where it was.
 		lastFrameTime = 0;
 		hud.setReplay({ mode: 'live', source: null, time: 0, duration: 0, playing: false, lapMs: null });
-	}
-
-	function toggleReplay(): void {
-		if (replayMode === 'replay') exitReplay();
-		else enterReplay();
 	}
 
 	function toggleReplayPlay(): void {
@@ -886,7 +881,6 @@ export function createRacingPageModel(deps: RacingPageDeps) {
 		updateSetupField,
 		enterReplay,
 		exitReplay,
-		toggleReplay,
 		toggleReplayPlay,
 		seekReplay,
 		stepReplay,

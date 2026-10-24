@@ -1347,6 +1347,13 @@ describe('RacingEngine integration', () => {
     engine.velocityWS.set(12, 0, 0);
     engine.step(0.2);
 
+    // A lap only counts after every ordered sector checkpoint.
+    for (const p of engine.lapCheckpointPoints()) {
+      engine.worldPos.set(p.x, y, p.z);
+      engine.velocityWS.set(0, 0, 0);
+      engine.step(1 / 240);
+    }
+
     engine.worldPos.set(-1, y, 0);
     engine.velocityWS.set(0, 0, 0);
     engine.step(1 / 240);
@@ -1361,6 +1368,40 @@ describe('RacingEngine integration', () => {
     expect(finished[0]).toBeGreaterThan(200);
     expect(snapshot.lap.lastMs).toBeCloseTo(finished[0], 6);
     expect(snapshot.lap.bestMs).toBeCloseTo(finished[0], 6);
+  });
+
+  it('does not count a start-line crossing that skipped the sector checkpoints', () => {
+    const engine = createEngine();
+    const started: number[] = [];
+    const finished: number[] = [];
+    engine.events.on('lapStarted', (event) => started.push(event.startedAt));
+    engine.events.on('lapFinished', (event) => finished.push(event.lapMs));
+    const y = engine.worldPos.y;
+    for (let k = 0; k < 3; k++) {
+      engine.worldPos.set(-1, y, 0);
+      engine.velocityWS.set(0, 0, 0);
+      engine.step(1 / 240);
+      engine.worldPos.set(-1, y, 0);
+      engine.velocityWS.set(12, 0, 0);
+      engine.step(0.2);
+    }
+    expect(finished).toHaveLength(0);
+    expect(started).toHaveLength(3);
+    expect(engine.snapshot().lap.bestMs).toBeNull();
+  });
+
+  it('exports the current lap start in seconds', () => {
+    const engine = createEngine();
+    const y = engine.worldPos.y;
+    engine.worldPos.set(-1, y, 0);
+    engine.velocityWS.set(0, 0, 0);
+    engine.step(1 / 240);
+    engine.worldPos.set(-1, y, 0);
+    engine.velocityWS.set(12, 0, 0);
+    engine.step(0.2);
+    const t0Ms = engine.snapshot().lap.t0;
+    expect(t0Ms).not.toBeNull();
+    expect(engine.exportTelemetry().samples[0].lap.currentStartS).toBeCloseTo(t0Ms! / 1000, 9);
   });
 
   // ------------------------------------------------------------------

@@ -9,7 +9,7 @@
 <div class="panel lap-card" data-testid="hud-lap">
   <div class="lap-row"><span>Lap</span><span class="v current">{currentLabel}</span></div>
   <div class="lap-row"><span>Last</span><span class="v">{lastLabel}</span></div>
-  <div class="lap-row"><span>Best</span><span class="v">{bestLabel}</span></div>
+  <div class="lap-row"><span title="Best lap ever recorded for this car and track">All-time best</span><span class="v">{bestLabel}</span></div>
 </div>
 
 <style>

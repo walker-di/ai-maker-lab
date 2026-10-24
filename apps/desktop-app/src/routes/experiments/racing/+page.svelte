@@ -191,9 +191,17 @@
 			model.exitReplay();
 			focusCanvasHost();
 		},
-		onTogglePlay: () => model.toggleReplayPlay(),
+		onTogglePlay: () => {
+			model.toggleReplayPlay();
+			focusCanvasHost();
+		},
+		// The scrubber keeps focus while dragging; replay keys still work there
+		// because `handleKeyDown` routes them (see `isReplayScrubber`).
 		onSeek: (time: number) => model.seekReplay(time),
-		onSpeed: (speed: number) => model.setReplaySpeed(speed),
+		onSpeed: (speed: number) => {
+			model.setReplaySpeed(speed);
+			focusCanvasHost();
+		},
 		onToggleGhost: () => {
 			model.toggleGhost();
 			focusCanvasHost();
@@ -212,8 +220,19 @@
 		return true;
 	}
 
+	/** The replay scrubber is a range input inside the canvas host. */
+	function isReplayScrubber(target: EventTarget | null): boolean {
+		return target instanceof HTMLInputElement && target.dataset.testid === 'replay-scrub';
+	}
+
 	function handleKeyDown(event: KeyboardEvent) {
 		const target = event.target;
+		if (model.replayMode === 'replay' && isReplayScrubber(target)) {
+			// Keep replay shortcuts (Esc/V/Space/arrows ±1 s) instead of the
+			// range input's native 0.01 s arrow steps.
+			if (handleReplayKey(event.key.toLowerCase())) event.preventDefault();
+			return;
+		}
 		if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) {
 			return;
 		}

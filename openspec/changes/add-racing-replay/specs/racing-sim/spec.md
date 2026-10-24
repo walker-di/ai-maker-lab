@@ -9,6 +9,13 @@ The racing experiment SHALL record the player's chassis and wheel poses during a
 - **WHEN** the live simulation is stepping
 - **THEN** the recorder samples poses and HUD channels at about 60 Hz from engine `tick` events
 - **AND** a completed lap between two start/finish crossings is stored as the last lap, and as the best lap when it is faster than the stored best
+- **AND** the in-progress lap buffer is capped (10 minutes by default); past it the lap is dropped and nothing more is buffered until the next crossing
+
+#### Scenario: Only valid laps count
+
+- **WHEN** the car crosses the start/finish line forward without having reached every ordered sector checkpoint (25 %, 50 %, 75 % of the centerline) since the lap started, for example after reversing back over the line and recrossing it
+- **THEN** no lap is finished: lap timing, the last/best replay traces, the ghost and lap persistence all ignore it
+- **AND** the crossing restarts the lap in progress instead
 
 #### Scenario: Entering and leaving replay
 
@@ -16,6 +23,7 @@ The racing experiment SHALL record the player's chassis and wheel poses during a
 - **THEN** the live simulation stops stepping and the car, wheels, camera and HUD speed, gear, rpm and inputs follow the recorded trace
 - **AND** `Space` toggles playback, `←`/`→` seek one second, and the speed can be set to 0.25×, 0.5×, 1× or 2×
 - **AND** pressing `Esc` or `V` returns to the live simulation in exactly the state it was left
+- **AND** these keys keep working after the player uses the scrubber, play button or speed chips
 
 #### Scenario: Replay data lifetime
 
@@ -25,7 +33,7 @@ The racing experiment SHALL record the player's chassis and wheel poses during a
 
 ### Requirement: Best-lap ghost
 
-The racing experiment SHALL render a translucent ghost car following the best recorded lap while the player drives.
+The racing experiment SHALL render a translucent ghost car following the best lap recorded in the current session while the player drives. The replay bar labels that source "Session best"; the HUD lap card's best is the all-time best from the server and is labelled "All-time best".
 
 #### Scenario: Ghost follows the current lap clock
 

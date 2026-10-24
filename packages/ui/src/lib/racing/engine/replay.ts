@@ -66,6 +66,13 @@ export interface ReplayRecorderOptions {
   sampleHz?: number;
   /** Length of the rolling "recent" buffer (s). Default 60. */
   recentSeconds?: number;
+  /**
+   * Longest lap the recorder keeps frames for (s). Past it the lap in progress
+   * is dropped and nothing more is buffered until the next line crossing, so
+   * a long session that never finishes a lap cannot grow memory without
+   * bound. Default 600 (10 min).
+   */
+  maxLapSeconds?: number;
 }
 
 export function traceDuration(trace: ReplayTrace | null | undefined): number {
@@ -76,6 +83,7 @@ export function traceDuration(trace: ReplayTrace | null | undefined): number {
 export class ReplayRecorder {
   readonly sampleHz: number;
   readonly recentSeconds: number;
+  readonly maxLapSeconds: number;
 
   lastLap: ReplayTrace | null = null;
   bestLap: ReplayTrace | null = null;
@@ -98,6 +106,7 @@ export class ReplayRecorder {
   constructor(options: ReplayRecorderOptions = {}) {
     this.sampleHz = options.sampleHz ?? 60;
     this.recentSeconds = options.recentSeconds ?? 60;
+    this.maxLapSeconds = options.maxLapSeconds ?? 600;
   }
 
   attach(engine: ReplayRecordable, ids: { trackId: string; vehicleId: string }): void {
@@ -144,6 +153,16 @@ export class ReplayRecorder {
     return this.lapStartTime == null ? null : this.simTime - this.lapStartTime;
   }
 
+  /** O(1): whether `recentTrace()` would return a trace. Safe to call per frame. */
+  get hasRecent(): boolean {
+    return this.recentFrames.length - this.recentHead >= 2;
+  }
+
+  /** Frames buffered for the lap in progress (diagnostics / tests). */
+  get currentLapFrameCount(): number {
+    return this.lapFrames.length;
+  }
+
   recentTrace(): ReplayTrace | null {
     const frames = this.recentFrames.slice(this.recentHead);
     if (frames.length < 2) return null;
@@ -177,7 +196,14 @@ export class ReplayRecorder {
       this.lapStartTime = simTime;
       this.lapFrames = [frame];
     } else if (this.lapStartTime != null) {
-      this.lapFrames.push(frame);
+      if (simTime - this.lapStartTime > this.maxLapSeconds) {
+        // Over the cap: stop buffering. The lap can no longer produce a
+        // trace; the next line crossing starts a fresh one.
+        this.lapStartTime = null;
+        this.lapFrames = [];
+      } else {
+        this.lapFrames.push(frame);
+      }
     }
 
     this.recentFrames.push(frame);

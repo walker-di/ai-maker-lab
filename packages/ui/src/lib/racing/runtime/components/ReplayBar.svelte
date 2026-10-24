@@ -35,7 +35,7 @@
   }
 
   const sourceLabel = $derived(
-    replay.source === 'best' ? 'Best lap' : replay.source === 'last' ? 'Last lap' : 'Last 60 s',
+    replay.source === 'best' ? 'Session best' : replay.source === 'last' ? 'Last lap' : 'Last 60 s',
   );
 </script>
 
@@ -77,7 +77,8 @@
   <div class="panel replay-bar" data-testid="hud-replay">
     <History size={14} class="muted-icon" />
     <button type="button" class="chip" disabled={!replay.available.last} onclick={() => actions.onEnter('last')}>Last lap</button>
-    <button type="button" class="chip" disabled={!replay.available.best} onclick={() => actions.onEnter('best')}>Best lap</button>
+    <button type="button" class="chip" disabled={!replay.available.best} title="Fastest lap driven this session (the HUD lap card shows your all-time best)"
+      onclick={() => actions.onEnter('best')}>Session best</button>
     <button type="button" class="chip" disabled={!replay.available.recent} onclick={() => actions.onEnter('recent')}>Last 60 s</button>
     <span class="divider"></span>
     <button
@@ -86,6 +87,7 @@
       class:on={replay.ghostEnabled}
       aria-pressed={replay.ghostEnabled}
       data-testid="replay-ghost"
+      title="Race against this session's best lap"
       onclick={actions.onToggleGhost}
     >
       <Ghost size={12} /> Ghost
